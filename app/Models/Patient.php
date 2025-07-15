@@ -7,7 +7,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
-use App\Models\Allergies;
+use App\Models\Allergy;
+use App\Models\ChronicDiseases;
+use App\Models\FamilyDiseases;
+use App\Models\Surgical;
+use App\Models\Consultation;
+
+
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +31,7 @@ class Patient extends Model
         'Parent',
         'Idnum',
          'age',
+         'gender',
         'weight',
         'created_by',
         'dateOfBirth',
@@ -33,16 +40,47 @@ class Patient extends Model
         'age' => 'integer',
         'weight' => 'decimal:2',
     ];
+     // Add 'fullname' to the $appends array
+    protected $appends = ['fullname'];
+
+    /**
+     * Get the patient's full name.
+     *
+     * @return string
+     */
+    public function getFullnameAttribute(): string
+    {
+        return "{$this->Firstname} {$this->Lastname}";
+    }
 
     public function appointments()
 {
     return $this->hasMany(Appointment::class);
 }
-
-    public function Allergies()
+  public function consultations()
     {
-        return $this->hasMany(Allergies::class);
+        return $this->hasMany(Consultation::class);
     }
+  // In App\Models\Patient.php
+public function allergies()
+{
+    return $this->hasMany(Allergy::class);
+}
+
+public function chronicDiseases()
+{
+    return $this->hasMany(ChronicDiseases::class);
+}
+
+public function familyDiseases()
+{
+    return $this->hasMany(FamilyDiseases::class);
+}
+
+public function surgical()
+{
+    return $this->hasMany(Surgical::class);
+}
 
     public function user()
     {

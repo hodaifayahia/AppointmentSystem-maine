@@ -1,16 +1,27 @@
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, computed, onMounted, nextTick } from 'vue';
 import axios from 'axios';
 import { useToastr } from '../../../Components/toster';
-import { useRouter } from 'vue-router';
-import { nextTick } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import { useSweetAlert } from '../../../Components/useSweetAlert';
 
 const router = useRouter();
+const route = useRoute();
+const templateId = computed(() => route.params.id);
+const doctorId = computed(() => route.params.doctor_id);
+//Swal
+const swal = useSweetAlert();
+
+
+
+
 const dbPlaceholders = ref([]);
 const dbAttributes = ref({});
 const selectedDbPlaceholder = ref(null);
 const selectedDbAttribute = ref(null);
-const customPlaceholderName = ref(''); // NEW: For custom placeholder input
+const customPlaceholderName = ref(''); // For custom placeholder input
+const newAttributeName = ref(''); // For adding new attribute to an existing placeholder
+const textarea = ref(false);
 
 const props = defineProps({
   showModal: Boolean,
@@ -18,23 +29,59 @@ const props = defineProps({
   isEdit: {
     type: Boolean,
     default: false
+  },
+  // NEW: Add doctorId as a prop (camelCase for consistency)
+  doctorId: {
+    type: [String, Number],
+    default: null
   }
 });
+
+const folderid = route.params.folderid;
+console.log(folderid);
+
 
 const emit = defineEmits(['close', 'refresh']);
 
 const toaster = useToastr();
 const loading = ref(false);
+const loadingattrbute = ref(false); // Used for attribute loading state
 const error = ref(null);
 const doctors = ref([]);
 const activeTab = ref('basic');
-const documentContent = ref('');
+const documentContent = ref(''); // This will be the source of truth for the form and preview
 const wordFile = ref(null);
 const uploadProgress = ref(0);
-const placeholders = ref([]);
+const placeholders = ref([]); // List of placeholders actually inserted into the document
 const previewMode = ref(false);
 const editorRef = ref(null);
-const lastCaretPosition = ref(null); // Store the last caret position
+const lastCaretPosition = ref(null); // Store the last caret position (a Range object)
+
+// --- NEW: Static PatientInfo Placeholder Definition ---
+const staticPatientInfoPlaceholder = {
+  id: 'patient_info_static', // Unique ID for this static entry
+  name: 'PatientInfo', // The name displayed and used in the placeholder tag
+  isCustom: false, // Treat as a non-custom placeholder so it can have attributes
+  isStatic: true, // Custom flag to identify it as static
+};
+
+// Computed property to combine dynamic and static placeholders for the dropdown
+const allAvailablePlaceholders = computed(() => {
+  // Always include the static PatientInfo at the top for easy access
+  return [staticPatientInfoPlaceholder, ...dbPlaceholders.value, { id: 'custom', name: 'Custom', isCustom: true }];
+});
+
+
+// Computed property to determine the doctor_id to use
+const effectiveDoctorId = computed(() => {
+  // Priority: 1. Props doctorId, 2. Route params doctor_id, 3. Form value (last resort, if nothing else)
+  return props.doctorId || doctorId.value || form.value.doctor_id;
+});
+
+// Computed property to check if doctor selection should be disabled
+const isDoctorSelectionDisabled = computed(() => {
+  return !!(props.doctorId || doctorId.value);
+});
 
 // Form data
 const form = ref({
@@ -42,7 +89,8 @@ const form = ref({
   description: '',
   content: '',
   doctor_id: '',
-  mime_type: 'application/msword',
+  mime_type: '',
+  folder_id: '',
   placeholders: []
 });
 
@@ -51,42 +99,77 @@ const resetForm = () => {
     name: '',
     description: '',
     content: '',
-    doctor_id: '',
-    mime_type: 'application/msword',
+    // Keep doctor_id if it's provided via props or route
+    doctor_id: effectiveDoctorId.value || '',
+    mime_type: '',
     placeholders: []
   };
   documentContent.value = '';
-  placeholders.value = [];
+  placeholders.value = []; // Clear inserted placeholders
   wordFile.value = null;
   uploadProgress.value = 0;
   error.value = null;
-  selectedDbPlaceholder.value = null; // Reset these
-  selectedDbAttribute.value = null; // Reset these
-  customPlaceholderName.value = ''; // NEW: Reset custom placeholder name
+  selectedDbPlaceholder.value = null;
+  selectedDbAttribute.value = null;
+  customPlaceholderName.value = '';
+  newAttributeName.value = '';
+  textarea.value = false;
+  lastCaretPosition.value = null;
 };
 
 const fetchPlaceholders = async () => {
   try {
-    loading.value = true;
-    const response = await axios.get('/api/placeholders');
-    // NEW: Add a "Custom" option to the fetched placeholders
-    dbPlaceholders.value = [
-      ...response.data.data || response.data,
-      { id: 'custom', name: 'Custom', isCustom: true } // Add custom option
-    ];
+    loadingattrbute.value = true;
+    const response = await axios.get('/api/placeholders', {
+      params: {
+        doctor_id: doctorId.value, // Use props.doctorId if available
+      }
+    });
+    // Dynamically fetched placeholders only
+    dbPlaceholders.value = response.data.data || response.data;
   } catch (err) {
     error.value = err.response?.data?.message || 'Failed to load placeholders';
     toaster.error(error.value);
   } finally {
-    loading.value = false;
+    loadingattrbute.value = false;
   }
 };
 
 const fetchAttributes = async (placeholderId) => {
-  try {
-    if (!placeholderId || placeholderId === 'custom') return; // NEW: Don't fetch attributes for custom
+  if (!placeholderId) {
+    // Clear attributes if no placeholder is selected (e.g., when resetting selection)
+    dbAttributes.value[placeholderId] = [];
+    return;
+  }
 
-    loading.value = true;
+  // --- NEW: Handle static PatientInfo attributes ---
+  if (placeholderId === staticPatientInfoPlaceholder.id) {
+    dbAttributes.value[placeholderId] = [
+      { id: 'pi_id', name: 'id', input_type: 1 },
+      { id: 'pi_first_name', name: 'first_name', input_type: 1 },
+      { id: 'pi_last_name', name: 'last_name', input_type: 1 },
+      { id: 'pi_full_name', name: 'full_name', input_type: 1 },
+      { id: 'pi_parent', name: 'Parent', input_type: 1 },
+      { id: 'pi_phone', name: 'phone', input_type: 1 },
+      { id: 'pi_dateOfBirth', name: 'dateOfBirth', input_type: 1 },
+      { id: 'pi_age', name: 'age', input_type: 1 },
+      { id: 'pi_idnum', name: 'identification number', input_type: 1 },
+      // Add other PatientInfo specific attributes as needed
+      // { id: 'pi_notes', name: 'notes', input_type: 0 }, // Example for a textarea attribute
+    ];
+    loadingattrbute.value = false; // No loading for static data
+    return; // Exit function, no API call needed
+  }
+
+  // Handle 'custom' placeholder (no attributes)
+  if (placeholderId === 'custom') {
+    dbAttributes.value[placeholderId] = [];
+    return;
+  }
+
+  // --- Original logic for fetching dynamic attributes from API ---
+  loadingattrbute.value = true;
+  try {
     const response = await axios.get(`/api/attributes/${placeholderId}`);
     dbAttributes.value = {
       ...dbAttributes.value,
@@ -95,85 +178,62 @@ const fetchAttributes = async (placeholderId) => {
   } catch (err) {
     error.value = err.response?.data?.message || 'Failed to load attributes';
     toaster.error(error.value);
+    dbAttributes.value[placeholderId] = []; // Ensure it's an array on error
+  } finally {
+    loadingattrbute.value = false;
+  }
+};
+
+// Function to add a new attribute to the selected placeholder
+const addNewAttribute = async () => {
+  if (!selectedDbPlaceholder.value || selectedDbPlaceholder.value.isCustom || !newAttributeName.value.trim()) {
+    toaster.error("Please select a placeholder and provide a name for the new attribute.");
+    return;
+  }
+
+  // Prevent adding new attributes to the static PatientInfo placeholder
+  if (selectedDbPlaceholder.value.isStatic) {
+    toaster.warning('Cannot add new attributes to the static PatientInfo placeholder.');
+    newAttributeName.value = ''; // Clear the input
+    selectedDbAttribute.value = null; // Reset attribute selection
+    return;
+  }
+
+  const placeholderId = selectedDbPlaceholder.value.id;
+  const attributeName = newAttributeName.value.trim();
+
+  try {
+    loading.value = true;
+    const response = await axios.post(`/api/attributes`, {
+      name: attributeName,
+      placeholder_id: placeholderId,
+      value: "",
+      input_type: textarea.value ? 0 : 1, // 0 for textarea, 1 for text input
+    });
+
+    if (!dbAttributes.value[placeholderId]) {
+      dbAttributes.value[placeholderId] = [];
+    }
+    const newAttr = response.data.data || response.data;
+    dbAttributes.value[placeholderId].push(newAttr);
+
+    selectedDbAttribute.value = newAttr;
+    newAttributeName.value = '';
+    toaster.success(`Attribute '${attributeName}' added successfully to '${selectedDbPlaceholder.value.name}'`);
+
+  } catch (err) {
+    toaster.error(err.response?.data?.message || 'Failed to add new attribute');
   } finally {
     loading.value = false;
   }
 };
 
-onMounted(() => {
-  fetchDoctors();
-  fetchPlaceholders();
-  // Setup editor events once the component is mounted
-  // Use a small timeout to ensure the DOM is fully rendered
-  setTimeout(() => {
-    setupEditorEvents();
-  }, 100);
-});
-
-const mimeTypeOptions = [
-  { value: 'application/msword', label: 'Word Document' },
-  { value: 'text/html', label: 'HTML' },
-  { value: 'text/plain', label: 'Plain Text' }
-];
-
-// Add a watch for selectedDbPlaceholder to load its attributes
-watch(() => selectedDbPlaceholder.value, (newValue) => {
-  if (newValue && newValue.isCustom) { // NEW: If custom is selected, clear attribute and custom name
-    selectedDbAttribute.value = null;
-    customPlaceholderName.value = '';
-  } else if (newValue) {
-    fetchAttributes(newValue.id);
-  } else {
-    selectedDbAttribute.value = null;
-  }
-});
-
-// Watchers
-watch(() => props.templateData, (newValue) => {
-  if (newValue && Object.keys(newValue).length > 0) {
-    form.value = {
-      name: newValue.name || '',
-      description: newValue.description || '',
-      content: newValue.content || '',
-      doctor_id: newValue.doctor ? newValue.doctor.id : '',
-      mime_type: newValue.mime_type || 'application/msword',
-      placeholders: newValue.placeholders || []
-    };
-    documentContent.value = newValue.content || '';
-    placeholders.value = newValue.placeholders || [];
-    scanForPlaceholders();
-  } else {
-    resetForm();
-  }
-}, { immediate: true, deep: true });
-
-watch(() => documentContent.value, (newContent) => {
-  form.value.content = newContent;
-  scanForPlaceholders();
-});
-
-// Function to save the current selection/caret position
-const saveCaretPosition = () => {
-  if (editorRef.value && window.getSelection) {
-    const selection = window.getSelection();
-    if (selection.rangeCount > 0 && editorRef.value.contains(selection.anchorNode)) {
-      lastCaretPosition.value = selection.getRangeAt(0).cloneRange();
-    }
-  }
-};
-
-// Function to restore the saved selection/caret position
-const restoreCaretPosition = () => {
-  if (lastCaretPosition.value && window.getSelection && editorRef.value) {
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(lastCaretPosition.value);
-    // Ensure the editor has focus after restoring caret
-    editorRef.value.focus();
-  }
-};
-
+// Modified fetchDoctors function - only fetch if doctor_id is not provided
 const fetchDoctors = async () => {
+  if (isDoctorSelectionDisabled.value) {
+    return;
+  }
+
   try {
     loading.value = true;
     const response = await axios.get('/api/doctors');
@@ -186,26 +246,562 @@ const fetchDoctors = async () => {
   }
 };
 
+// Watch for changes in effectiveDoctorId and update form
+watch(() => effectiveDoctorId.value, (newValue) => {
+  if (newValue) {
+    form.value.doctor_id = newValue;
+  }
+}, { immediate: true });
+
+onMounted(async () => {
+  // Set initial doctor_id if provided
+  if (effectiveDoctorId.value) {
+    form.value.doctor_id = effectiveDoctorId.value;
+  }
+
+  await Promise.all([
+    fetchDoctors(),
+    fetchPlaceholders() // Fetches dynamic placeholders
+  ]);
+
+  if (templateId.value) {
+    await fetchTemplateData(templateId.value);
+  }
+
+  nextTick(() => {
+    setupEditorEvents();
+    if (editorRef.value && documentContent.value) {
+      editorRef.value.innerHTML = documentContent.value;
+      scanForPlaceholders();
+      saveCaretPosition();
+    }
+  });
+});
+
+const templateOptions = ref([
+  { value: 'consultation', label: 'Normal A4', template: null },
+  { value: 'A5', label: 'Prescription', template: 'prescription' }
+]);
+// Watch for changes in the selected template typewatch(() => form.value.mime_type, async (newValue, oldValue) => {
+  // Skip if no change or initial setup
+ watch(() => form.value.mime_type, async (newValue, oldValue) => {
+  // Skip if no change or initial setup
+  if (newValue === oldValue) return;
+
+  const selectedOption = templateOptions.value.find(opt => opt.value === newValue);
+  
+  // Only show confirmation if there's existing content
+  if (documentContent.value && documentContent.value.trim()) {
+   
+    
+    if (!confirmChange.isConfirmed) {
+      form.value.mime_type = oldValue;
+      return;
+    }
+  }
+  
+  // Load the appropriate template
+  if (selectedOption?.template === 'prescription') {
+    loadPrescriptionTemplate();
+  } else {
+    // Clear or load default template for other formats
+    documentContent.value = '';
+    if (editorRef.value) {
+      editorRef.value.innerHTML = '';
+    }
+  }
+});
+function mapMimeTypeToSelectValue(mimeType) {
+  if (mimeType === 'prescription_type') return 'A5';
+  if (mimeType === 'Consultation') return 'consultation';
+  return mimeType; // fallback
+}
+// Function to set up prescription editing behavior
+const setupPrescriptionEditing = () => {
+  if (!editorRef.value) return;
+  
+  const prescriptionContent = editorRef.value.querySelector('.prescription-content[data-editable-area="true"]');
+  if (!prescriptionContent) return;
+  
+  // Focus on the prescription content area when editor is clicked
+  prescriptionContent.addEventListener('focus', () => {
+    if (prescriptionContent.textContent.trim() === 'Click here to add prescription content...') {
+      prescriptionContent.textContent = '';
+    }
+  });
+  
+  // Handle blur event
+  prescriptionContent.addEventListener('blur', () => {
+    if (prescriptionContent.textContent.trim() === '') {
+      prescriptionContent.textContent = 'Click here to add prescription content...';
+    }
+    updateDocumentContent();
+  });
+  
+  // Handle input events
+  prescriptionContent.addEventListener('input', () => {
+    updateDocumentContent();
+    scanForPlaceholders();
+  });
+  
+  // Auto-focus the prescription content area
+  setTimeout(() => {
+    prescriptionContent.focus();
+  }, 100);
+};
+
+// Function to update document content while preserving template structure
+const updateDocumentContent = () => {
+  if (editorRef.value) {
+    documentContent.value = editorRef.value.innerHTML;
+    form.value.content = documentContent.value;
+  }
+};
+
+// Modified insertPlaceholder function for prescription templates
+const insertPlaceholderInPrescription = () => {
+  if (!placeholderText.value || !editorRef.value) {
+    if (!editorRef.value) {
+      toaster.error("Editor is not ready. Please ensure the content tab is active.");
+    } else if (!placeholderText.value) {
+      toaster.error("Please select a placeholder/attribute or enter a custom name.");
+    }
+    return;
+  }
+
+  // For prescription templates, insert into the prescription-content area
+  const prescriptionContent = editorRef.value.querySelector('.prescription-content[data-editable-area="true"]');
+  if (prescriptionContent && form.value.mime_type === 'A5') {
+    // Clear placeholder text if it exists
+    if (prescriptionContent.textContent.trim() === 'Click here to add prescription content...') {
+      prescriptionContent.textContent = '';
+    }
+    
+    // Focus the prescription content area
+    prescriptionContent.focus();
+    
+    // Get selection within the prescription content area
+    const selection = window.getSelection();
+    let range;
+    
+    if (selection.rangeCount > 0 && prescriptionContent.contains(selection.anchorNode)) {
+      range = selection.getRangeAt(0);
+    } else {
+      // If no selection in prescription area, create one at the end
+      range = document.createRange();
+      range.selectNodeContents(prescriptionContent);
+      range.collapse(false); // Collapse to end
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    
+    // Create styled span for placeholder
+    const spanNode = document.createElement('span');
+    spanNode.style.fontSize = '1em';
+    spanNode.style.fontWeight = 'normal';
+    spanNode.style.backgroundColor = '#f8f9fa';
+    spanNode.style.padding = '2px 4px';
+    spanNode.style.borderRadius = '3px';
+    spanNode.textContent = placeholderText.value;
+    
+    range.deleteContents();
+    range.insertNode(spanNode);
+    
+    // Position cursor after the inserted placeholder
+    const newRange = document.createRange();
+    newRange.setStartAfter(spanNode);
+    newRange.setEndAfter(spanNode);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+    
+    updateDocumentContent();
+    scanForPlaceholders();
+    
+  } else {
+    // Fall back to original insertion method for non-prescription templates
+    insertPlaceholder();
+  }
+  
+  // Reset selections
+  selectedDbPlaceholder.value = null;
+  selectedDbAttribute.value = null;
+  customPlaceholderName.value = '';
+};
+
+  
+
+
+const loadPrescriptionTemplate = () => {
+  // Set the prescription template HTML content
+  documentContent.value = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <style>
+        .container {
+            font-family: Arial, sans-serif;
+            width: 170mm;
+            margin: 0 auto;
+            position: relative;
+            min-height: 220mm;
+            line-height: 1.4;
+        }
+        .container, .container * {
+            font-size: 20px;
+        }         
+        .prescription-header {
+            height: 13mm;
+            text-align: center;
+        }
+        
+        .header-clinic-name {
+            font-size: 24pt;
+            font-weight: bold;
+            margin: 0;
+        }
+        
+        .header-clinic-subtitle {
+            font-size: 14pt;
+            margin-top: 2mm;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 3mm;
+        }
+        
+        .meta-info {
+            display: flex;
+            justify-content: space-between;
+            width: calc(100% - 25mm);
+            margin:12mm 0 -15px 25mm;
+        }
+        
+        .meta-info-doctor {
+            flex: 0 0 auto;
+        }
+        
+        .meta-info-date {
+            flex: 0 0 auto;
+            margin-left: 90mm;
+        }
+        
+        .patient-details {
+            display: flex;
+            width: calc(100% - 25mm);
+            margin: 12mm 0 0 25mm;
+        }
+        
+        .patient-details-item {
+            flex: 0 0 auto;
+        }
+        
+        .patient-details-item.patient-details-item--firstname {
+            margin-left: 0;
+        }
+        
+        .patient-details-item.patient-details-item--lastname {
+            margin-left: 60mm;
+        }
+        
+        .patient-details-item.patient-details-item--age {
+            margin-left: 40mm;
+        }
+        
+        .prescription-title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 16pt;
+            text-decoration: underline;
+        }
+        
+        .prescription-content {
+            width: calc(100% - 15mm);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            hyphens: auto;
+          
+    
+        }
+        
+        .prescription-content:focus {
+           
+        }
+        
+        .prescription-content[contenteditable="true"] {
+            cursor: text;
+        }
+        
+        .medication-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .medication-list-item {
+            margin-bottom: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .medication-item-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 15px;
+            flex-wrap: nowrap;
+        }
+        
+        .medication-item-name {
+            font-weight: bold;
+            flex: 2;
+            min-width: 120px;
+            margin-left: -10mm;
+        }
+        
+        .medication-item-dosage {
+            flex: 1;
+            min-width: 80px;
+            text-align: left;
+            font-size: 0.95em;
+        }
+        
+        .codebash-header {
+            position: absolute;
+            bottom: 15mm;
+            left: 5mm;
+            width: 30mm;
+            height: 15mm;
+        }
+        
+        .barcode-image {
+            margin-top:1mm;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .medication-item-duration {
+            flex: 1;
+            min-width: 100px;
+            font-style: italic;
+           
+            font-size: 0.7em;
+        }
+        
+        .medication-item-instructions {
+            flex: 3;
+            min-width: 150px;
+            
+            font-size: 0.9em;
+        }
+        
+        .medication-list-item-sub-instructions {
+            margin-left: 25mm;
+            font-size: 0.85em;
+            
+            margin-top: 2px;
+        }
+        
+        .signature-section {
+            margin-top: 15mm;
+            text-align: right;
+            margin-right: 25mm;
+        }
+        
+        .signature-section-line {
+            border-bottom: 1px solid #000;
+            width: 80mm;
+            margin-left: auto;
+            margin-top: 10mm;
+        }
+        
+        .prescription-footer {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 10pt;
+            padding-bottom: 5mm;
+        }
+        
+        .additional-notes-section {
+            margin: 10mm 25mm 0 25mm;
+            padding-top: 5mm;
+            border-top: 1px dashed #ccc;
+        }
+
+        @media print {
+            body {
+                width: 100%;
+                min-height: 100%;
+            }
+            .medication-item-line {
+                page-break-inside: avoid;
+            }
+            .prescription-content {
+                border: none !important;
+                
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="prescription-header"> 
+    </div>
+    <div class="container">
+        <div class="meta-info">
+            <div class="meta-info-doctor">
+                <strong></strong> {{doctor_name}}
+            </div>
+            <div class="meta-info-date">
+                <strong></strong> {{current_date}}
+            </div>
+        </div>
+        
+        <div class="patient-details">
+            <div class="patient-details-item patient-details-item--firstname">
+                <strong></strong> {{PatientInfo.first_name}}
+            </div>
+            <div class="patient-details-item patient-details-item--lastname">
+                <strong></strong> {{PatientInfo.last_name}}
+            </div>
+            <div class="patient-details-item patient-details-item--age">
+                <strong></strong> {{PatientInfo.age}}
+            </div>
+        </div>
+        
+        <div class="prescription-title">Ordonnance Médicale</div>        
+        <div class="prescription-content" contenteditable="true" data-editable-area="true">
+           write Here
+        </div>
+        
+        <!-- Barcode in bottom right corner -->
+        <div class="codebash-header">
+        </div>
+    </div>
+</body>
+</html>
+  `;
+  
+  // Update the form content
+  form.value.content = documentContent.value;
+  form.value.mime_type = 'A5';
+  
+  // Set the editor content in the next tick
+  nextTick(() => {
+    if (editorRef.value) {
+      editorRef.value.innerHTML = documentContent.value;
+      setupPrescriptionEditing(); // New function to handle prescription-specific editing
+      scanForPlaceholders();
+      saveCaretPosition();
+    }
+  });
+  
+  // Set a default name if empty
+  if (!form.value.name) {
+    form.value.name = "Prescription Template";
+  }
+};
+
+watch(() => selectedDbPlaceholder.value, (newValue) => {
+  selectedDbAttribute.value = null; // Always reset attribute when placeholder changes
+  newAttributeName.value = ''; // Clear new attribute name input
+  textarea.value = false; // Reset textarea checkbox
+
+  if (newValue) {
+    fetchAttributes(newValue.id); // Fetch attributes for the newly selected placeholder
+  } else {
+    // If no placeholder selected, ensure attributes are cleared for the dropdown
+    dbAttributes.value = {};
+  }
+});
+
+// WATCHER: When templateData changes, update form and documentContent
+watch(() => props.templateData, (newValue) => {
+  if (newValue && Object.keys(newValue).length > 0) {
+ form.value = {
+  name: newValue.name || '',
+  description: newValue.description || '',
+  content: newValue.content || '',
+  doctor_id: effectiveDoctorId.value || newValue.doctor?.id || '',
+  mime_type: mapMimeTypeToSelectValue(newValue.mime_type || 'consultation'),
+  placeholders: newValue.placeholders || []
+};
+    documentContent.value = newValue.content || '';
+    placeholders.value = newValue.placeholders || [];
+
+    nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.innerHTML = documentContent.value;
+        scanForPlaceholders();
+        saveCaretPosition();
+      }
+    });
+  }
+}, { immediate: true, deep: true });
+
+// Function to save the current selection/caret position
+const saveCaretPosition = () => {
+  if (editorRef.value && window.getSelection) {
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0 && editorRef.value.contains(selection.anchorNode)) {
+      lastCaretPosition.value = selection.getRangeAt(0).cloneRange();
+    } else {
+      lastCaretPosition.value = null;
+    }
+  }
+};
+
+// Function to restore the saved selection/caret position
+const restoreCaretPosition = () => {
+  if (lastCaretPosition.value && window.getSelection && editorRef.value) {
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(lastCaretPosition.value);
+    editorRef.value.focus();
+  }
+};
+
 const saveTemplate = async () => {
+  if (editorRef.value && !previewMode.value) {
+    documentContent.value = editorRef.value.innerHTML;
+    form.value.content = documentContent.value;
+  }
+
+  form.value.doctor_id = effectiveDoctorId.value;
+  form.value.folder_id = folderid;
+  
+
   if (!validateForm()) return;
 
+   // Set mime_type according to selection
+ if (form.value.mime_type === 'A5') {
+  form.value.mime_type = 'prescription_type';
+} else {
+  form.value.mime_type = 'Consultation';
+}
+  
   try {
     loading.value = true;
-    if (editorRef.value && !previewMode.value) {
-      form.value.content = editorRef.value.innerHTML;
-    }
-
     form.value.placeholders = placeholders.value;
-    const payload = { ...form.value };
-    const url = props.isEdit ? `/api/templates/${props.templateData.id}` : '/api/templates';
-    const method = props.isEdit ? 'put' : 'post';
+    const payload = {
+       ...form.value ,
+
+
+    };
+
+    const isEdit = !!templateId.value;
+    const url = isEdit ? `/api/templates/${templateId.value}` : '/api/templates';
+    const method = isEdit ? 'put' : 'post';
 
     await axios[method](url, payload);
-    toaster.success(`Template ${props.isEdit ? 'updated' : 'created'} successfully`);
-    router.go(-1);
+    toaster.success(`Template ${isEdit ? 'updated' : 'created'} successfully`);
+
+    router.push({
+      name: 'admin.consultation.template',
+      params: { folderid: folderid }
+    });
 
   } catch (err) {
-    toaster.error(err.response?.data?.message || 'Failed to save template');
   } finally {
     loading.value = false;
   }
@@ -219,6 +815,11 @@ const validateForm = () => {
   }
   if (!form.value.content.trim()) {
     error.value = 'Template content is required';
+    toaster.error(error.value);
+    return false;
+  }
+  if (!effectiveDoctorId.value) {
+    error.value = 'Doctor selection is required';
     toaster.error(error.value);
     return false;
   }
@@ -266,10 +867,8 @@ const handleFileUploadWithDocxPreview = async (event) => {
 
     let renderedHTML = tempContainer.innerHTML;
 
-    // Optional: Post-processing to clean up common unwanted spaces or styles
     renderedHTML = renderedHTML.replace(/<p>&nbsp;<\/p>/g, '');
     renderedHTML = renderedHTML.replace(/<p><br><\/p>/g, '');
-    // Remove empty divs that might be left from docx conversion
     renderedHTML = renderedHTML.replace(/<div><\/div>/g, '');
     renderedHTML = renderedHTML.replace(/<div>\s*<\/div>/g, '');
 
@@ -292,7 +891,13 @@ const handleFileUploadWithDocxPreview = async (event) => {
       uploadProgress.value = 0;
     }, 1500);
 
-    scanForPlaceholders();
+    nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.innerHTML = documentContent.value;
+        scanForPlaceholders();
+        saveCaretPosition();
+      }
+    });
 
   } catch (err) {
     console.error("Docx-preview conversion error:", err);
@@ -303,125 +908,120 @@ const handleFileUploadWithDocxPreview = async (event) => {
 };
 
 const scanForPlaceholders = () => {
+  const contentToScan = editorRef.value ? editorRef.value.innerHTML : documentContent.value;
   const placeholderRegex = /\{\{([^}]+)\}\}/g;
-  const content = documentContent.value;
   const found = [];
   let match;
 
-  while ((match = placeholderRegex.exec(content)) !== null) {
+  while ((match = placeholderRegex.exec(contentToScan)) !== null) {
     const placeholder = match[0];
     if (!found.includes(placeholder)) {
       found.push(placeholder);
     }
   }
   placeholders.value = found;
-  form.value.placeholders = found;
 };
 
+// Adjusted computed property for placeholderText to handle static PatientInfo and custom
+// Adjusted computed property for placeholderText to handle static PatientInfo and custom
 const placeholderText = computed(() => {
-  if (selectedDbPlaceholder.value && selectedDbPlaceholder.value.isCustom) {
-    return customPlaceholderName.value ? `{{custom.${customPlaceholderName.value}}}` : null; // NEW: Custom placeholder format
-  } else if (selectedDbPlaceholder.value && selectedDbAttribute.value) {
-    return `{{${selectedDbPlaceholder.value.name}.${selectedDbAttribute.value.name}}}`;
+  if (selectedDbPlaceholder.value) {
+    if (selectedDbPlaceholder.value.isCustom) {
+      // For custom placeholders, use the custom name directly
+      return customPlaceholderName.value.trim() ? `{{custom.${customPlaceholderName.value.trim()}}}` : null;
+    } else if (selectedDbAttribute.value && selectedDbAttribute.value !== '__new__') {
+      // For existing attributes of a selected non-custom (including static PatientInfo) placeholder
+      // ALWAYS use a dot for separation here
+      return `{{${selectedDbPlaceholder.value.name}.${selectedDbAttribute.value.name}}}`;
+    } else if (selectedDbAttribute.value === '__new__' && newAttributeName.value.trim()) {
+      // For a new attribute being added to an existing non-custom placeholder
+      // ALWAYS use a dot for separation here
+      return `{{${selectedDbPlaceholder.value.name}.${newAttributeName.value.trim()}}}`;
+    } else {
+      // If only a placeholder is selected but no attribute (e.g., just 'PatientInfo' chosen without an attribute)
+      return null; // Don't allow insertion unless a specific attribute is chosen or created
+    }
   }
   return null;
 });
 
+
+// ... (previous code)
 const insertPlaceholder = () => {
-  if (!placeholderText.value || !editorRef.value) return;
+  // Check if this is a prescription template and use specialized insertion
+  if (form.value.mime_type === 'A5') {
+    insertPlaceholderInPrescription();
+    return;
+  }
+  
+  // Original insertion logic for non-prescription templates
+  if (!placeholderText.value || !editorRef.value) {
+    if (!editorRef.value) {
+      toaster.error("Editor is not ready. Please ensure the content tab is active.");
+    } else if (!placeholderText.value) {
+      toaster.error("Please select a placeholder/attribute or enter a custom name.");
+    }
+    return;
+  }
 
   const selection = window.getSelection();
   if (selection.rangeCount > 0) {
     const range = selection.getRangeAt(0);
 
-    // Ensure the selection is within the editable editorRef
-    if (!editorRef.value.contains(range.commonAncestorContainer)) {
+    if (!editorRef.value.contains(range.commonAncestorContainer) && !editorRef.value.isSameNode(range.commonAncestorContainer)) {
       toaster.error("Please click inside the document editor to place the cursor before inserting a placeholder.");
+      editorRef.value.focus();
       return;
     }
 
-    // Create a new span element for the placeholder
-    const placeholderSpan = document.createElement('span');
-    placeholderSpan.className = 'template-placeholder';
-    placeholderSpan.setAttribute('contenteditable', 'false'); // Make placeholder not directly editable
-    placeholderSpan.textContent = placeholderText.value;
+    saveCaretPosition();
 
-    range.deleteContents(); // Remove selected content if any
-    range.insertNode(placeholderSpan); // Insert the placeholder span
+    const spanNode = document.createElement('span');
+    spanNode.style.fontSize = '1em';
+    spanNode.style.fontWeight = 'normal';
+    spanNode.textContent = placeholderText.value;
 
-    // Create a new range immediately after the inserted placeholder
+    range.deleteContents();
+    range.insertNode(spanNode);
+
     const newRange = document.createRange();
-    newRange.setStartAfter(placeholderSpan);
-    newRange.setEndAfter(placeholderSpan);
+    newRange.setStartAfter(spanNode);
+    newRange.setEndAfter(spanNode);
 
-    // Clear existing selection and set the new one
     selection.removeAllRanges();
     selection.addRange(newRange);
 
-    // Explicitly focus the editor and restore caret position
-    editorRef.value.focus();
-    saveCaretPosition(); // Save the new caret position right after insertion
-
-    // Update documentContent from the editor's innerHTML
     documentContent.value = editorRef.value.innerHTML;
+    form.value.content = documentContent.value;
+    scanForPlaceholders();
 
-    // Add to the list of used placeholders if not already present
-    if (!placeholders.value.includes(placeholderText.value)) {
-      placeholders.value.push(placeholderText.value);
-    }
-
-    // Reset selections for placeholder dropdowns and custom input
-    selectedDbPlaceholder.value = null;
-    selectedDbAttribute.value = null;
-    customPlaceholderName.value = ''; // NEW: Reset custom placeholder name
-  } else {
-    // If no range is selected, try to append at the end
-    if (editorRef.value) {
-      const placeholderSpan = document.createElement('span');
-      placeholderSpan.className = 'template-placeholder';
-      placeholderSpan.setAttribute('contenteditable', 'false');
-      placeholderSpan.textContent = placeholderText.value;
-
-      editorRef.value.appendChild(placeholderSpan);
-
-      // Add a non-breaking space to ensure cursor can be placed after
-      editorRef.value.appendChild(document.createTextNode('\u00A0'));
-
-      // Move cursor to the end of the editor
-      const newRange = document.createRange();
-      const selection = window.getSelection();
-      newRange.selectNodeContents(editorRef.value);
-      newRange.collapse(false); // Collapse to the end
-      selection.removeAllRanges();
-      selection.addRange(newRange);
-
-      editorRef.value.focus();
-      saveCaretPosition();
-
-      documentContent.value = editorRef.value.innerHTML;
-      if (!placeholders.value.includes(placeholderText.value)) {
-        placeholders.value.push(placeholderText.value);
-      }
-      selectedDbPlaceholder.value = null;
-      selectedDbAttribute.value = null;
-      customPlaceholderName.value = ''; // NEW: Reset custom placeholder name
-    }
+    editorRef.value.focus();
+    saveCaretPosition();
   }
+
+  // Reset placeholder selections
+  selectedDbPlaceholder.value = null;
+  selectedDbAttribute.value = null;
+  customPlaceholderName.value = '';
 };
+
+// ... (rest of the code)
 
 const handleEditorInput = () => {
-  if (editorRef.value) {
-    documentContent.value = editorRef.value.innerHTML;
-    saveCaretPosition(); // Save caret position on every input
-  }
+  saveCaretPosition();
+  scanForPlaceholders();
 };
 
-// Add event listeners for better cursor management
 const setupEditorEvents = () => {
   if (!editorRef.value) return;
 
   editorRef.value.addEventListener('mouseup', saveCaretPosition);
   editorRef.value.addEventListener('keyup', saveCaretPosition);
+  editorRef.value.addEventListener('blur', () => {
+    saveCaretPosition();
+    documentContent.value = editorRef.value.innerHTML;
+    form.value.content = documentContent.value;
+  });
   editorRef.value.addEventListener('focus', () => {
     if (lastCaretPosition.value) {
       setTimeout(restoreCaretPosition, 0);
@@ -431,6 +1031,20 @@ const setupEditorEvents = () => {
 
 const togglePreview = () => {
   previewMode.value = !previewMode.value;
+  if (previewMode.value) {
+    if (editorRef.value) {
+      documentContent.value = editorRef.value.innerHTML;
+      form.value.content = documentContent.value;
+    }
+  } else {
+    nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.innerHTML = documentContent.value;
+        editorRef.value.focus();
+        restoreCaretPosition();
+      }
+    });
+  }
 };
 
 const removePlaceholder = (placeholder) => {
@@ -442,43 +1056,152 @@ const removePlaceholder = (placeholder) => {
   if (editorRef.value) {
     const scrollTop = editorRef.value.scrollTop;
     const scrollLeft = editorRef.value.scrollLeft;
+    saveCaretPosition();
 
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = documentContent.value;
+    let currentEditorContent = editorRef.value.innerHTML;
+    const regex = new RegExp(escapeRegExp(placeholder), 'g');
+    currentEditorContent = currentEditorContent.replace(regex, '');
 
-    const placeholderSpans = tempDiv.querySelectorAll('.template-placeholder');
-    placeholderSpans.forEach(span => {
-      if (span.textContent === placeholder) {
-        // Replace the placeholder span with an empty string or a space if desired
-        span.outerHTML = ''; // Removes the span and its content
-      }
+    editorRef.value.innerHTML = currentEditorContent;
+    documentContent.value = currentEditorContent;
+    form.value.content = documentContent.value;
+
+    nextTick(() => {
+      editorRef.value.scrollTop = scrollTop;
+      editorRef.value.scrollLeft = scrollLeft;
+      scanForPlaceholders();
+      restoreCaretPosition();
     });
+  }
+};
 
-    documentContent.value = tempDiv.innerHTML;
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-    nextTick(() => { // Use nextTick to ensure DOM is updated before restoring scroll/innerHTML
+const switchTab = (tab) => {
+  activeTab.value = tab;
+  if (editorRef.value && activeTab.value !== 'content') {
+    documentContent.value = editorRef.value.innerHTML;
+    form.value.content = documentContent.value;
+  }
+  if (tab === 'content') {
+    nextTick(() => {
       if (editorRef.value) {
         editorRef.value.innerHTML = documentContent.value;
-        editorRef.value.scrollTop = scrollTop;
-        editorRef.value.scrollLeft = scrollLeft;
-        scanForPlaceholders(); // Re-scan to update the list of used placeholders
+        editorRef.value.focus();
+        restoreCaretPosition();
       }
     });
   }
 };
 
-const switchTab = (tab) => {
-  activeTab.value = tab;
-};
-</script>
+watch(() => form.mime_type, async (newValue, oldValue) => {
+  if (documentContent.value && documentContent.value.trim() && 
+      documentContent.value !== form.value.content) {
+    const confirmChange = await Swal.fire({
+      title: 'Confirm Template Change',
+      text: 'Changing the template will replace your current content. Continue?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, change template',
+      cancelButtonText: 'Cancel'
+    });
+    
+    if (!confirmChange.isConfirmed) {
+      // Revert to the previous value
+      form.value.mime_type = oldValue;
+      return;
+    }
+  }
+  
+  const selectedOption = templateOptions.value.find(opt => opt.value === newValue);
+  if (selectedOption?.template === 'prescription') {
+    loadPrescriptionTemplate();
+  }
+});
 
+watch(() => selectedDbAttribute.value, (newValue) => {
+  if (newValue === '__new__') {
+    newAttributeName.value = '';
+  }
+});
+
+const fetchTemplateData = async (id) => {
+  try {
+    loading.value = true;
+    error.value = null;
+    const response = await axios.get(`/api/templates/${id}`);
+    const templateData = response.data.data || response.data;
+
+  form.value = {
+  name: templateData.name || '',
+  description: templateData.description || '',
+  content: templateData.content || '',
+  doctor_id: effectiveDoctorId.value || templateData.doctor?.id || '',
+  mime_type: mapMimeTypeToSelectValue(templateData.mime_type || 'consultation'),
+  placeholders: templateData.placeholders || []
+};
+
+    documentContent.value = templateData.content || '';
+    placeholders.value = templateData.placeholders || [];
+
+    nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.innerHTML = documentContent.value;
+        scanForPlaceholders();
+        saveCaretPosition();
+      }
+    });
+
+  } catch (err) {
+    error.value = 'Failed to load template data: ' + (err.response?.data?.message || err.message);
+    toaster.error(error.value);
+  } finally {
+    loading.value = false;
+  }
+};
+
+watch(() => props.showModal, (newValue) => {
+  if (newValue && props.isEdit && props.templateData?.id) {
+    setTimeout(() => {
+      fetchTemplateData(props.templateData.id);
+    }, 50);
+  } else if (!newValue) {
+    resetForm();
+  }
+});
+
+watch(() => activeTab.value, (newValue) => {
+  if (newValue === 'content') {
+    nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.innerHTML = documentContent.value;
+        scanForPlaceholders();
+        restoreCaretPosition();
+      }
+    });
+  }
+});
+
+</script>
 <template>
   <div class="premium-container">
+    
+    <div v-if="loading" class="loading-overlay">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+
     <div class="premium-editor-header">
       <div class="branding">
-        <h3 class="header-title">{{ isEdit ? 'Edit' : 'Create' }} Template</h3>
+        <button  class="btn btn-light bg-primary rounded-pill shadow-sm position-absolute"
+              style=" " @click="router.go(-1)">
+              <i class="fas fa-arrow-left"></i> Back
+          </button>
+        <h3 class="header-title ">{{ templateId ? 'Edit' : 'Create' }} Template</h3>
       </div>
-
     </div>
 
     <div class="premium-tabs">
@@ -518,7 +1241,8 @@ const switchTab = (tab) => {
             </div>
 
             <div class="premium-row">
-              <div class="premium-col">
+
+              <div v-if="!doctorId" class="premium-col">
                 <label for="doctorSelect" class="premium-label">Associated Doctor</label>
                 <div class="premium-select-wrapper">
                   <select class="premium-select" id="doctorSelect" v-model="form.doctor_id">
@@ -539,7 +1263,7 @@ const switchTab = (tab) => {
                 <label for="mimeType" class="premium-label">Document Format</label>
                 <div class="premium-select-wrapper">
                   <select class="premium-select" id="mimeType" v-model="form.mime_type">
-                    <option v-for="option in mimeTypeOptions" :key="option.value" :value="option.value">
+                    <option v-for="option in templateOptions" :key="option.value" :value="option.value">
                       {{ option.label }}
                     </option>
                   </select>
@@ -550,7 +1274,7 @@ const switchTab = (tab) => {
           </div>
         </div>
 
-        <div class="premium-card mt-4">
+        <div class="premium-card mt-4" v-if="!templateId  &&  form.mime_type !== 'A5' && form.mime_type !== 'prescription_type'">
           <div class="premium-card-header">
             <i class="fas fa-cloud-upload-alt me-2"></i>Document Upload
           </div>
@@ -606,12 +1330,11 @@ const switchTab = (tab) => {
 
             <div v-if="!previewMode" ref="editorRef" class="premium-document-editor" contenteditable="true"
               @input="handleEditorInput" @mouseup="saveCaretPosition" @keyup="saveCaretPosition"
-              v-html="documentContent"></div>
-
+              @blur="saveCaretPosition" spellcheck="false"></div>
             <div v-else class="premium-document-preview" v-html="documentContent"></div>
           </div>
 
-          <div class="">
+          <div style="width: 300px;" class="">
             <div class="premium-sidebar-panel">
               <div class="premium-sidebar-header">
                 <i class="fas fa-puzzle-piece me-2"></i>Placeholders
@@ -624,7 +1347,9 @@ const switchTab = (tab) => {
                     <div class="premium-select-wrapper">
                       <select class="premium-select" v-model="selectedDbPlaceholder">
                         <option :value="null">Select placeholder</option>
-                        <option v-for="placeholder in dbPlaceholders" :key="placeholder.id" :value="placeholder">
+                        <!-- Use allAvailablePlaceholders here -->
+                        <option v-for="placeholder in allAvailablePlaceholders" :key="placeholder.id"
+                          :value="placeholder">
                           {{ placeholder.name }}
                         </option>
                       </select>
@@ -638,26 +1363,58 @@ const switchTab = (tab) => {
                       placeholder="e.g., patient.age" />
                   </div>
 
+                  <!-- Show attributes if not a custom placeholder -->
                   <div v-if="selectedDbPlaceholder && !selectedDbPlaceholder.isCustom" class="premium-form-group">
                     <label class="premium-label">Attribute</label>
                     <div class="premium-select-wrapper">
                       <select class="premium-select" v-model="selectedDbAttribute">
                         <option :value="null">Select attribute</option>
+                        <option value="__new__">New Attribute ?</option>
+
+                        <!-- Attributes are loaded based on selectedDbPlaceholder.id -->
                         <option v-for="attribute in dbAttributes[selectedDbPlaceholder.id]" :key="attribute.id"
                           :value="attribute">
+
                           {{ attribute.name }}
                         </option>
                       </select>
                       <i class="fas fa-chevron-down"></i>
                     </div>
-                    <div v-if="loading" class="premium-loading-state">
+                    <div v-if="loadingattrbute" class="premium-loading-state">
                       <span class="premium-spinner"></span>
                       <span class="ms-2">Loading attributes...</span>
                     </div>
                   </div>
+
+                  <div v-if="selectedDbAttribute === '__new__'" class="premium-form-group mt-3">
+                    <label class="premium-label mb-2">
+                      Add New Attribute to {{ selectedDbPlaceholder.name }}
+                    </label>
+
+                    <div class="d-flex align-items-center mb-2">
+                      <input type="text" class="premium-input flex-grow-1 me-2" v-model="newAttributeName"
+                        placeholder="New attribute name (e.g., diagnosisCode)" />
+                    </div>
+
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                      <div class="form-check me-3 p-2">
+                        <input type="checkbox" id="textareaCheckbox" class="form-check-input" v-model="textarea" />
+                        <label for="textareaCheckbox" class="form-check-label">
+                          Textarea
+                        </label>
+                      </div>
+
+                      <button type="button" class="btn-premium btn-small ml-4" @click="addNewAttribute"
+                        :disabled="!newAttributeName.trim()">
+                        <i class="fas fa-plus me-1"></i> Add
+                      </button>
+                    </div>
+                  </div>
+
+
                 </div>
 
-                <button class="btn-premium btn-full-width" @click="insertPlaceholder" :disabled="!placeholderText">
+                <button class="btn-premium btn-full-width mt-3" @click="insertPlaceholder" :disabled="!placeholderText">
                   <i class="fas fa-plus me-2"></i>Insert Placeholder
                 </button>
 
@@ -717,7 +1474,7 @@ const switchTab = (tab) => {
                 <div class="premium-detail-item">
                   <div class="premium-detail-label">Document Format</div>
                   <div class="premium-detail-value">
-                    {{mimeTypeOptions.find(m => m.value === form.mime_type)?.label || form.mime_type}}
+                    {{templateOptions.find(m => m.value === form.mime_type)?.label || form.mime_type}}
                   </div>
                 </div>
 
@@ -741,7 +1498,7 @@ const switchTab = (tab) => {
               <i class="fas fa-file-alt me-2"></i>Document Preview
             </div>
             <div class="premium-document-preview-container">
-              <div class="premium-document-preview" v-html="documentContent"></div>
+              <div class="premium-document-preview overflow" v-html="documentContent"></div>
             </div>
           </div>
         </div>
@@ -792,7 +1549,8 @@ const switchTab = (tab) => {
 .header-title {
   font-size: 1.5rem;
   font-weight: 600;
-  margin: 0;
+  margin-left: 90px;
+
 }
 
 .premium-tabs {
@@ -828,13 +1586,14 @@ const switchTab = (tab) => {
 
 .premium-tab-content {
   min-height: 600px;
+  overflow-y: auto;
 }
 
 .premium-card {
   background-color: #fff;
   border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
-  overflow: hidden;
+  overflow: auto;
 }
 
 .premium-card-header {
@@ -1019,6 +1778,14 @@ const switchTab = (tab) => {
   width: 100%;
 }
 
+/* NEW: Small button style for "Add" attribute */
+.btn-premium.btn-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+
 .premium-upload-container {
   position: relative;
 }
@@ -1089,13 +1856,14 @@ const switchTab = (tab) => {
 }
 
 .premium-editor-main {
-  flex: 1;
+  width: 70%;
   display: flex;
   flex-direction: column;
 }
 
 .premium-editor-sidebar {
-  flex: 1;
+  width: 30%;
+
   width: 400px;
 }
 
@@ -1136,6 +1904,7 @@ const switchTab = (tab) => {
 }
 
 .premium-sidebar-panel {
+  flex: 2;
   background-color: #fff;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
@@ -1222,7 +1991,7 @@ const switchTab = (tab) => {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background-color: #fff;
-  overflow: hidden;
+  overflow-y:auto;
   position: relative;
 }
 
@@ -1413,4 +2182,79 @@ const switchTab = (tab) => {
     font-style: italic;
   }
 }
+
+/* Add these styles */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* Utility to ensure flex items distribute space evenly */
+.d-flex {
+  display: flex;
+}
+
+.me-2 {
+  margin-right: 0.5rem;
+}
+
+/* Add to your existing styles */
+:deep(.premium-document-editor),
+:deep(.premium-document-preview) {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+  line-height: 1.6;
+  color: #333;
+}
+
+:deep(.premium-document-editor) {
+  white-space: pre-wrap;
+}
+
+:deep(.premium-document-editor *),
+:deep(.premium-document-preview *) {
+  max-width: 100%;
+}
+
+:deep(.premium-document-editor table),
+:deep(.premium-document-preview table) {
+  border-collapse: collapse;
+  margin: 1rem 0;
+  width: 100%;
+}
+
+:deep(.premium-document-editor td),
+:deep(.premium-document-editor th),
+:deep(.premium-document-preview td),
+:deep(.premium-document-preview th) {
+  border: 1px solid #e2e8f0;
+  padding: 0.75rem;
+}
+
+:deep(.premium-document-editor img),
+:deep(.premium-document-preview img) {
+  max-width: 100%;
+  height: auto;
+}
+
+:deep(.premium-document-editor p),
+:deep(.premium-document-preview p) {
+  margin: 1rem 0;
+}
+
+:deep(.premium-document-editor ul),
+:deep(.premium-document-editor ol),
+:deep(.premium-document-preview ul),
+:deep(.premium-document-preview ol) {
+  margin: 1rem 0;
+  padding-left: 2rem;
+}
+
 </style>

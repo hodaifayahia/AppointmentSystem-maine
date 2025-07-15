@@ -18,7 +18,8 @@ return new class extends Migration
             $table->string('brand_name')->nullable();
             $table->string('pharmaceutical_form');
             $table->string('dose_per_intake');
-            $table->string('num_intakes_per_day');
+            $table->string('num_intakes_per_time');
+            $table->string('frequency');
             $table->string('duration_or_boxes');
             $table->timestamps();
         });

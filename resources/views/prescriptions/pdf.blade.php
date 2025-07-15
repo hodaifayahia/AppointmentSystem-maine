@@ -1,142 +1,323 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-    <meta charset="utf-8">
-    <title>Ordonnance Médicale</title>
-    <style>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<style>
+     body {
+        font-family: Arial, sans-serif;
+        width: 170mm;
+        margin: 0 auto;
+        position: relative;
+        min-height: 220mm;
+        line-height: 1.4;
+    }
+    
+  
+    
+    .clinic-name {
+        font-size: 24pt;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .clinic-subtitle {
+        font-size: 14pt;
+        margin-top: 2mm;
+        border-bottom: 1px dashed #000;
+        padding-bottom: 3mm;
+    }
+    
+    .doctor-date-container {
+        display: table;
+        width: calc(100% - 25mm);
+        margin: 5mm 0 0 25mm;
+    }
+    
+    .doctor-section, .date-section {
+        display: table-cell;
+    }
+    
+    .date-section {
+        text-align: right;
+    }
+    
+    .patient-info {
+        display: table;
+        width: calc(100% - 25mm);
+        margin: 7mm 0 0 39mm;
+    }
+    
+    .patient-field {
+        display: table-cell;
+        width: auto;
+        padding-right: 10mm;
+    }
+    
+    .patient-field.firstname {
+        padding-left: 26mm;
+        margin-left: 10mm;
+    }
+    .patient-field.age {
+        padding-left: 37mm;
+    }
+    
+    .prescription-title {
+        text-align: center;
+        font-weight: bold;
+        font-size: 16pt;
+        margin: 10mm 0;
+        text-decoration: underline;
+    }
+    
+    .medications {
+        list-style: none;
+        padding: 0;
+        margin: 20mm 20mm 0 0;
+    }
+    
+    .medication-item {
+        margin-bottom: 8px;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    /* FIXED: Proper flexbox layout for medication line */
+    .medication-line {
+        width: 100%;
+        margin-bottom: 5px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 15px; /* Increased gap for better separation */
+    }
+
+    .medication-name {
+        font-weight: bold;
+        flex: 1; /* Take available space */
+        text-align: left;
+        margin: 0; /* Remove negative margin */
+        min-width: 0; /* Allow shrinking if needed */
+    }
+
+    .medication-qsp {
+        flex-shrink: 0; /* Don't shrink */
+        text-align: right;
+        white-space: nowrap; /* Prevent line breaks */
+        margin-left: 100px; /* Push to right */
+    }
+    
+    .dosage-item {
+        flex: 1;
+        min-width: 80px;
+        text-align: left;
+        font-size: 0.95em;
+    }
+    
+    .period-info {
+        flex: 1;
+        min-width: 100px;
+        font-style: italic;
+        color: #555;
+        margin-bottom: 10px;
+        font-size: 0.7em;
+    }
+    
+    .instructions {
+        flex: 3;
+        min-width: 150px;
+        color: #666;
+        font-size: 0.9em;
+    }
+    
+    .medication-instructions {
+        margin-left: 25mm;
+        font-size: 0.85em;
+        color: #444;
+        margin-top: 2px;
+    }
+    
+    .pill-counts {
+        display: flex;
+        gap: 15px;
+        margin-top: 5px;
+        font-size: 0.85em;
+        color: #555;
+    }
+    
+    .pill-count {
+        display: flex;
+        align-items: center;
+    }
+    
+    .pill-count-label {
+        margin-right: 5px;
+        font-weight: bold;
+    }
+    .pill-counts-line {
+    display: inline-block;
+    margin-top: 20px;
+    font-size: 0.85em;
+    color: #555;
+}
+
+.pill-count-label {
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.pill-count-value {
+    margin-right: 8px;
+}
+      
+    .barcode-container {
+        position: absolute;
+        top: 30mm;
+        left: -5mm;
+        width: 20mm;
+        height: 15mm;
+    }
+    
+    .barcode-container img {
+        max-width: 100%;
+        max-height: 100%;
+    }
+    
+    .clinic-header {
+        height: 24mm;
+        text-align: center;
+        margin-bottom: 3mm;
+    }
+    
+    
+    .signature-area {
+        margin-top: 15mm;
+        text-align: right;
+        margin-right: 25mm;
+    }
+    
+    .signature-line {
+        border-bottom: 1px solid #000;
+        width: 80mm;
+        margin-left: auto;
+        margin-top: 10mm;
+    }
+    
+    .footer {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 10pt;
+        padding-bottom: 5mm;
+    }
+    
+    .additional-notes {
+        margin: 10mm 25mm 0 25mm;
+        padding-top: 5mm;
+        border-top: 1px dashed #ccc;
+    }
+
+    @media print {
         body {
-            font-family: 'Times New Roman', Times, serif; /* Often preferred for official documents */
-            line-height: 1.6;
-            margin: 40px; /* Slightly larger margins for better print appearance */
-            color: #333; /* Darker text for readability */
-            font-size: 11pt; /* Standard professional font size */
-        }
-        .header-image {
             width: 100%;
-            max-height: 150px; /* Slightly more room for the header */
-            margin-bottom: 30px;
-            object-fit: contain;
-            display: block; /* Ensures it takes up full width */
-            margin-left: auto;
-            margin-right: auto;
+            min-height: 100%;
         }
-        .header {
-            text-align: right;
-            margin-bottom: 40px;
-            font-size: 10pt;
-            color: #555;
+        .medication-line {
+            page-break-inside: avoid;
         }
-        .subject {
-            font-weight: bold;
-            font-size: 22px; /* Prominent title */
-            margin: 35px 0;
-            text-transform: uppercase;
-            text-align: center; /* Center the title */
-            color: #1a4e95; /* A professional blue */
-            border-bottom: 3px solid #1a4e95; /* Thicker, matching border */
-            padding-bottom: 12px;
-            letter-spacing: 1px; /* Spacing for emphasis */
-        }
-        .patient-info {
-            margin: 25px 0;
-            padding: 20px;
-            background-color: #eaf3ff; /* Lighter blue background */
-            border-left: 5px solid #1a4e95; /* Thicker, matching border */
-            border-radius: 5px; /* Slightly rounded corners */
-            font-size: 11pt;
-        }
-        .patient-info strong {
-            color: #1a4e95;
-        }
-        .medications {
-            margin: 30px 0;
-        }
-        .medication-item {
-            margin: 20px 0; /* More spacing between medications */
-            padding: 15px 0;
-            border-bottom: 1px dashed #ccc; /* Dashed line for subtle separation */
-        }
-        .medication-item:last-child {
-            border-bottom: none; /* No border for the last item */
-        }
-        .medication-item strong {
-            font-size: 13pt; /* Larger font for active substance */
-            color: #000;
-            display: block; /* Each main medication on its own line */
-            margin-bottom: 5px;
-        }
-        .medication-item div {
-            margin-left: 15px; /* Indent dosage details */
-            font-size: 10.5pt;
-            color: #444;
-        }
-        .medication-item .brand-name {
-            font-style: italic;
-            color: #666;
-            font-size: 10pt;
-        }
-        .doctor-info {
-            margin-top: 60px; /* More space before signature */
-            text-align: right;
-            font-size: 11pt;
-        }
-        .doctor-info p {
-            margin: 5px 0;
-        }
-        .signature-line {
-            width: 250px; /* Line for physical signature */
-            border-bottom: 1px solid #000;
-            margin-left: auto; /* Align to the right */
-            margin-top: 30px;
-            padding-bottom: 5px;
-        }
-    </style>
+    }
+</style>
 </head>
 <body>
-    <div>
-        {{-- Use public_path or ensure the Base64 image is correctly rendered by dompdf --}}
-        {{-- If the image is in public/images/ENTETE.png, pass public_path('images/ENTETE.png') --}}
-        {{-- and in your controller, make sure 'enable_remote' => true in dompdf config --}}
-        {{-- If you're using Base64, ensure it's `data:image/png;base64,...` --}}
-            <img src="{{ storage_path('app/public/ENTETE.png') }}" class="header-image" alt="En-tête">
+    <div class="clinic-header">
+        
     </div>
-
-    <div class="header">
-        Date: {{ $current_date }}
+    @if(isset($codebar))
+    <div class="barcode-container">
+        <img src="data:image/png;base64,{{ $codebar }}" alt="Prescription Barcode">
     </div>
-
+    @endif
+   
+    <!-- Médecin & Date -->
+    <div class="doctor-date-container">
+        <div class="doctor-section">
+            <strong> </strong> {{ $doctor_name }}
+        </div>
+        <div class="date-section">
+            <strong> </strong> {{ $current_date ?? " " }}
+        </div>
+    </div>
+    
+    <!-- Informations patient -->
     <div class="patient-info">
-        <strong>Patient:</strong> {{ $patient_first_name }} {{ $patient_last_name }}<br>
-        @if($prescription->patient_age)
-            <strong>Âge:</strong> {{ $prescription->patient_age }} ans<br>
-        @endif
-        @if($prescription->patient_weight)
-            <strong>Poids:</strong> {{ $prescription->patient_weight }} kg
-        @endif
+        <div class="patient-field">
+            <strong></strong> {{ $patient_last_name }}
+        </div>
+        <div class="patient-field firstname">
+            <strong> </strong> {{ $patient_first_name }}
+        </div>
+        <div class="patient-field age">
+            <strong> </strong> 
+            @if(isset($patient_age))
+                {{ $patient_age }} {{ $age_unit ?? 'an(s)' }}
+            @endif
+        </div>
     </div>
-
-    <div class="subject">Ordonnance Médicale</div>
-
-    <div class="medications">
-        @forelse($medications as $medication)
-            <div class="medication-item">
-                <strong>{{ $medication->cd_active_substance }}</strong>
-                @if($medication->brand_name)
-                    <span class="brand-name">({{ $medication->brand_name }})</span><br>
-                @endif
-                <div>Forme: {{ $medication->pharmaceutical_form }}</div>
-                <div>Posologie: {{ $medication->dose_per_intake }} - {{ $medication->num_intakes_per_day }}</div>
-                <div>Durée/Quantité: {{ $medication->duration_or_boxes }}</div>
+    
+    <ul class="medications">
+    @forelse($medications as $index => $medication)
+        <li class="medication-item">
+            <div class="medication-line">
+                <span class="medication-name">
+                  {{$index + 1}})  {{ $medication->medication->designation }}
+                </span>
+                <span class="medication-qsp">
+                    QSP {{ $medication->period_intakes }} {{ $medication->frequency_period }}
+                </span>
             </div>
-        @empty
-            <p style="text-align: center; color: #777;">Aucun médicament n'a été prescrit pour cette ordonnance.</p>
-        @endforelse
-    </div>
+           @if($medication->frequency_period || $medication->period_intakes)
+                <span class="period-info">
+                    <span class="dosage-item">{{ $medication->num_times }}×/{{ $medication->frequency }}</span>
+                    @php
+                        // Remove "_New" from timing_preference if it exists
+                        $timingDisplay = str_replace('_New', '', $medication->timing_preference);
+                    @endphp
+                    {{ $timingDisplay }}
+                </span>
+            @endif
+            
+                    <!-- Added pill counts display -->
+            @if($medication->pills_matin || $medication->pills_apres_midi || $medication->pills_midi || $medication->pills_soir)
+            <div class="pill-counts-line">
+                <span class="pill-count-label"></span>
+                @if($medication->pills_matin)
+                    <span class="pill-count-value">{{ $medication->pills_matin }} Matin</span>
+                @endif
+                @if($medication->pills_midi)
+                    @if($medication->pills_matin), @endif
+                    <span class="pill-count-value">{{ $medication->pills_midi }} Midi</span>
+                @endif
+                @if($medication->pills_apres_midi)
+                    @if($medication->pills_matin || $medication->pills_midi), @endif
+                    <span class="pill-count-value">{{ $medication->pills_apres_midi }} Après-midi</span>
+                @endif
+                @if($medication->pills_soir)
+                    @if($medication->pills_matin || $medication->pills_midi || $medication->pills_apres_midi), @endif
+                    <span class="pill-count-value">{{ $medication->pills_soir }} Soir</span>
+                @endif
+            </div>
+           @endif
+            
+            @if($medication->description)
+                <div>
+                  <span class="instructions">{{ $medication->description }}</span>
 
-    <div class="doctor-info">
-        <p>Signature du Médecin:</p>
-        <div class="signature-line"></div>
-        <p>Yahia Cherif</p>
-    </div>
+                </div>
+            @endif
+        </li>
+    @empty
+        <p style="text-align: center; color: #777;">Aucun médicament n'a été prescrit pour cette ordonnance.</p>
+    @endforelse
+</ul>
 </body>
 </html>

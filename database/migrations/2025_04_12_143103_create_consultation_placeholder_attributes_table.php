@@ -14,6 +14,8 @@ return new class extends Migration
         Schema::create('consultation_placeholder_attributes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('consultation_id')->constrained('consultations')->onDelete('cascade');
+            //appointment_id
+            $table->foreignId('appointment_id')->nullable()->constrained('appointments')->onDelete('cascade');
             $table->foreignId('placeholder_id')->constrained('placeholders')->onDelete('cascade');
             $table->foreignId('attribute_id')->constrained('attributes')->onDelete('cascade');
             $table->text('attribute_value')->nullable();

@@ -503,7 +503,7 @@ watch(
               <!-- Waitlist Not for You Button -->
               <button class="btn btn-outline-warning position-relative ml-1" type="button" @click="openWaitlistNotForYouModal">
                 <i class="fas fa-user-times me-2"></i>
-                Waitlist Not for You
+                Waitlist  for specialization
                 <span v-if="countWithoutDoctor > 0" class="badge bg-danger ms-1">{{ countWithoutDoctor }}</span>
               </button>
             </div>

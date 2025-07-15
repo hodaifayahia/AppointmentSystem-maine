@@ -29,7 +29,7 @@ class AppointmentResource extends JsonResource
             'Parent' => $this->patient->Parent ?? '',
             'phone' => $this->patient->phone ?? 'N/A',
             'doctor_name' => optional($this->doctor->user)->name ?? 'Unknown',
-            'doctor_id' => $this->doctor->id ?? 'Unknown',
+            'doctor_id' => $this->doctor->id,
             'appointment_date' => $this->appointment_date,
             'appointment_time' => $this->appointment_time,
             'add_to_waitlist' => $this->add_to_waitlist,

@@ -44,6 +44,8 @@ const doctor = ref({
   specialization: props.doctorData?.specialization || '',
   specialization_id: props.doctorData?.specialization_id || '',
   frequency: props.doctorData?.frequency || '',
+    is_active: props.doctorData?.is_active !== undefined ? props.doctorData.is_active : true,
+
   avatar: props.doctorData?.avatar || null,
   customDates: props.doctorData?.schedules,
   schedules: props.doctorData?.schedules || [],
@@ -116,15 +118,23 @@ const getDoctorSchema = (isEditMode) => {
 };
 watch(
   () => props.doctorData,
-
   (newValue) => {
-    console.log(props.doctorData);
-
     if (newValue) {
-      // Compute the number from schedules
       const computedNumber = Array.isArray(newValue?.schedules)
         ? Math.max(0, ...newValue.schedules.map(s => s.number_of_patients_per_day ?? 0))
         : 0;
+
+      // Helper function to format time
+      const formatTime = (timeString) => {
+        if (!timeString) return '';
+        try {
+          const date = new Date(`2000-01-01T${timeString}`); // Use a dummy date to parse time
+          return date.toTimeString().slice(0, 5); // Extracts HH:mm
+        } catch (e) {
+          console.error("Error formatting time:", timeString, e);
+          return '';
+        }
+      };
 
       doctor.value = {
         ...doctor.value,
@@ -135,8 +145,11 @@ watch(
         patients_based_on_time: newValue?.patients_based_on_time || false,
         specialization: newValue?.specialization || '',
         specialization_id: newValue?.specialization_id || '',
-        start_time_force: newValue?.appointment_forcer?.start_time || '',
-        end_time_force: newValue?.appointment_forcer?.end_time || '',
+        is_active: newValue?.is_active !== undefined ? newValue.is_active : true,
+
+        // Apply formatTime to start_time and end_time
+        start_time_force: formatTime(newValue?.appointment_forcer?.start_time),
+        end_time_force: formatTime(newValue?.appointment_forcer?.end_time),
         number_of_patients: newValue?.appointment_forcer?.number_of_patients || '',
         frequency: newValue?.frequency || '',
         avatar: newValue?.avatar || null,
@@ -144,7 +157,6 @@ watch(
         customDates: Array.isArray(newValue?.schedules) ? [...newValue.schedules] : [],
         schedules: Array.isArray(newValue?.schedules) ? [...newValue.schedules] : [],
         password: '',
-        // Only update number_of_patients_per_day if it is currently undefined
         number_of_patients_per_day: (doctor.value.number_of_patients_per_day === undefined)
           ? computedNumber
           : doctor.value.number_of_patients_per_day,
@@ -236,7 +248,7 @@ onUnmounted(() => {
 });
 const submitForm = async (values, { setErrors, resetForm }) => {
 
-  isLoading.value = true;    //
+  isLoading.value = true;
   try {
     // Update appointmentBookingWindow with the latest selected months
     doctor.value.appointmentBookingWindow = selectedMonths.value.map((month) => ({
@@ -264,6 +276,8 @@ const submitForm = async (values, { setErrors, resetForm }) => {
     formData.append('start_time', doctor.value.start_time_force);
     formData.append('end_time', doctor.value.end_time_force);
     formData.append('number_of_patients', doctor.value.number_of_patients);
+    formData.append('is_active', doctor.value.is_active ? 1 : 0);
+
 
     // Handle appointmentBookingWindow
     if (doctor.value.appointmentBookingWindow && Array.isArray(doctor.value.appointmentBookingWindow)) {
@@ -325,16 +339,15 @@ const submitForm = async (values, { setErrors, resetForm }) => {
     const method = isEditMode.value ? 'PUT' : 'POST';
     formData.append('_method', method);
 
-    const url = isEditMode.value ? `/api/doctors/${doctor.value.id}` : '/api/doctors';
-
+     const url = isEditMode.value ? `/api/doctors/${doctor.value.id}` : '/api/doctors';
 
     await axios.post(url, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
 
-
     toaster.success(`Doctor ${isEditMode.value ? 'updated' : 'added'} successfully`);
-    isLoading.value = false; handleUserUpdate();
+    isLoading.value = false; // Reset isLoading on success
+    handleUserUpdate();
     resetForm();
   } catch (error) {
     if (error.response?.data?.errors) {
@@ -344,6 +357,7 @@ const submitForm = async (values, { setErrors, resetForm }) => {
     } else {
       toaster.error('An unexpected error occurred');
     }
+    isLoading.value = false; // <<< IMPORTANT: Reset isLoading on error
   }
 };
 
@@ -358,6 +372,7 @@ onMounted(() => {
     aria-hidden="true" v-if="showModal">
 
     <div class="modal-dialog modal-lg">
+      
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">{{ isEditMode ? 'Edit Doctor' : 'Add Doctor' }}</h5>
@@ -367,9 +382,23 @@ onMounted(() => {
         </div>
 
         <div class="modal-body">
+          
           <Form v-slot="{ errors: validationErrors }" @submit="submitForm"
             :validation-schema="getDoctorSchema(isEditMode)"> <!-- First Row: Name and Email -->
+             <div class="">
+                    <div class="form-check ">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="is_active"
+                        v-model="doctor.is_active"
+                      />
+                      <label class="form-check-label" for="is_active">
+                        Active Doctor
+                      </label>
+                  </div>
             <div class="row">
+              
               <div class="col-md-6 mb-4">
                 <label for="name" class="form-label fs-5">Name</label>
                 <Field type="text" id="name" name="name" :class="{ 'is-invalid': validationErrors.name }"
@@ -408,12 +437,14 @@ onMounted(() => {
               </div>
 
               <!-- Number of Patients -->
-              <div class="col-md-4 mb-3">
+              <div class="col-md-8 mb-3">
                 <label for="number_of_patients" class="form-label">Patients</label>
                 <Field type="text" id="number_of_patients" name="number_of_patients" v-model="doctor.number_of_patients"
                   :class="{ 'is-invalid': validationErrors.number_of_patients }" class="form-control form-control-md" />
                 <span class="text-sm invalid-feedback">{{ validationErrors.number_of_patients }}</span>
               </div>
+                 
+            </div>
             </div>
 
               <div class="row">
@@ -490,7 +521,7 @@ onMounted(() => {
               </div>
 
               <div class="row">
-                <div class="col-md-6 mb-4">
+                <div class="col-md-12 mb-4">
                   <AppointmentBookingWindowModel :isEditMode="isEditMode"
                     :appointment-booking-window="doctor.appointmentBookingWindow" v-model="selectedMonths" />
                 </div>

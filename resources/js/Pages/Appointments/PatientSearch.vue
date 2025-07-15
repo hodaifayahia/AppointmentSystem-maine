@@ -151,9 +151,9 @@ const selectPatient = (patient) => {
   showDropdown.value = false;
 };
 </script>
-
 <template>
   <div class="patient-search-wrapper">
+    <!-- Existing input and button code -->
     <div class="row">
       <div class="col-md-9 position-relative">
         <input 
@@ -194,7 +194,8 @@ const selectPatient = (patient) => {
       </div>
     </div>
 
-    <div v-if="showDropdown && (isLoading || (patients.length > 0 && searchQuery.length >= 2))">
+    <!-- Dropdown with fixed height and scroll -->
+    <div v-if="showDropdown && (isLoading || (patients.length > 0 && searchQuery.length >= 2))" class="dropdown-container">
       <div v-if="isLoading" class="loading-state">
         <div class="spinner-border text-primary spinner-border-sm me-2" role="status">
           <span class="visually-hidden"></span>
@@ -202,27 +203,27 @@ const selectPatient = (patient) => {
         Searching
       </div>
       <template v-else>
-  <div class="dropdown-header">Search Results</div>
-  <div class="patient-list">
-    <div 
-      v-for="patient in patients" 
-      :key="patient.id" 
-      class="patient-item row" 
-      @click="selectPatient(patient)"
-    >
-      <div class="patient-info col-12 d-flex align-items-center p-3">
-        <span class="patient-name text-sm mr-2">{{ patient.first_name }} {{ patient.last_name }}</span>
-        <span class="patient-phone text-sm mr-2"><i class="fas fa-phone-alt text-danger mr-2"></i> {{ patient.phone }}</span>
-        <span class="patient-id text-sm mr-2">{{ patient.Idnum }}</span>
-        <strong>Date of Birth:</strong>{{ formatDateOfBirth(patient.dateOfBirth) }}
-      </div>
-    </div>
-  </div>
-  <div v-if="patients.length === 0 && searchQuery.length >= 2" class="no-results text-center p-3">
-    <div class="no-results-icon">🔍</div>
-    <div class="no-results-text">No patients found</div>
-  </div>
-</template>
+        <div class="dropdown-header">Search Results</div>
+        <div class="patient-list">
+          <div 
+            v-for="patient in patients" 
+            :key="patient.id" 
+            class="patient-item row" 
+            @click="selectPatient(patient)"
+          >
+            <div class="patient-info col-12 d-flex align-items-center p-3">
+              <span class="patient-name text-sm mr-2">{{ patient.first_name }} {{ patient.last_name }}</span>
+              <span class="patient-phone text-sm mr-2"><i class="fas fa-phone-alt text-danger mr-2"></i> {{ patient.phone }}</span>
+              <span class="patient-id text-sm mr-2">{{ patient.Idnum }}</span>
+              <strong>Date of Birth:</strong>{{ formatDateOfBirth(patient.dateOfBirth) }}
+            </div>
+          </div>
+        </div>
+        <div v-if="patients.length === 0 && searchQuery.length >= 2" class="no-results text-center p-3">
+          <div class="no-results-icon">🔍</div>
+          <div class="no-results-text">No patients found</div>
+        </div>
+      </template>
     </div>
   </div>
 
@@ -234,9 +235,8 @@ const selectPatient = (patient) => {
     @specUpdate="handlePatientAdded" 
   />
 </template>
-
 <style scoped>
-/* Your styles here */
+/* Existing styles */
 .patient-item {
   cursor: pointer;
   transition: background-color 0.3s ease;
@@ -252,5 +252,28 @@ const selectPatient = (patient) => {
 
 .no-results {
   color: #6c757d;
+}
+
+/* New styles for fixed height dropdown with scroll */
+.patient-search-wrapper .dropdown-container {
+  max-height: 300px; /* Set your desired fixed height */
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  border: 1px solid #e9ecef; /* Optional: Add border for clarity */
+  border-radius: 0.25rem; /* Optional: Match form-control border radius */
+  background-color: #fff; /* Ensure background is white */
+}
+
+/* Optional: Style the dropdown header */
+.dropdown-header {
+  background-color: #f8f9fa;
+  padding: 0.5rem 1rem;
+  font-weight: bold;
+  border-bottom: 1px solid #e9ecef;
+}
+
+/* Optional: Ensure patient list takes full width */
+.patient-list {
+  width: 100%;
 }
 </style>

@@ -23,24 +23,26 @@ class StoreGeneratedPdfDocumentListener
     public function handle(PdfGeneratedEvent $event): void
     {
         try {
-            // Store the generated PDF document
-            $fileName = basename($event->pdfPath);
-            $fileSize = Storage::size($event->pdfPath);
-            
-            PatientDocement::create([
-                'patient_id' => $event->patientId,
-                'doctor_id' => $event->doctorId,
-                'folder_id' => 1, // Default folder ID, you might want to make this configurable
-                'document_type' => 'pdf',
-                'document_path' => $event->pdfPath,
-                'document_name' => $fileName,
-                'document_size' => $fileSize
+            // Just verify the file exists and log the information
+            $exists = Storage::disk('public')->exists($event->pdfPath);
+            Log::info("PDF generation verification:", [
+                'path' => $event->pdfPath,
+                'exists' => $exists,
+                'full_path' => Storage::disk('public')->path($event->pdfPath)
             ]);
 
-            Log::info("PDF document stored successfully for patient {$event->patientId}");
+            if (!$exists) {
+                Log::error("PDF file not found at path: {$event->pdfPath}");
+            }
+
+            // You can add any additional processing here that doesn't involve
+            // creating another document record
+
         } catch (\Exception $e) {
-            Log::error("Error storing PDF document: " . $e->getMessage());
-            Log::error($e->getTraceAsString());
+            Log::error("Error in PDF generation verification: " . $e->getMessage(), [
+                'pdf_path' => $event->pdfPath ?? 'not set',
+                'trace' => $e->getTraceAsString()
+            ]);
         }
     }
 }

@@ -14,7 +14,7 @@ const resetForm = () => {
   formData.value = {
     name: '',
     value: '',
-    input_type: false,
+    input_type: false, // Explicitly set to false
     placeholder_id: props.placeholderId,
   };
 };
@@ -28,6 +28,8 @@ const formData = ref({
   placeholder_id: props.placeholderId,
 });
 
+
+
 const isEditmode = computed(() => {
   return props.isEditmode || (props.attributeData && props.attributeData.id);
 });
@@ -35,7 +37,11 @@ const isEditmode = computed(() => {
 // Fix: Move the form initialization logic inside the watch
 watch(() => props.attributeData, (newVal) => {
   if (newVal && isEditmode.value) {
-    formData.value = { ...newVal, placeholder_id: props.placeholderId };
+    formData.value = {
+      ...newVal,
+      placeholder_id: props.placeholderId,
+      input_type: Boolean(newVal.input_type) // Convert to boolean
+    };
     console.log('Editing attribute:', formData.value);
   } else {
     resetForm();
@@ -51,7 +57,6 @@ const closeModal = () => {
   emit('close');
   resetForm();
 };
-
 const handleSubmit = async () => {
   if (!formData.value.name) {
     toaster.error('Name is required');
@@ -59,12 +64,17 @@ const handleSubmit = async () => {
   }
 
   try {
+    const submitData = {
+      ...formData.value,
+      input_type: Boolean(formData.value.input_type) // Ensure boolean
+    };
+
     const url = isEditmode.value 
-      ? `/api/attributes/${formData.value.id}`
+      ? `/api/attributes/${submitData.id}`
       : '/api/attributes';
     const method = isEditmode.value ? 'put' : 'post';
     
-    await axios[method](url, formData.value);
+    await axios[method](url, submitData);
     toaster.success(`Attribute ${isEditmode.value ? 'updated' : 'created'} successfully`);
     emit('attributeUpdate');
     closeModal();
@@ -90,10 +100,16 @@ const handleSubmit = async () => {
                 <label for="name">Name <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" id="name" v-model="formData.name" required>
               </div>
-              <div class="form-group">
-                <label for="name">Textarea</label>
-                <input type="checkbox" class="ml-2 w-20 h-20" id="input_type" v-model="formData.input_type" >
-              </div>
+             <div class="form-group">
+  <label for="input_type">Textarea</label>
+  <input 
+    type="checkbox" 
+    class="ml-2 form-check-input" 
+    id="input_type" 
+    :checked="formData.input_type"
+    @change="formData.input_type = $event.target.checked"
+  >
+</div>
               <div class="form-group">
                 <label for="value">Value (optional)</label>
                 <input type="text" class="form-control" id="value" v-model="formData.value">

@@ -31,6 +31,7 @@ const user = ref({
   name: props.userData?.name || '',
   email: props.userData?.email || '',
   phone: props.userData?.phone || '',
+  is_active: props.userData?.is_active || true,
   avatar:  props.userData?.avatar, // Initialize as null for file upload
   password: '',
   role: props.userData?.role || 'receptionist',
@@ -46,6 +47,7 @@ watch(
       name: newValue?.name || '',
       email: newValue?.email || '',
       phone: newValue?.phone || '',
+      is_active: newValue?.is_active || true,
       avatar: null,
       password: '',
       role: newValue?.role || 'receptionist',
@@ -193,6 +195,19 @@ const submitForm = async (values) => {
         <div class="modal-body">
           <Form v-slot="{ errors: validationErrors }" @submit="submitForm" :validation-schema="userSchema"
             :initial-values="user">
+            <div class="mb-3 form-check">
+              <Field
+                type="checkbox"
+                id="is_active"
+                name="is_active"
+                class="form-check-input"
+                v-model="user.is_active"
+              />
+              <label class="form-check-label" for="is_active">
+                Active
+              </label>
+            </div>
+              
             <div class="mb-3">
               <label for="name" class="form-label">Name</label>
               <Field type="text" id="name" name="name" :class="{ 'is-invalid': validationErrors.name || errors.name }"

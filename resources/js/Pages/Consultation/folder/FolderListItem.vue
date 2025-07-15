@@ -10,14 +10,21 @@ const props = defineProps({
     default: () => ({
       id: null,
       name: '',
-      description: ''
+      description: '',
+      templates_count: 0
     })
+  },
+  folderid:{
+    type:Number,
+    required:true
   }
 });
 
 const GoToTemplatePage = (event) => {
   event.stopPropagation();
-  router.push({ name: 'admin.consultation.template', params: { id: props.folder.id } });
+  router.push({ name: 'admin.consultation.template', params: {
+    folderid : props.folderid
+  } });
 };
 
 const emit = defineEmits(['edit', 'delete']);
@@ -47,7 +54,11 @@ const handleDelete = (event) => {
           </div>
         </div>
         <div class="folder-stats small text-muted d-flex gap-3 ml-2">
-          <h6><i class="fas fa-file-alt me-1"></i> 0 templates</h6>
+          <h6>
+            <i class="fas fa-file-alt me-1"></i> 
+            
+            {{ folder.templates_count }} {{ folder.templates_count === 1 ? 'template' : 'templates' }}
+          </h6>
         </div>
       </div>
       <div class="card-footer bg-white py-2 px-3 border-top">

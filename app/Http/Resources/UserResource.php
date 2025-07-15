@@ -22,6 +22,7 @@ public function toArray(Request $request): array
         'email' => $this->email,
         'phone' => $this->phone,
         'role' => $this->role,
+        'is_active' => $this->is_active,
         'avatar' => $this->avatar
             ? asset(Storage::url($this->avatar)) // Use Storage::url() for proper storage path resolution
             : asset('storage/default.png'), // Default avatar

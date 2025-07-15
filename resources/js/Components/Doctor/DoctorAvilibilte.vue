@@ -21,342 +21,351 @@ onMounted(async () => {
     await doctors.getDoctor(); // Fetch doctor data
 });
 
-const emit = defineEmits(['close', 'doctorUpdated']);
 const toaster = useToastr();
 const errors = ref({});
 const specializations = ref({});
 const showPassword = ref(false);
 const isLoading = ref(false);
-
-
-
-
 const patients_based_on_time = ref(doctors.doctorData.patients_based_on_time);
 const numberOfPatients = ref(
-    Array.isArray(doctors.doctorData?.schedules)
-        ? Math.max(0, ...doctors.doctorData.schedules.map(s => s.number_of_patients_per_day ?? 0))
-        : 0
+  Array.isArray(doctors.doctorData?.schedules)
+    ? Math.max(0, ...doctors.doctorData.schedules.map(s => s.number_of_patients_per_day ?? 0))
+    : 0
 );
 
 const selectedMonths = ref([]);
 const time_slot = ref(doctors.doctorData.time_slot);
+
 const doctor = ref({
-    id: doctors.doctorData?.id || null,
-    name: doctors.doctorData?.name || '',
-    email: doctors.doctorData?.email || '',
-    phone: doctors.doctorData?.phone || '',
-    patients_based_on_time: doctors.doctorData?.patients_based_on_time || false,
-    specialization: doctors.doctorData?.specialization || '',
-    specialization_id: doctors.doctorData?.specialization_id || '',
-    frequency: doctors.doctorData?.frequency || '',
-    avatar: doctors.doctorData?.avatar || null,
-    customDates: doctors.doctorData?.schedules,
-    schedules: doctors.doctorData?.schedules || [],
-    appointmentBookingWindow: doctors.doctorData?.appointment_booking_window,
-    password: '',
-    number_of_patients_per_day: Array.isArray(doctors.doctorData?.schedules)
-        ? Math.max(0, ...doctors.doctorData.schedules.map(s => s.number_of_patients_per_day ?? 0))
-        : 0, // Get the highest number_of_patients_per_day
-    time_slot: doctors.doctorData?.time_slots || null,
+  id: doctors.doctorData?.id || null,
+  name: doctors.doctorData?.name || '',
+  email: doctors.doctorData?.email || '',
+  phone: doctors.doctorData?.phone || '',
+  patients_based_on_time: doctors.doctorData?.patients_based_on_time || false,
+  specialization: doctors.doctorData?.specialization || '',
+  specialization_id: doctors.doctorData?.specialization_id || '',
+  frequency: doctors.doctorData?.frequency || '',
+  is_active: doctors.doctorData?.is_active !== undefined ? doctors.doctorData.is_active : true,
+
+  avatar: doctors.doctorData?.avatar || null,
+  customDates: doctors.doctorData?.schedules,
+  schedules: doctors.doctorData?.schedules || [],
+  start_time_force: doctors.doctorData?.appointment_forcer?.start_time || '',
+  end_time_force: doctors.doctorData?.appointment_forcer?.end_time || '',
+  number_of_patients: doctors.doctorData?.appointment_forcer?.number_of_patients || '',
+  appointmentBookingWindow: doctors.doctorData?.appointment_booking_window,
+  password: '',
+  number_of_patients_per_day: Array.isArray(doctors.doctorData?.schedules)
+    ? Math.max(0, ...doctors.doctorData.schedules.map(s => s.number_of_patients_per_day ?? 0))
+    : 0, // Get the highest number_of_patients_per_day
+  time_slot: doctors.doctorData?.time_slots || null,
 });
 
 
 const imagePreview = ref(doctors.doctorData?.avatar ? doctors.doctorData.avatar : null);
 
 const getSpecializations = async (page = 1) => {
-    try {
-        const response = await axios.get('/api/specializations');
-        specializations.value = response.data.data || response.data;
-    } catch (error) {
-        console.error('Error fetching specializations:', error);
-        error.value = error.response?.data?.message || 'Failed to load specializations';
-    }
+  try {
+    const response = await axios.get('/api/specializations');
+    specializations.value = response.data.data || response.data;
+  } catch (error) {
+    console.error('Error fetching specializations:', error);
+    error.value = error.response?.data?.message || 'Failed to load specializations';
+  }
 };
-
 
 const isEditMode = computed(() => !!doctors.doctorData?.id);
 
 const handleFrequencySelectionChange = () => {
-    if (doctor.value.frequency !== 'Monthly') {
-        doctor.value.customDates = [];
-    } else if (doctor.value.customDates.length === 0) {
-        doctor.value.customDates = [''];
-    }
+  if (doctor.value.frequency !== 'Monthly') {
+    doctor.value.customDates = [];
+  } else if (doctor.value.customDates.length === 0) {
+    doctor.value.customDates = [''];
+  }
 };
 
 const closeModal = () => {
-    errors.value = {};
-    emit('close');
+  errors.value = {};
+  emit('close');
 };
 
 const handleUserUpdate = () => {
-    emit('doctorUpdated');
-    closeModal();
+  emit('doctorUpdated');
+  closeModal();
 };
 
 const getDoctorSchema = (isEditMode) => {
-    const baseSchema = {
-        name: yup.string().required('Name is required'),
-        email: yup.string(),
-        phone: yup
-            .string()
-            .matches(/^[0-9]{10,15}$/, 'Phone number must be between 10 and 15 digits')
-            .required('Phone number is required'),
-        specialization: yup.string().required('Specialization is required'),
-        frequency: yup.string().required('Frequency is required'),
-    };
+  const baseSchema = {
+    name: yup.string().required('Name is required'),
+    email: yup.string('the Username should not be the same as another username'),
+    phone: yup
+      .string(),
+    specialization: yup.string().required('Specialization is required'),
+    frequency: yup.string().required('Frequency is required'),
+  };
 
-    if (!isEditMode) {
-        baseSchema.password = yup.string()
-            .required('Password is required')
-            .min(8, 'Password must be at least 8 characters');
-    } else {
-        baseSchema.password = yup.string()
-            .transform((value) => (value === '' ? undefined : value))
-            .optional()
-            .min(8, 'Password must be at least 8 characters');
-    }
+  if (!isEditMode) {
+    baseSchema.password = yup.string()
+      .required('Password is required')
+      .min(8, 'Password must be at least 8 characters');
+  } else {
+    baseSchema.password = yup.string()
+      .transform((value) => (value === '' ? undefined : value))
+      .optional()
+      .min(8, 'Password must be at least 8 characters');
+  }
 
-    return yup.object(baseSchema);
+  return yup.object(baseSchema);
 };
 watch(
-    () => doctors.doctorData,
-    (newValue) => {
-        if (newValue) {
-            // Compute the number from schedules
-            const computedNumber = Array.isArray(newValue?.schedules)
-                ? Math.max(0, ...newValue.schedules.map(s => s.number_of_patients_per_day ?? 0))
-                : 0;
+  () => doctors.doctorData,
+  (newValue) => {
+    if (newValue) {
+      const computedNumber = Array.isArray(newValue?.schedules)
+        ? Math.max(0, ...newValue.schedules.map(s => s.number_of_patients_per_day ?? 0))
+        : 0;
 
-            doctor.value = {
-                ...doctor.value,
-                id: newValue?.id || null,
-                name: newValue?.name || '',
-                email: newValue?.email || '',
-                phone: newValue?.phone || '',
-                patients_based_on_time: newValue?.patients_based_on_time || false,
-                specialization: newValue?.specialization || '',
-                specialization_id: newValue?.specialization_id || '',
-                frequency: newValue?.frequency || '',
-                avatar: newValue?.avatar || null,
-                appointmentBookingWindow: newValue?.appointment_booking_window,
-                customDates: Array.isArray(newValue?.schedules) ? [...newValue.schedules] : [],
-                schedules: Array.isArray(newValue?.schedules) ? [...newValue.schedules] : [],
-                password: '',
-                // Only update number_of_patients_per_day if it is currently undefined
-                number_of_patients_per_day: (doctor.value.number_of_patients_per_day === undefined)
-                    ? computedNumber
-                    : doctor.value.number_of_patients_per_day,
-                time_slot: newValue?.time_slots ?? '',
-            };
-
-            if (newValue.avatar) {
-                imagePreview.value = newValue.avatar;
-            }
-
-            if (newValue.appointment_booking_window) {
-                selectedMonths.value = newValue.appointment_booking_window
-                    .filter(month => month.is_available)
-                    .map(month => ({
-                        value: month.month,
-                        is_available: true,
-                    }));
-            }
+      // Helper function to format time
+      const formatTime = (timeString) => {
+        if (!timeString) return '';
+        try {
+          const date = new Date(`2000-01-01T${timeString}`); // Use a dummy date to parse time
+          return date.toTimeString().slice(0, 5); // Extracts HH:mm
+        } catch (e) {
+          console.error("Error formatting time:", timeString, e);
+          return '';
         }
-    },
-    { immediate: true, deep: true }
+      };
+
+      doctor.value = {
+        ...doctor.value,
+        id: newValue?.id || null,
+        name: newValue?.name || '',
+        email: newValue?.email || '',
+        phone: newValue?.phone || '',
+        patients_based_on_time: newValue?.patients_based_on_time || false,
+        specialization: newValue?.specialization || '',
+        specialization_id: newValue?.specialization_id || '',
+        is_active: newValue?.is_active !== undefined ? newValue.is_active : true,
+
+        // Apply formatTime to start_time and end_time
+        start_time_force: formatTime(newValue?.appointment_forcer?.start_time),
+        end_time_force: formatTime(newValue?.appointment_forcer?.end_time),
+        number_of_patients: newValue?.appointment_forcer?.number_of_patients || '',
+        frequency: newValue?.frequency || '',
+        avatar: newValue?.avatar || null,
+        appointmentBookingWindow: newValue?.appointment_booking_window,
+        customDates: Array.isArray(newValue?.schedules) ? [...newValue.schedules] : [],
+        schedules: Array.isArray(newValue?.schedules) ? [...newValue.schedules] : [],
+        password: '',
+        number_of_patients_per_day: (doctor.value.number_of_patients_per_day === undefined)
+          ? computedNumber
+          : doctor.value.number_of_patients_per_day,
+        time_slot: newValue?.time_slots ?? '',
+      };
+
+      if (newValue.avatar) {
+        imagePreview.value = newValue.avatar;
+      }
+
+      if (newValue.appointment_booking_window) {
+        selectedMonths.value = newValue.appointment_booking_window
+          .filter(month => month.is_available)
+          .map(month => ({
+            value: month.month,
+            year:month.year,
+            is_available: true,
+          }));
+      }
+    }
+  },
+  { immediate: true, deep: true }
 );
 
 
-const calculatePatientsPerDay = (startTime, endTime, timeSlot) => {
-    const start = new Date(`2000-01-01 ${startTime}`);
-    const end = new Date(`2000-01-01 ${endTime}`);
-    const diffInMinutes = (end - start) / (1000 * 60);
-    return Math.floor(diffInMinutes / timeSlot);
-};
 
 const handleSchedulesUpdated = (newSchedules) => {
-    if (Array.isArray(newSchedules)) {
-        doctor.value.schedules = newSchedules;
-    } else {
-        console.error('New schedules is not an array:', newSchedules);
-    }
+  if (Array.isArray(newSchedules)) {
+    doctor.value.schedules = newSchedules;
+  } else {
+    console.error('New schedules is not an array:', newSchedules);
+  }
 };
 
 const handlecustomDatesUpdated = (newSchedules) => {
-    doctor.value.customDates = newSchedules;
+  doctor.value.customDates = newSchedules;
 };
 
 const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) {
-        return;
-    }
+  const file = e.target.files[0];
+  if (!file) {
+    return;
+  }
 
-    if (file.size > 2 * 1024 * 1024) {
-        errors.value = { ...errors.value, avatar: 'Image must be less than 2MB' };
-        e.target.value = '';
-        return;
-    }
+  if (file.size > 2 * 1024 * 1024) {
+    errors.value = { ...errors.value, avatar: 'Image must be less than 2MB' };
+    e.target.value = '';
+    return;
+  }
 
-    if (errors.value.avatar) {
-        errors.value = { ...errors.value, avatar: null };
-    }
+  if (errors.value.avatar) {
+    errors.value = { ...errors.value, avatar: null };
+  }
 
-    doctor.value = {
-        ...doctor.value,
-        avatar: file
-    };
+  doctor.value = {
+    ...doctor.value,
+    avatar: file
+  };
 
-    const previewURL = URL.createObjectURL(file);
-    imagePreview.value = previewURL;
+  const previewURL = URL.createObjectURL(file);
+  imagePreview.value = previewURL;
 
-    return () => {
-        URL.revokeObjectURL(previewURL);
-    };
+  return () => {
+    URL.revokeObjectURL(previewURL);
+  };
 };
 
 const handlePatientSelectionChange = () => {
-    if (doctor.value.patients_based_on_time) {
-        doctor.value.number_of_patients_per_day = 0;
-    } else {
-        doctor.value.time_slot = '';
-    }
+  if (doctor.value.patients_based_on_time) {
+    doctor.value.number_of_patients_per_day = 0;
+  } else {
+    doctor.value.time_slot = '';
+  }
 };
 watch(
-    selectedMonths,
-    (newSelectedMonths) => {
-        // Update doctor.appointmentBookingWindow with the latest selected months
-        doctor.value.appointmentBookingWindow = newSelectedMonths.map((month) => ({
-            value: month.value,
-            is_available: month.is_available,
-        }));
-    },
-    { deep: true }
+  selectedMonths,
+  (newSelectedMonths) => {
+    // Update doctor.appointmentBookingWindow with the latest selected months
+    doctor.value.appointmentBookingWindow = newSelectedMonths.map((month) => ({
+      value: month.value,
+      is_available: month.is_available,
+    }));
+  },
+  { deep: true }
 );
 onUnmounted(() => {
-    if (imagePreview.value && imagePreview.value.startsWith('blob:')) {
-        URL.revokeObjectURL(imagePreview.value);
-    }
+  if (imagePreview.value && imagePreview.value.startsWith('blob:')) {
+    URL.revokeObjectURL(imagePreview.value);
+  }
 });
 const submitForm = async (values, { setErrors, resetForm }) => {
 
-isLoading.value = true;    //
-try {
-  // Update appointmentBookingWindow with the latest selected months
-  doctor.value.appointmentBookingWindow = selectedMonths.value.map((month) => ({
-    month: month.value,
-    is_available: month.is_available,
-  }));
+  isLoading.value = true;
+  try {
+    // Update appointmentBookingWindow with the latest selected months
+    doctor.value.appointmentBookingWindow = selectedMonths.value.map((month) => ({
+      month: month.value,
+      is_available: month.is_available,
+    }));
 
-  const formData = new FormData();
+    const formData = new FormData();
 
-  // Basic fields
-  Object.entries(values).forEach(([key, value]) => {
-    if (value !== null && value !== undefined && key !== 'avatar') {
-      formData.append(key, value);
-    }
-  });
-
-  // Handle boolean value explicitly
-  formData.append('patients_based_on_time', doctor.value.patients_based_on_time ? 1 : 0);
-
-  // Other fields
-
-  formData.append('id', doctor.value.id);
-  formData.append('specialization', doctor.value.specialization_id);
-  formData.append('time_slot', doctor.value.time_slot);
-  //formData.append('number_of_patients', doctor.value.number_of_patients);
-  //formData.append('end_time', doctor.value.end_time);
-  //formData.append('start_time', doctor.value.start_time);
-
-  // Handle appointmentBookingWindow
-  if (doctor.value.appointmentBookingWindow && Array.isArray(doctor.value.appointmentBookingWindow)) {
-    doctor.value.appointmentBookingWindow.forEach((month, index) => {
-      formData.append(`appointmentBookingWindow[${index}][month]`, parseInt(month.month, 10)); // Ensure month is an integer
-      formData.append(`appointmentBookingWindow[${index}][is_available]`, month.is_available ? 1 : 0); // Convert boolean to 1 or 0
+    // Basic fields
+    Object.entries(values).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && key !== 'avatar') {
+        formData.append(key, value);
+      }
     });
-  } else {
-    console.error('appointmentBookingWindow is missing or not an array:', doctor.value.appointmentBookingWindow);
-    throw new Error('appointmentBookingWindow is required and must be an array.');
-  }
 
-  // Handle schedules or customDates based on frequency
-  if (doctor.value.frequency === 'Monthly') {
-    if (doctor.value.customDates && Array.isArray(doctor.value.customDates)) {
-      doctor.value.customDates.forEach((dateObj, index) => {
-        if (typeof dateObj === 'object' && dateObj !== null) {
-          Object.entries(dateObj).forEach(([key, value]) => {
-            formData.append(`customDates[${index}][${key}]`, value);
-          });
-        } else {
-          formData.append(`customDates[${index}]`, dateObj);
-        }
+    // Handle boolean value explicitly
+    formData.append('patients_based_on_time', doctor.value.patients_based_on_time ? 1 : 0);
+
+    // Other fields
+
+    formData.append('id', doctor.value.id);
+    // formData.append('specialization', doctor.value.specialization_id);
+    formData.append('time_slot', doctor.value.time_slot);
+    formData.append('start_time', doctor.value.start_time_force);
+    formData.append('end_time', doctor.value.end_time_force);
+    formData.append('number_of_patients', doctor.value.number_of_patients);
+    formData.append('is_active', doctor.value.is_active ? 1 : 0);
+
+
+    // Handle appointmentBookingWindow
+    if (doctor.value.appointmentBookingWindow && Array.isArray(doctor.value.appointmentBookingWindow)) {
+      doctor.value.appointmentBookingWindow.forEach((month, index) => {
+        formData.append(`appointmentBookingWindow[${index}][month]`, parseInt(month.month, 10)); // Ensure month is an integer
+         formData.append(`appointmentBookingWindow[${index}][year]`, parseInt(month.year, 10)); // Ensure month is an integer
+        formData.append(`appointmentBookingWindow[${index}][is_available]`, month.is_available ? 1 : 0); // Convert boolean to 1 or 0
       });
     } else {
-      console.error('Custom dates is not an array:', doctor.value.customDates);
-      throw new Error('Custom dates are required for Monthly frequency.');
+      console.error('appointmentBookingWindow is missing or not an array:', doctor.value.appointmentBookingWindow);
+      throw new Error('appointmentBookingWindow is required and must be an array.');
     }
-  } else {
-    // Ensure schedules is always an array
-    const schedulesArray = Array.isArray(doctor.value.schedules)
-      ? doctor.value.schedules
-      : doctor.value.schedules?.schedules
-        ? doctor.value.schedules.schedules
-        : [];
 
-    if (schedulesArray && Array.isArray(schedulesArray)) {
-      schedulesArray.forEach((schedule, index) => {
-        if (schedule && typeof schedule === 'object') {
-          Object.entries(schedule).forEach(([key, value]) => {
-            formData.append(`schedules[${index}][${key}]`, value);
-          });
-        } else {
-          console.error('Schedule is not an object:', schedule);
-        }
-      });
+    // Handle schedules or customDates based on frequency
+    if (doctor.value.frequency === 'Monthly') {
+      if (doctor.value.customDates && Array.isArray(doctor.value.customDates)) {
+        doctor.value.customDates.forEach((dateObj, index) => {
+          if (typeof dateObj === 'object' && dateObj !== null) {
+            Object.entries(dateObj).forEach(([key, value]) => {
+              formData.append(`customDates[${index}][${key}]`, value);
+            });
+          } else {
+            formData.append(`customDates[${index}]`, dateObj);
+          }
+        });
+      } else {
+        console.error('Custom dates is not an array:', doctor.value.customDates);
+        throw new Error('Custom dates are required for Monthly frequency.');
+      }
     } else {
-      console.error('Schedules is not an array:', schedulesArray);
-      throw new Error('Schedules are required for Daily or Weekly frequency.');
+      // Ensure schedules is always an array
+      const schedulesArray = Array.isArray(doctor.value.schedules)
+        ? doctor.value.schedules
+        : doctor.value.schedules?.schedules
+          ? doctor.value.schedules.schedules
+          : [];
+
+      if (schedulesArray && Array.isArray(schedulesArray)) {
+        schedulesArray.forEach((schedule, index) => {
+          if (schedule && typeof schedule === 'object') {
+            Object.entries(schedule).forEach(([key, value]) => {
+              formData.append(`schedules[${index}][${key}]`, value);
+            });
+          } else {
+            console.error('Schedule is not an object:', schedule);
+          }
+        });
+      } else {
+        console.error('Schedules is not an array:', schedulesArray);
+        throw new Error('Schedules are required for Daily or Weekly frequency.');
+      }
     }
+
+    // Handle avatar
+    if (doctor.value.avatar instanceof File) {
+      formData.append('avatar', doctor.value.avatar);
+    }
+
+    // Method handling
+    const method = isEditMode.value ? 'PUT' : 'POST';
+    formData.append('_method', method);
+
+     const url = isEditMode.value ? `/api/doctors/${doctor.value.id}` : '/api/doctors';
+
+    await axios.post(url, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+
+    toaster.success(`Doctor ${isEditMode.value ? 'updated' : 'added'} successfully`);
+    isLoading.value = false; // Reset isLoading on success
+    handleUserUpdate();
+    resetForm();
+  } catch (error) {
+    if (error.response?.data?.errors) {
+      setErrors(error.response.data.errors);
+    } else if (error.response?.data?.message) {
+      toaster.error(error.response.data.message);
+    } else {
+    }
+    isLoading.value = false; // <<< IMPORTANT: Reset isLoading on error
   }
-
-  // Handle avatar
-  if (doctor.value.avatar instanceof File) {
-    formData.append('avatar', doctor.value.avatar);
-  }
-
-  // Method handling
-  const method = isEditMode.value ? 'PUT' : 'POST';
-  formData.append('_method', method);
-
-  const url = isEditMode.value ? `/api/doctors/${doctor.value.id}` : '/api/doctors';
-
-
-  await axios.post(url, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  });
-  
-
-  toaster.success(`Doctor ${isEditMode.value ? 'updated' : 'added'} successfully`);
-  isLoading.value = false;    handleUserUpdate();
-  resetForm();
-} catch (error) {
-  if (error.response?.data?.errors) {
-    setErrors(error.response.data.errors);
-  } else if (error.response?.data?.message) {
-    toaster.error(error.response.data.message);
-  } else {
-    toaster.error('An unexpected error occurred');
-  }
-}
 };
 
 
-
-
 onMounted(() => {
-    getSpecializations();
+  getSpecializations();
 });
 </script>
 <template>
@@ -432,6 +441,7 @@ onMounted(() => {
                             </div>
                         </div>
 
+
                         <!-- Frequency and Start Time -->
                         <div class="row">
                             <div class="col-md-6 mb-4">
@@ -460,7 +470,19 @@ onMounted(() => {
                                     <span v-if="errors.avatar" class="invalid-feedback">{{ errors.avatar }}</span>
                                 </div>
                             </div>
-                            <div class="col-md-6 mb-4">
+                           
+                            <div class="col-md-6">
+                                <div class="form-check mt-4 pt-3">
+                                    <input type="checkbox" id="include_time" v-model="doctor.include_time"
+                                        class="form-check-input" />
+                                    <label for="include_time" class="form-check-label fs-6">
+                                        Include Time in print Appointment List
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                             <div class="col-md-12 mb-4">
                                 <AppointmentBookingWindowModel :isEditMode="isEditMode"
                                     :appointment-booking-window="doctor.appointmentBookingWindow"
                                     v-model="selectedMonths" />
@@ -508,18 +530,19 @@ onMounted(() => {
 
                         <!-- Modal Footer -->
                         <div class="modal-footer">
-              <button type="button" class="btn btn-outline-secondary" @click="closeModal">Cancel</button>
-              <button type="submit" class="btn btn-outline-primary" :disabled="isLoading">
-                {{ isEditMode ? 'Update Doctor' : 'Add Doctor' }}
-                <span v-if="isLoading" class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true"></span>
-              </button>
-            </div>
-            <div v-if="loading" class="modal-overlay">
-              <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
+                <button type="button" class="btn btn-outline-secondary" @click="closeModal">Cancel</button>
+                <button type="submit" class="btn btn-outline-primary" :disabled="isLoading">
+                  {{ isEditMode ? 'Update Doctor' : 'Add Doctor' }}
+                  <span v-if="isLoading" class="spinner-border spinner-border-sm ms-2" role="status"
+                    aria-hidden="true"></span>
+                </button>
               </div>
-            </div>
-          </Form>
+              <div v-if="loading" class="modal-overlay">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+              </div>
+                    </Form>
                 </div>
             </div>
         </div>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted} from 'vue';
+import { ref, onMounted, watch } from 'vue'; // Import 'watch'
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
@@ -7,20 +7,66 @@ import { useToastr } from '../../../Components/toster';
 import FolderListItem from './FolderListItem.vue';
 import { useSweetAlert } from '../../../Components/useSweetAlert';
 import FolderModel from './FolderModel.vue';
+import { useAuthStoreDoctor } from '../../../stores/AuthDoctor';
 
 const router = useRouter();
 const swal = useSweetAlert();
 const toaster = useToastr();
 
 // State
-const folders = ref([
-]);
+const folders = ref([]);
+const doctors = useAuthStoreDoctor(); // Initialize Pinia store
+const currentDoctorId = ref(null);
+const specializationId = ref(null);
+
+// Lifecycle Hook
+onMounted(async () => {
+  await doctors.getDoctor(); 
+  // Ensure the doctor data is fetched and awaited.
+  // Assuming doctors.getDoctor() populates doctors.doctorData in the store.
+
+  // After the async operation, doctorData should be available.
+  // Always add a check in case the API call failed or doctorData isn't populated.
+  if (doctors.doctorData) {
+    currentDoctorId.value = doctors.doctorData.id;
+    // Ensure specializationId is a number. Convert it if it might come as a string.
+    specializationId.value = doctors.doctorData.specialization_id 
+                             ? Number(doctors.doctorData.specialization_id) 
+                             : null; // Or 0, depending on your default for an empty ID
+  } else {
+    // Handle the case where doctor data couldn't be loaded (e.g., show error, redirect)
+    toaster.error('Failed to load doctor profile. Please try again.');
+    // Optionally, return or redirect to prevent further execution if doctor data is crucial
+    // router.push({ name: 'login' }); 
+    return; 
+  }
+
+  // Now that currentDoctorId is guaranteed to be set (or handled as null),
+  // you can safely call getFolders.
+  if (currentDoctorId.value !== null) {
+    getFolders();
+  } else {
+    toaster.info('Doctor ID not found. Cannot fetch folders.');
+  }
+});
+
+// Use a watcher to react to changes in currentDoctorId if getFolders could be called later
+// (Though in this specific setup, onMounted handles the initial call)
+/*
+watch(currentDoctorId, (newId) => {
+  if (newId !== null) {
+    getFolders(); // Re-fetch folders if doctorId changes (e.g., after login/logout flow)
+  }
+});
+*/
+
 const loading = ref(false);
 const error = ref(null);
 const showCreateModal = ref(false);
 const selectedFolder = ref(null);
 const isEditMode = ref(false);
 const searchTerm = ref('');
+
 const filteredFolders = computed(() => {
   if (!searchTerm.value) return folders.value;
   
@@ -30,17 +76,29 @@ const filteredFolders = computed(() => {
     (folder.description && folder.description.toLowerCase().includes(search))
   );
 });
-// API Calls (commented out for demo, enable as needed)
+
+// API Calls
 const getFolders = async () => {
+  // Ensure currentDoctorId has a value before making the API call
+  if (currentDoctorId.value === null) {
+    console.warn('Cannot fetch folders: currentDoctorId is null.');
+    return; // Exit if ID is not available
+  }
+
+  loading.value = true; // Set loading state before the call
   try {
-   
-    const response = await axios.get('/folders');
+    // Pass currentDoctorId.value to access the actual value of the ref
+    const response = await axios.get('/folders', {
+      params: { // Use 'params' for GET requests to send query parameters
+        doctorid: currentDoctorId.value, 
+      },
+    });
     folders.value = response.data.data || response.data;
   } catch (err) {
     error.value = err.response?.data?.message || 'Failed to load folders';
     toaster.error(error.value);
   } finally {
-   
+    loading.value = false; // Reset loading state
   }
 };
 
@@ -83,6 +141,7 @@ const openModal = (folder = null, edit = false) => {
 const viewFolder = (folderId) => {
   router.push({ name: 'FolderDetails', params: { id: folderId } });
 };
+
 const handleEdit = (folder) => {
   openModal(folder, true);
 };
@@ -94,18 +153,11 @@ const handleDelete = (id, name) => {
 const handleView = (folderId) => {
   viewFolder(folderId);
 };
-
-
-onMounted(() => {
-  getFolders();
-});
 </script>
-
 
 <template>
   <div class="folder-page min-vh-100 bg-light p-4">
     <div class="container">
-      <!-- Enhanced Header -->
       <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h1 class="h3 fw-bold text-dark mb-1">Template Folders</h1>
@@ -120,7 +172,6 @@ onMounted(() => {
         </button>
       </div>
 
-      <!-- Search and Filter -->
       <div class="card shadow-sm mb-4">
         <div class="card-body py-2">
           <div class="input-group">
@@ -137,10 +188,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Enhanced Folder Grid -->
       <div class="card shadow-sm">
         <div class="card-body p-4">
-          <!-- Loading State -->
           <div v-if="loading" class="text-center py-5">
             <div class="spinner-border text-primary" role="status">
               <span class="visually-hidden">Loading...</span>
@@ -148,14 +197,12 @@ onMounted(() => {
             <p class="text-muted mt-3 mb-0">Loading your folders...</p>
           </div>
 
-          <!-- Error State -->
           <div v-else-if="error" class="alert alert-danger d-flex align-items-center gap-2" role="alert">
             <i class="fas fa-exclamation-circle"></i>
             <div>{{ error }}</div>
           </div>
 
-          <!-- Empty State -->
-          <div v-else-if="folders.length === 0" class="text-center py-5">
+          <div v-else-if="folders.length === 0 && !loading" class="text-center py-5">
             <div class="empty-state">
               <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
               <h5 class="text-muted">No Folders Yet</h5>
@@ -166,26 +213,25 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Folder Grid -->
           <div class="row gap-3">
             <FolderListItem
               v-for="folder in filteredFolders"
               :key="folder.id"
+              :folderid="folder.id"
               :folder="folder"
               @edit="handleEdit"
               @delete="handleDelete"
               @view="handleView"
             />
           </div>
-        
-         
         </div>
       </div>
 
-      <!-- Folder Modal -->
       <FolderModel
         v-model="showCreateModal"
         :folder="selectedFolder"
+        :doctorid="currentDoctorId"
+        :specializationId="specializationId"
         :is-edit="isEditMode"
         @folder-saved="handleFolderSaved"
       />

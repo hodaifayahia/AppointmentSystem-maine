@@ -1,29 +1,43 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import axios from 'axios';
-import { useToastr } from '../../../Components/toster'; // Adjust path if needed for your toaster utility
+import { useToastr } from '../../../Components/toster';
+import PdfPreviewModal from '../../../Components/composables/PdfPreviewModal.vue';
 
 const toaster = useToastr();
 
 const props = defineProps({
   patientId: {
-    type: [Number, String], // Keep as [Number, String] for flexibility
+    type: [Number, String],
     required: true,
   },
+  appointmentId: {
+    type: [Number, String],
+    required: false,
+  }
 });
 
-const prescriptions = ref([]); // Changed from 'documents' to 'prescriptions'
+// Reactive state
+const showPdfPreviewModal = ref(false);
+const pdfToPreviewUrl = ref(null);
+const prescriptions = ref([]);
 const loading = ref(false);
 const error = ref(null);
+const isPrinting = ref(false);
 
+// Methods
 const fetchPrescriptionsHistory = async () => {
   try {
     loading.value = true;
-    error.value = null; // Clear previous errors
-    // Assuming your API endpoint is still /api/patients/{patientId}/prescriptions
-    const response = await axios.get(`/api/patients/${props.patientId}/prescriptions`);
-    // Ensure response.data contains the array of prescriptions directly
-    prescriptions.value = response.data; 
+    error.value = null;
+    const response = await axios.get(`/api/consultation/${props.patientId}/documents`, {
+      params: {
+        type: 'prescription',
+        appointment_id: props.appointmentId ?? null
+      },
+    });
+    
+    prescriptions.value = response.data.data || [];
   } catch (err) {
     console.error('Error fetching prescription history:', err);
     error.value = err.response?.data?.message || 'Failed to load prescription history.';
@@ -33,41 +47,138 @@ const fetchPrescriptionsHistory = async () => {
   }
 };
 
-const viewPrescription = (prescriptionId) => {
-  // Logic to view the full prescription details in a new tab/page
-  // This would typically navigate to a route like /prescriptions/{id} or open a modal.
-  // For demonstration, let's open a dummy URL.
-  const url = `/prescriptions/${prescriptionId}/view`; // Adjust this URL to your actual view route
-  window.open(url, '_blank');
-  toaster.info(`Viewing Prescription ID: ${prescriptionId}`);
+const generatePdf = async (pdfPath) => {
+  try {
+    const response = await axios.get(`/api/prescription/download`, {
+      params: { path: pdfPath },
+      responseType: 'blob'
+    });
+
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `prescription_${new Date().toISOString().slice(0,10)}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Revoke the object URL after a delay
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+    }, 1000);
+
+    toaster.success('PDF downloaded successfully');
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    toaster.error('Failed to download PDF');
+  }
+};
+const viewPrescription = async (prescription) => {
+  try {
+    const response = await axios.get(`/api/prescription/view/${prescription.appointment_id}`, {
+      responseType: 'blob'
+    });
+
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+
+    // Always preview inside modal
+    pdfToPreviewUrl.value = url;
+    showPdfPreviewModal.value = true;
+
+  } catch (error) {
+    console.error('Error viewing prescription:', error);
+    toaster.error('Failed to view prescription');
+  }
 };
 
-const printPrescription = (prescriptionId) => {
-  // Logic to print the prescription (e.g., open a PDF or a print-friendly HTML page)
-  // This assumes you have a backend route that generates a printable version/PDF.
-  const url = `/prescriptions/${prescriptionId}/print`; // Adjust this URL to your actual print route
-  const printWindow = window.open(url, '_blank');
-  // Optional: Add onload for print automation if it's an HTML page
-  printWindow.onload = () => {
-    printWindow.print();
-  };
-  toaster.info(`Printing Prescription ID: ${prescriptionId}`);
+const printPrescription = async (pdfPath) => {
+  if (isPrinting.value) return;
+  
+  try {
+    isPrinting.value = true;
+    const response = await axios.get(`/api/prescription/print`, {
+      params: { path: pdfPath },
+      responseType: 'blob'
+    });
+
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    
+    // Create iframe for printing
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    
+    iframe.onload = () => {
+      setTimeout(() => {
+        iframe.contentWindow?.print();
+        
+        // Cleanup after printing
+        iframe.contentWindow?.addEventListener('afterprint', () => {
+          document.body.removeChild(iframe);
+          window.URL.revokeObjectURL(url);
+          isPrinting.value = false;
+        });
+        
+        // Fallback cleanup in case afterprint doesn't fire
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+            window.URL.revokeObjectURL(url);
+            isPrinting.value = false;
+          }
+        }, 5000);
+      }, 500);
+    };
+    
+    // Handle iframe load error
+    iframe.onerror = () => {
+      document.body.removeChild(iframe);
+      window.URL.revokeObjectURL(url);
+      isPrinting.value = false;
+      toaster.error('Failed to load PDF for printing');
+    };
+    
+  } catch (error) {
+    console.error('Error printing prescription:', error);
+    toaster.error(error.message || 'Failed to print prescription');
+    isPrinting.value = false;
+  }
+};
+
+const handlePdfPreviewClose = () => {
+  showPdfPreviewModal.value = false;
+
+  if (pdfToPreviewUrl.value) {
+    window.URL.revokeObjectURL(pdfToPreviewUrl.value);
+    pdfToPreviewUrl.value = null;
+  }
 };
 
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A';
   try {
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) { // Check for invalid date
-      return dateString; // Return original string if invalid
-    }
-    return date.toLocaleDateString(); // Formats as per user's locale (e.g., 28/05/2025)
+    return isNaN(date.getTime()) ? dateString : date.toLocaleString();
   } catch (e) {
-    return dateString; // Fallback in case of parsing error
+    return dateString;
   }
 };
 
+const refresh = async () => {
+  await fetchPrescriptionsHistory();
+};
 
+// Expose methods
+defineExpose({
+  fetchPrescriptionsHistory,
+  refresh
+});
+
+// Lifecycle hooks
 onMounted(() => {
   if (props.patientId) {
     fetchPrescriptionsHistory();
@@ -104,44 +215,54 @@ watch(() => props.patientId, (newId) => {
       <table class="premium-table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Date</th>
-            <th>Physician</th>
-            <th>Patient Name</th>
-            <th>Medication Count</th>
-            <th>Status</th>
+            <th>Created Date</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="prescription in prescriptions" :key="prescription.id">
-            <td>{{ prescription.id }}</td>
-            <td>{{ formatDate(prescription.prescription_date) }}</td>
-            <td>{{ prescription.physician_info }}</td>
-            <td>{{ prescription.patient_name }}</td>
-            <td>{{ prescription.medications ? prescription.medications.length : 0 }}</td>
-            <td>{{ prescription.signature_status }}</td>
+            <td>{{ formatDate(prescription.created_at) }}</td>
             <td>
-              <button @click="viewPrescription(prescription.id)" class="premium-icon-btn view-btn" title="View Details">
-                <i class="fas fa-eye"></i>
-              </button>
-              <button @click="printPrescription(prescription.id)" class="premium-icon-btn print-btn" title="Print">
-                <i class="fas fa-print"></i>
-              </button>
+              <div class="premium-actions">
+                <button 
+                  @click="generatePdf(prescription.document_path)" 
+                  class="premium-icon-btn download-btn" 
+                  title="Download PDF"
+                >
+                  <i class="fas fa-download"></i>
+                </button>
+                <button 
+                  @click="viewPrescription(prescription)" 
+                  class="premium-icon-btn view-btn" 
+                  title="View PDF"
+                >
+                  <i class="fas fa-eye"></i>
+                </button>
+                <button 
+                  @click="printPrescription(prescription.document_path)" 
+                  class="premium-icon-btn print-btn" 
+                  title="Print PDF"
+                  :disabled="isPrinting"
+                >
+                  <i :class="['fas', isPrinting ? 'fa-spinner fa-spin' : 'fa-print']"></i>
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
   </div>
+
+  <PdfPreviewModal
+    v-if="showPdfPreviewModal"
+    :isVisible="showPdfPreviewModal"
+    :pdfUrl="pdfToPreviewUrl"
+    @close="handlePdfPreviewClose"
+  />
 </template>
 
 <style scoped>
-/*
-   Copied and adapted styles from your premium document history component
-   Ensure these styles are either in this component's <style scoped> block
-   or are available globally if they are part of your core premium CSS.
-*/
 .premium-document-history-section {
   background-color: #ffffff;
   padding: 1.5rem;
@@ -204,18 +325,31 @@ watch(() => props.patientId, (newId) => {
   font-size: 1.1rem;
   border-radius: 5px;
   transition: background-color 0.2s ease-in-out;
+  margin-right: 5px;
 }
 
 .premium-icon-btn:hover {
   background-color: #e2e8f0;
 }
 
-.view-btn { /* Renamed from .download-btn */
+.view-btn {
   color: #3a5bb1;
 }
 
 .print-btn {
   color: #28a745;
-  margin-left: 0.5rem;
+}
+
+.download-btn {
+  color: #6c757d;
+}
+
+.premium-icon-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.premium-icon-btn:disabled:hover {
+  background-color: transparent;
 }
 </style>

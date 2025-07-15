@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Resources\SpecializationResource;
 use App\Models\Specialization;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+
 use Illuminate\Support\Str;
 
 
@@ -13,12 +15,19 @@ class specializationsController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
-    {
-         
-        $specialization =  Specialization::get();
-        return SpecializationResource::collection($specialization);
+   // Improved version
+public function index(Request $request)
+{
+    $query = Specialization::with('service'); // ✅ Use $query consistently
+    
+    if (!$request->has('all') || !$request->boolean('all')) {
+        $query->where('is_active', 1); // ✅ Now $query is defined
     }
+    
+    return SpecializationResource::collection($query->get()); // ✅ Execute the query
+}
+
+
 
     /**
      * Show the form for creating a new resource.
@@ -36,6 +45,8 @@ class specializationsController extends Controller
             'name' => 'required|string|max:255|unique:specializations,name,NULL,id,deleted_at,NULL',
             'description' => 'nullable|string|max:1000',
             'photo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Max 2MB file size
+            'is_active'=>'nullable|boolean',
+            'service_id'=>'nullable|exists:services,id'
         ]);
     
         try {
@@ -109,6 +120,8 @@ class specializationsController extends Controller
             'name' => 'required|string|max:255|unique:specializations,name,' . $id . ',id,deleted_at,NULL',
             'description' => 'nullable|string|max:1000',
             'photo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Max 2MB file size
+            'is_active'=>'nullable|boolean',
+            'service_id'=>'nullable|exists:services,id'
         ]);
     
         try {

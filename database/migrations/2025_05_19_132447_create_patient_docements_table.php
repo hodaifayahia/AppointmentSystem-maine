@@ -15,6 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('patient_id')->constrained('patients')->onDelete('cascade');
             $table->foreignId('doctor_id')->constrained('doctors')->onDelete('cascade');
+            //appointment_id
+            $table->foreignId('appointment_id')->nullable()->constrained('appointments')->onDelete('cascade');
             // folders id
             $table->foreignId('folder_id')->constrained('folders')->onDelete('cascade');
             $table->string('document_type');

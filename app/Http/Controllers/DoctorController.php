@@ -24,36 +24,54 @@ use Illuminate\Support\Facades\Validator;
 class DoctorController extends Controller
 {
     public function index(Request $request)
-{
-    // Get the filter query parameters
-    $filter = $request->query('query');
-    $doctorId = $request->query('doctor_id');
+    {
+        // Get the filter query parameters
+        $filter = $request->query('query');
+        $doctorId = $request->query('doctor_id');
 
-    // Base query for doctors with eager loading
-    $doctorsQuery = Doctor::with([
-        'user:id,name,email,avatar', // Load only necessary fields
-        'specialization:id,name',
-        'schedules',
-        'appointmentAvailableMonths',
-        'appointmentForce'
-    ])
-    ->whereHas('user', fn($query) => $query->where('role', 'doctor'));
+        // Get the authenticated user
+        $user = Auth::user();
 
-    // Apply filters if provided
-    if ($filter) {
-        $doctorsQuery->where('specialization_id', $filter);
+        // Base query for doctors with eager loading
+        $doctorsQuery = Doctor::with([
+            'user:id,name,email,avatar,is_active', // Load only necessary fields
+            'specialization:id,name',
+            'schedules',
+            'appointmentAvailableMonths',
+            'appointmentForce'
+        ]);
+
+        // Conditionally apply the user role and active status filter
+        // Admins/SuperAdmins see all doctors, others only see active 'doctor' role users
+        if ($user && in_array($user->role, ['admin', 'SuperAdmin'])) {
+            // For admin/SuperAdmin, just ensure a user exists (or remove this whereHas if you don't care if a doctor has no user)
+            $doctorsQuery->whereHas('user');
+        } else {
+            // For other users, apply the specific role and active status filters
+            $doctorsQuery->whereHas('user', function ($query) {
+                $query->where('role', 'doctor')
+                      ->where('is_active', true);
+            });
+        }
+
+        // Apply filters ($filter and $doctorId) based on the user's role
+        // This part remains the same as our previous discussion
+        if ($user && !in_array($user->role, ['admin', 'SuperAdmin'])) {
+            if ($filter) {
+                // Assuming $filter is the specialization ID
+                $doctorsQuery->where('specialization_id', $filter);
+            }
+
+            if ($doctorId) {
+                $doctorsQuery->where('id', $doctorId);
+            }
+        }
+
+        // Paginate the results efficiently
+        $doctors = $doctorsQuery->paginate(30); // Adjust per page as needed
+
+        return DoctorResource::collection($doctors);
     }
-
-    if ($doctorId) {
-        $doctorsQuery->where('id', $doctorId);
-    }
-
-    // Paginate the results efficiently
-    $doctors = $doctorsQuery->paginate(30); // Adjust per page as needed
-
-    return DoctorResource::collection($doctors);
-}
-
     
     
     public function WorkingDates(Request $request)
@@ -306,9 +324,11 @@ public function store(Request $request)
         'email' => 'required',
         'phone' => 'nullable|string',
         'password' => 'required|min:8',
+        'is_active' => 'required|boolean',
         'start_time_force' => 'nullable|date_format:H:i',
         'end_time_force' => 'nullable|date_format:H:i|after:start_time',
         'number_of_patients' => 'nullable|min:1',
+        'include_time' => 'nullable|boolean',
         'specialization' => 'required|exists:specializations,id',
         'frequency' => 'required|string',
         'patients_based_on_time' => 'required|boolean',
@@ -345,9 +365,10 @@ public function store(Request $request)
                 'name' => $request->name,
                 'email' => $request->email,
                 'phone' => $request->phone,
-                'created_by' => 2,
+                'created_by' => Auth::id(),
                 'password' => Hash::make($request->password),
                 'avatar' => $avatarPath,
+                'is_active' => $request->is_active,
                 'role' => 'doctor',
             ]);
 
@@ -360,6 +381,9 @@ public function store(Request $request)
                 'frequency' => $request->frequency,
                 'patients_based_on_time' => $request->patients_based_on_time,
                 'time_slots' => $request->time_slot,
+                'include_time' => $request->include_time,
+                
+
             ]);
 
             AppointmentForcer::create([
@@ -810,16 +834,19 @@ private function prepareScheduleData(Doctor $doctor, Carbon $date, string $shift
     public function update(Request $request, $doctorid)
     {
         // dd($request->all());
+     
         $validated = $request->validate([
            'name' => 'required|string|max:255',
             'email' => 'required',
             'phone' => 'nullable|string',
             'password' => 'nullable|min:8',
+            'is_active' => 'required|boolean',
             'start_time_force' => 'nullable|date_format:H:i',
             'end_time_force' => 'nullable|date_format:H:i|after:start_time',
             'number_of_patients' => 'nullable|min:1',
             'specialization' => 'required|exists:specializations,id',
             'frequency' => 'required|string',
+            'include_time' => 'nullable|boolean',
             'patients_based_on_time' => 'required|boolean',
             'time_slot' => 'required_if:patients_based_on_time,true|nullable|integer',
             'schedules' => 'array|required_without:customDates',
@@ -874,7 +901,7 @@ private function prepareScheduleData(Doctor $doctor, Carbon $date, string $shift
                     }
     
                     $avatarPath = $newAvatarPath;
-                }
+                }   
     
                 // Update user information
                 $doctor->user->update([
@@ -882,6 +909,7 @@ private function prepareScheduleData(Doctor $doctor, Carbon $date, string $shift
                     'email' => $request->email,
                     'phone' => $request->phone,
                     'avatar' => $avatarPath,
+                    'is_active' => $request->is_active,
                 ]);
     
                 // Update password if provided
@@ -897,6 +925,7 @@ private function prepareScheduleData(Doctor $doctor, Carbon $date, string $shift
                     'frequency' => $request->frequency,
                     'patients_based_on_time' => $request->patients_based_on_time ,
                     'time_slot' => $request->time_slot ,
+                    'include_time' => $request->include_time,
                 ]);
                 
                 

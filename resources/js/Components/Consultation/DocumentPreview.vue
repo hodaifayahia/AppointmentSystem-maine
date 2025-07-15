@@ -1,9 +1,121 @@
+<template>
+  <div class="premium-document-editor">
+    <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress">
+      <div class="progress-bar">
+        <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+      </div>
+      <div class="progress-text">{{ uploadProgress }}% - Processing document...</div>
+    </div>
+
+    <div class="premium-preview-main">
+      <div class="premium-preview-header">
+        <div class="premium-preview-title">
+          <h3 class="title-text">
+            Document Preview
+            <span v-if="isTemplate" class="template-badge">Template</span>
+          </h3>
+        </div>
+
+        <div class="premium-preview-actions">
+          <button @click="refreshPreview" class="premium-btn premium-refresh-btn">
+            🔄 Refresh
+          </button>
+          <button
+            @click="toggleEditMode"
+            class="premium-btn premium-edit-btn"
+            :class="{ active: !previewMode }"
+          >
+            <span v-if="previewMode">✏️ Edit</span>
+            <span v-else>✅ Done</span>
+          </button>
+          <button
+            @click="generatePdf"
+            class="premium-btn premium-pdf-btn"
+            :disabled="!documentContent || isGeneratingPdf"
+          >
+            <span v-if="isGeneratingPdf">Saving...</span>
+            <span v-else>💾 Save </span>
+          </button>
+        </div>
+      </div>
+      
+      <div v-if="!previewMode" class="premium-editor-toolbar">
+        <div class="toolbar-group">
+          <button @click="formatText('bold')" class="toolbar-btn">
+            <b>B</b>
+          </button>
+          <button @click="formatText('italic')" class="toolbar-btn">
+            <i>I</i>
+          </button>
+          <button @click="formatText('underline')" class="toolbar-btn">
+            <u>U</u>
+          </button>
+        </div>
+        <div class="toolbar-group">
+          <select @change="changeHeading($event.target.value)" class="heading-select">
+            <option value="p">Paragraph</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+            <option value="h4">Heading 4</option>
+          </select>
+        </div>
+        <div class="toolbar-group">
+          <button @click="insertList(false)" class="toolbar-btn">
+            • List
+          </button>
+          <button @click="insertList(true)" class="toolbar-btn">
+            1. List
+          </button>
+        </div>
+        <div class="toolbar-group">
+          <button @click="insertLink" class="toolbar-btn">
+            🔗 Link
+          </button>
+        </div>
+      </div>
+
+      <div class="premium-document-preview-container">
+        <div v-if="loading" class="loading-state">
+          <div class="loading-spinner"></div>
+          <p>Loading document preview...</p>
+        </div>
+
+        <div v-else-if="!documentContent" class="empty-state">
+          <div class="empty-icon">📄</div>
+          <h3>No Document Loaded</h3>
+          <p>Upload a DOCX file or add content to get started</p>
+        </div>
+
+        <div v-else class="document-wrapper">
+          <div
+            v-if="previewMode"
+            class="document-preview"
+            v-html="documentContent"
+          ></div>
+
+          <div
+            v-else
+            ref="editorRef"
+            class="document-editor"
+            contenteditable="true"
+            @input="handleEditorInput"
+            @keydown="handleKeydown"
+            spellcheck="false"
+          ></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { useToastr } from '../../Components/toster';
 import { renderAsync } from 'docx-preview';
 import axios from 'axios';
 import { useSweetAlert } from '../../Components/useSweetAlert';
+import { saveAs } from 'file-saver';
 
 const toaster = useToastr();
 const props = defineProps({
@@ -16,234 +128,112 @@ const props = defineProps({
     default: false
   },
   selectedTemplates: {
-    type: Array,
-    default: () => []
+    type: Object,
   },
+
   templateData: {
     type: Object,
     default: () => ({})
   },
-  // New prop for patient ID
+  appointmentId: {
+    type: [String, Number],
+    required: true
+  },
+  isTemplate: {
+    type: Boolean,
+    default: false
+  },
+  MimeType: {
+    type: String,
+  },
+  codebash: {
+    type: String,
+    default: ''
+  },
+  doctorId: {
+    type: [String, Number],
+    required: true
+  },
   patientId: {
     type: [String, Number],
     required: true
+  },
+  folderid: {
+    type: Number,
+    required: false
   }
 });
 
-const emit = defineEmits(['update:previewContent', 'refresh', 'documentGenerated']);
+const emit = defineEmits(['update:previewContent', 'refresh', 'documentGenerated', 'documentSaved']);
 
 const previewMode = ref(true);
 const documentContent = ref(props.previewContent);
+const originalContent = ref(props.previewContent); // Store original content
 const editorRef = ref(null);
 const wordFile = ref(null);
 const uploadProgress = ref(0);
 const templateFile = ref(null);
 const isTemplate = ref(false);
+const isGeneratingPdf = ref(false);
+const documentHistory = ref(null);
+
+const barcodeBase64 = ref('');
+const codebashValue = ref(''); // <-- Add this
+
+const getbashcode = async () => {
+  try {
+    const response = await axios.get(`/api/consultations/by-appointment/${props.appointmentId}`, {
+      params: {
+        isdoneconsultation: false
+      }
+    });
+    barcodeBase64.value = response.data.barcode_base64 || null;
+    codebashValue.value = response.data.data?.codebash || ''; // <-- Set codebash from backend
+  } catch (error) {
+    console.error('Error fetching CodeBash:', error);
+    toaster.error('Failed to load CodeBash');
+  }
+}
+// Modal state
+const showTypeDialog = ref(false);
+const pendingPdfAction = ref(null);
+const docTypeLabel = ref('');
+
+const getDocTypeLabel = (mimeType) => {
+  if (mimeType === 'prescription_type' || mimeType === 'consulation') return 'consulation';
+  return 'prescription';
+};
+
+const handleSaveClick = () => {
+  let mimeType = props.MimeType || props.selectedTemplates?.mime_type || '';
+  docTypeLabel.value = mimeType;
+  showTypeDialog.value = true;
+  pendingPdfAction.value = () => generatePdf();
+};
+
+const closeTypeDialog = () => {
+  showTypeDialog.value = false;
+  pendingPdfAction.value = null;
+};
 
 // Watch for changes in the previewContent prop
 watch(() => props.previewContent, (newValue) => {
   if (previewMode.value) {
     documentContent.value = newValue;
+    originalContent.value = newValue; // Update original content when prop changes
   }
 });
 
-// Enhanced file upload handler with template detection
-const handleFileUpload = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  wordFile.value = file;
-
-  const isTemplateFile = await detectTemplateFile(file);
-
-  if (isTemplateFile) {
-    isTemplate.value = true;
-    templateFile.value = file;
-    await handleTemplateFile(file);
-  } else {
-    isTemplate.value = false;
-    await handleRegularDocxFile(file);
+// Update the handleDocumentSaved function
+const handleDocumentSaved = () => {
+  // Access the ref's value property
+  if (documentHistory.value) {
+    documentHistory.value.refresh();
   }
-};
-
-const detectTemplateFile = async (file) => {
-  try {
-    const PizZip = (await import('pizzip')).default;
-    const Docxtemplater = (await import('docxtemplater')).default;
-
-    const content = await readFileAsArrayBuffer(file);
-    const zip = new PizZip(content);
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-    });
-
-    const xmlContent = zip.files['word/document.xml']?.asText();
-
-    const templatePatterns = [
-      /{[^}]+}/g,
-      /\$\{[^}]+\}/g,
-      /\[\[.*?\]\]/g,
-    ];
-
-    return templatePatterns.some(pattern => pattern.test(xmlContent));
-  } catch (error) {
-    console.log('Template detection failed, treating as regular document');
-    return false;
-  }
-};
-
-const handleTemplateFile = async (file) => {
-  try {
-    const PizZip = (await import('pizzip')).default;
-    const Docxtemplater = (await import('docxtemplater')).default;
-
-    uploadProgress.value = 20;
-
-    const content = await readFileAsArrayBuffer(file);
-    const zip = new PizZip(content);
-
-    uploadProgress.value = 40;
-
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-    });
-
-    const placeholders = extractPlaceholders(doc);
-
-    uploadProgress.value = 60;
-
-    const sampleData = generateSampleData(placeholders);
-    const dataToUse = Object.keys(props.templateData).length > 0 ? props.templateData : sampleData;
-
-    doc.setData(dataToUse);
-    doc.render();
-
-    uploadProgress.value = 80;
-
-    const renderedBuffer = doc.getZip().generate({ type: 'arraybuffer' });
-    const renderedBlob = new Blob([renderedBuffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-
-    await renderDocxToHtml(renderedBlob);
-
-    uploadProgress.value = 100;
-
-    emit('documentGenerated', {
-      type: 'template',
-      placeholders,
-      templateFile: file,
-      renderedData: dataToUse
-    });
-
-  } catch (error) {
-    console.error('Template processing error:', error);
-    await handleRegularDocxFile(file);
-  }
-};
-
-const handleRegularDocxFile = async (file) => {
-  try {
-    const { renderAsync } = await import('docx-preview');
-
-    uploadProgress.value = 30;
-
-    const tempContainer = document.createElement('div');
-    document.body.appendChild(tempContainer);
-
-    uploadProgress.value = 60;
-
-    await renderAsync(file, tempContainer, null, {
-      className: 'docx-wrapper',
-      inWrapper: false,
-      ignoreWidth: false,
-      ignoreHeight: false,
-      ignoreFonts: false,
-      breakPages: false,
-      ignoreLastRenderedPageBreak: false,
-      experimental: false,
-      trimXmlDeclaration: false,
-      useBase64URL: true,
-      renderHeaders: true,
-      renderFooters: true,
-      renderFootnotes: true,
-      renderEndnotes: true
-    });
-
-    uploadProgress.value = 90;
-
-    let renderedHTML = tempContainer.innerHTML;
-    renderedHTML = cleanDocxPreviewHtml(renderedHTML);
-    renderedHTML = preserveWordFormatting(renderedHTML);
-
-    document.body.removeChild(tempContainer);
-
-    documentContent.value = `
-      <div class="document-content" contenteditable="true">
-        ${renderedHTML}
-      </div>
-    `;
-
-    uploadProgress.value = 100;
-
-  } catch (error) {
-    console.error("Docx-preview conversion error:", error);
-    uploadProgress.value = 0;
-  }
-};
-
-const extractPlaceholders = (doc) => {
-  const placeholders = new Set();
-
-  try {
-    doc.setData({});
-    doc.render();
-  } catch (error) {
-    const errorMessage = error.message || '';
-    const matches = errorMessage.match(/tag "([^"]+)"/g);
-    if (matches) {
-      matches.forEach(match => {
-        const placeholder = match.replace(/tag "|"/g, '');
-        placeholders.add(placeholder);
-      });
-    }
-  }
-
-  return Array.from(placeholders);
-};
-
-const generateSampleData = (placeholders) => {
-  const sampleData = {};
-
-  placeholders.forEach(placeholder => {
-    const lowerPlaceholder = placeholder.toLowerCase();
-
-    if (lowerPlaceholder.includes('name')) {
-      sampleData[placeholder] = 'John Doe';
-    } else if (lowerPlaceholder.includes('date')) {
-      sampleData[placeholder] = new Date().toLocaleDateString();
-    } else if (lowerPlaceholder.includes('email')) {
-      sampleData[placeholder] = 'john.doe@example.com';
-    } else if (lowerPlaceholder.includes('company')) {
-      sampleData[placeholder] = 'Acme Corporation';
-    } else if (lowerPlaceholder.includes('address')) {
-      sampleData[placeholder] = '123 Main Street, City, State 12345';
-    } else if (lowerPlaceholder.includes('phone')) {
-      sampleData[placeholder] = '+1 (555) 123-4567';
-    } else if (lowerPlaceholder.includes('amount') || lowerPlaceholder.includes('price')) {
-      sampleData[placeholder] = '$1,000.00';
-    } else {
-      sampleData[placeholder] = `[${placeholder}]`;
-    }
-  });
-
-  return sampleData;
 };
 
 const renderDocxToHtml = async (blob) => {
   try {
-    const { renderAsync } = await import('docx-preview');
-
     const tempContainer = document.createElement('div');
     document.body.appendChild(tempContainer);
 
@@ -270,11 +260,14 @@ const renderDocxToHtml = async (blob) => {
 
     document.body.removeChild(tempContainer);
 
-    documentContent.value = `
+    const finalContent = `
       <div class="document-content" contenteditable="true">
         ${renderedHTML}
       </div>
     `;
+
+    documentContent.value = finalContent;
+    originalContent.value = finalContent; // Store the original rendered content
 
   } catch (error) {
     console.error('Docx rendering error:', error);
@@ -313,518 +306,205 @@ const generateDocumentWithData = async (newData) => {
   }
 };
 
-const downloadGeneratedDocument = async (data = props.previewContent) => {
+const downloadGeneratedDocument = async (data = documentContent.value) => {
   try {
     const blob = await generateDocumentWithData(data);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `generated-document-${Date.now()}.docx`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    saveAs(blob, `generated-document-${Date.now()}.docx`);
   } catch (error) {
     console.error('Download failed:', error);
-    alert('Failed to generate document. Please check your template data.');
+    toaster.error('Failed to generate document. Please check your template data.');
   }
 };
-
-// New Word Document Generation using Docxtemplater for better styling fidelity
-const generateWordDocument = async () => {
-  try {
-    toaster.info('Generating Word document...');
-
-    const PizZip = (await import('pizzip')).default;
-    const Docxtemplater = (await import('docxtemplater')).default;
-
-    let content = editorRef.value ? editorRef.value.innerHTML : documentContent.value;
-
-    if (!content) {
-      toaster.error('No content to generate document from');
-      return;
-    }
-
-    // Create a temporary container to apply styles and process HTML elements
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = content;
-
-    // Convert images to base64
-    await convertImagesToBase64(tempDiv);
-
-    // Apply inline styles to mimic preview
-    const styledHtml = await createStyledHtmlForWord(tempDiv);
-
-    // Minimal DOCX structure to insert the styled HTML
-    const docxXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <w:body>
-    ${convertHtmlToWordprocessingML(styledHtml)}
-  </w:body>
-</w:document>`;
-
-    const zip = new PizZip();
-    zip.file('word/document.xml', docxXml);
-    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-</Types>`);
-    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>`);
-
-    const generatedDoc = new Docxtemplater(zip);
-    generatedDoc.render(); // Render with empty data if no template placeholders
-
-    const output = generatedDoc.getZip().generate({
-      type: 'blob',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    });
-
-    const url = window.URL.createObjectURL(output);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `document-${Date.now()}.docx`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-
-    toaster.success('Word document generated successfully!');
-  } catch (error) {
-    console.error('Word generation error:', error);
-    toaster.error('Failed to generate Word document');
-  } finally {
-    props.loading = false;
+const confirmTypeDialog = () => {
+  showTypeDialog.value = false;
+  if (pendingPdfAction.value) pendingPdfAction.value();
+  pendingPdfAction.value = null;
+};
+/**
+ * Generates a PDF from the preview content using a backend service.
+ */
+const generatePdf = async () => {
+  if (!documentContent.value || documentContent.value.includes('premium-empty-state')) {
+    return;
   }
-};
 
-// Helper to convert HTML to simplified WordprocessingML
-const convertHtmlToWordprocessingML = (htmlString) => {
-  const doc = new DOMParser().parseFromString(htmlString, 'text/html');
-  let wordML = '';
+  await getbashcode();
 
-  const processNode = (node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      // Escape XML sensitive characters
-      const text = node.textContent.replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-      wordML += `<w:t>${text}</w:t>`;
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const tagName = node.tagName.toLowerCase();
-      const styleAttr = node.getAttribute('style') || '';
-      let styleXml = '';
+  let mimeType = props.MimeType || '';
+  const htmlToSend = ref('');
+  isGeneratingPdf.value = true;
 
-      if (styleAttr) {
-        // Basic inline style conversion to WordprocessingML properties
-        if (styleAttr.includes('font-weight: bold')) styleXml += '<w:b/>';
-        if (styleAttr.includes('font-style: italic')) styleXml += '<w:i/>';
-        if (styleAttr.includes('text-decoration: underline')) styleXml += '<w:u w:val="single"/>';
-        // Add more style conversions as needed
-      }
-
-      if (['p', 'div'].includes(tagName)) {
-        wordML += `<w:p><w:r>${styleXml ? `<w:rPr>${styleXml}</w:rPr>` : ''}`;
-        node.childNodes.forEach(processNode);
-        wordML += `</w:r></w:p>`;
-      } else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
-        const headingLevel = tagName.charAt(1);
-        wordML += `<w:p><w:pPr><w:pStyle w:val="Heading${headingLevel}"/></w:pPr><w:r>${styleXml ? `<w:rPr>${styleXml}</w:rPr>` : ''}`;
-        node.childNodes.forEach(processNode);
-        wordML += `</w:r></w:p>`;
-      } else if (tagName === 'strong' || tagName === 'b') {
-        wordML += `<w:r><w:rPr><w:b/></w:rPr>`;
-        node.childNodes.forEach(processNode);
-        wordML += `</w:r>`;
-      } else if (tagName === 'em' || tagName === 'i') {
-        wordML += `<w:r><w:rPr><w:i/></w:rPr>`;
-        node.childNodes.forEach(processNode);
-        wordML += `</w:r>`;
-      } else if (tagName === 'u') {
-        wordML += `<w:r><w:rPr><w:u w:val="single"/></w:rPr>`;
-        node.childNodes.forEach(processNode);
-        wordML += `</w:r>`;
-      } else if (tagName === 'br') {
-        wordML += `<w:br/>`;
-      } else if (tagName === 'img') {
-        const src = node.getAttribute('src');
-        if (src && src.startsWith('data:image/')) {
-          // Embed base64 image data directly
-          const imgId = `rId${Math.floor(Math.random() * 1000000)}`; // Unique ID
-          // This is a simplified example; actual embedding requires more complex relationships and binary data handling.
-          // For full support, a dedicated library or backend service is usually required.
-          wordML += `<w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
-                      <wp:extent cx="3600000" cy="1800000"/>
-                      <wp:docPr id="${imgId}" name="Image${imgId}" descr="Image"/>
-                      <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-                        <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
-                          <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-                            <pic:nvPicPr><pic:cNvPr id="0" name="Picture 1"/><pic:cNvPicPr/></pic:nvPicPr>
-                            <pic:blipFill><a:blip r:embed="${imgId}" cstate="print"/></pic:blipFill>
-                            <pic:spPr><a:xfrm><a:ext cx="3600000" cy="1800000"/></a:xfrm></pic:spPr>
-                          </pic:pic>
-                        </a:graphicData>
-                      </a:graphic>
-                    </wp:inline></w:drawing></w:r></w:p>`;
-          // You'd also need to add this image as a relationship in word/_rels/document.xml.rels and embed it in word/media/
-          // This part is significantly complex for a client-side pure JS solution without a specialized library.
-        }
-      } else {
-        // For other tags, try to just process their children to keep content
-        node.childNodes.forEach(processNode);
-      }
-    }
-  };
-
-  doc.body.childNodes.forEach(processNode);
-  return wordML;
-};
-
-
-// Convert images to base64 for embedding
-const convertImagesToBase64 = async (element) => {
-  const images = element.querySelectorAll('img');
-  const promises = Array.from(images).map(async (img) => {
-    try {
-      if (img.src.startsWith('data:')) {
-        return; // Already base64
-      }
-
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const tempImg = new Image();
-
-      return new Promise((resolve) => {
-        tempImg.onload = () => {
-          canvas.width = tempImg.naturalWidth;
-          canvas.height = tempImg.naturalHeight;
-          ctx.drawImage(tempImg, 0, 0);
-
-          try {
-            const dataURL = canvas.toDataURL('image/png');
-            img.src = dataURL;
-          } catch (e) {
-            console.warn('Could not convert image to base64:', e);
-          }
-          resolve();
-        };
-        tempImg.onerror = () => resolve();
-        tempImg.crossOrigin = 'anonymous';
-        tempImg.src = img.src;
-      });
-    } catch (error) {
-      console.warn('Error processing image:', error);
-    }
-  });
-
-  await Promise.all(promises);
-};
-
-// Create styled HTML that preserves all formatting for Word
-const createStyledHtmlForWord = async (container) => {
-  const elements = container.querySelectorAll('*');
-
-  elements.forEach(element => {
-    const computedStyle = window.getComputedStyle(element);
-    let inlineStyles = '';
-
-    // Preserve important styling properties
-    const importantStyles = [
-      'font-family', 'font-size', 'font-weight', 'font-style',
-      'color', 'background-color', 'text-align', 'text-decoration',
-      'margin', 'padding', 'border', 'width', 'height',
-      'line-height', 'letter-spacing', 'text-indent'
-    ];
-
-    importantStyles.forEach(prop => {
-      const value = computedStyle.getPropertyValue(prop);
-      if (value && value !== 'normal' && value !== 'auto') {
-        inlineStyles += `${prop}: ${value}; `;
-      }
-    });
-
-    if (inlineStyles) {
-      element.style.cssText = inlineStyles + element.style.cssText;
-    }
-  });
-
-  return container.innerHTML;
-};
-
-
-// Enhanced PDF Generation with Perfect Styling and Images
-const generatePdfDocument = async (value = false) => {
   try {
-    toaster.info('Generating PDF...');
-
-    const jsPDF = (await import('jspdf')).jsPDF;
-    const html2canvas = (await import('html2canvas')).default;
-
-    let sourceContent = editorRef.value ? editorRef.value.innerHTML : documentContent.value;
-
-    if (!sourceContent) {
-      toaster.error('No content to generate PDF from');
-      return;
-    }
-
-    // Create temporary container for HTML content
-    // We will size this container to A4 dimensions (minus margins) to help html2canvas render it
-    const tempContainer = document.createElement('div');
-    tempContainer.style.cssText = `
-      width: 210mm; /* A4 width */
-      height: 347mm; /* A4 height - crucial for single page target */
-      padding: 5mm; /* Consistent margins (e.g., 10mm all around) */
-      box-sizing: border-box; /* Include padding in width/height */
-      background-color: #ffffff;
-      color: #000;
-      font-family: 'Times New Roman', serif;
-      font-size: 11pt; /* Keep a reasonable base font size, but it will scale */
-      line-height: 1.3;
-      word-wrap: break-word;
-      overflow: hidden; /* Important: content that overflows this div will be clipped by html2canvas */
-      display: flex; /* Use flexbox to encourage content compression/flow within the fixed height */
-      flex-direction: column;
-      justify-content: flex-start;
-    `;
-
-    // Content cleaning (keep as is)
-    sourceContent = sourceContent
-      .replace(/<h3[^>]*>.*?<\/h3>/gi, '') // Remove h3 headers
-      .replace(/style="[^"]*background[^"]*"/gi, ''); // Remove background styles
-
-    sourceContent = sourceContent.replace(/<p>\s*<\/p>/g, '').replace(/(<br>\s*){2,}/g, '<br>'); // Clean up empty paragraphs/excessive breaks
-
-    tempContainer.innerHTML = sourceContent;
-    document.body.appendChild(tempContainer);
-
-    // Apply PDF-specific styling to the temporary container
-    // This styling will affect how content renders *before* html2canvas takes the snapshot
-    applyPdfStyling(tempContainer);
-
-    // Ensure images are loaded and converted before canvas generation
-    // Assuming these functions are defined elsewhere and work correctly
-    await convertImagesToBase64(tempContainer);
-    await waitForImagesToLoad(tempContainer);
-
-    // Generate canvas from the tempContainer
-    // html2canvas will render exactly what's visible within tempContainer's fixed 210x297mm dimensions
-    const canvas = await html2canvas(tempContainer, {
-      scale: 3, // High scale for clarity, even if text shrinks
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      // html2canvas will use the exact offsetWidth/offsetHeight of tempContainer (which is 210mm x 297mm)
-      width: tempContainer.offsetWidth,
-      height: tempContainer.offsetHeight,
-      windowWidth: tempContainer.scrollWidth,
-      windowHeight: tempContainer.scrollHeight,
-      x: 0,
-      y: 0
-    });
-
-    // Create PDF with exact A4 size
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      compress: true
-    });
-
-    const imgData = canvas.toDataURL('image/jpeg', 1.0); // Highest quality JPEG
-    const pdfPageWidth = 210; // A4 width in mm
-    const pdfPageHeight = 297; // A4 height in mm
-
-    // Calculate the aspect ratio of the captured image
-    const aspectRatio = canvas.width / canvas.height;
-
-    let imgWidth;
-    let imgHeight;
-
-    // Determine if the image fits perfectly or needs scaling
-    // We want the image to always take up the full width of the PDF page (210mm)
-    imgWidth = pdfPageWidth;
-    imgHeight = imgWidth / aspectRatio; // Calculate height based on full width and aspect ratio
-
-    // If the calculated imgHeight is greater than the PDF page height (297mm),
-    // it means the content rendered by html2canvas (even within the 297mm div)
-    // was effectively "taller" than the page, or simply the aspect ratio is such
-    // that fitting it to full width makes it taller.
-    // In this case, we scale DOWN the height to fit the page, which will also scale the width.
-    if (imgHeight > pdfPageHeight) {
-      imgHeight = pdfPageHeight; // Set height to max page height
-      imgWidth = imgHeight * aspectRatio; // Recalculate width based on scaled height
-    }
-
-    // Add the image to the PDF. It will now be scaled to fit perfectly on one page.
-    // We can center it horizontally if it's not taking up the full width after scaling.
-    const xOffset = (pdfPageWidth - imgWidth) / 2;
-    const yOffset = (pdfPageHeight - imgHeight) / 2; // Center vertically as well
-
-    pdf.addImage(imgData, 'JPEG', xOffset, yOffset, imgWidth, imgHeight);
-
-
-    // Save PDF
-    if (!value) {
-      pdf.save(`document-${Date.now()}.pdf`);
-    } 
-      
+  if (mimeType === 'prescription_type') {
+    // For prescriptions, inject the barcode header and wrap content properly
+    const barcodeHeader = `
+        <div class="codebash-header">
+            ${props.codebash}
+            <img src="data:image/png;base64,${barcodeBase64.value}" alt="Barcode" class="barcode-image" />
+        </div>`;
     
-    toaster.success('PDF generated successfully!');
-
-    // Clean up
-    document.body.removeChild(tempContainer);
-    return pdf.output('blob'); // Return the PDF blob
-
-  } catch (error) {
-    console.error('PDF generation error:', error);
-    toaster.error('Failed to generate PDF');
-    throw error; // Re-throw to be caught by the save function
-  }
-};
-
-// --- applyPdfStyling function (minimal changes to support the single-page goal) ---
-const applyPdfStyling = (container) => {
-  const style = document.createElement('style');
-  style.textContent = `
-    * {
-      -webkit-print-color-adjust: exact !important;
-      color-adjust: exact !important;
-      print-color-adjust: exact !important;
-      box-sizing: border-box; /* Ensure consistent box model */
+    // Wrap the prescription content in a proper container for text wrapping
+    // You can add dynamic content here from your props or data
+    const prescriptionContentWrapper = `
+        <div class="prescription-content">
+            ${props.prescriptionContent || '<!-- Prescription content will be injected here -->'}
+        </div>`;
+    
+    let modifiedContent = documentContent.value;
+    
+    // Add barcode header to body for prescription
+    if (modifiedContent.includes('<body>')) {
+        modifiedContent = modifiedContent.replace('<body>', `<body>${barcodeHeader}`);
+    } else {
+        // If no body tag, wrap content with body and add barcode
+        modifiedContent = `<body>${barcodeHeader}${modifiedContent}</body>`;
     }
+    
+    // Find the prescription-title div and add content wrapper after it
+    const prescriptionTitleRegex = /(<div class="prescription-title"><\/div>)/;
+    
+    if (prescriptionTitleRegex.test(modifiedContent)) {
+        // Replace the prescription title and add the content wrapper
+        modifiedContent = modifiedContent.replace(
+            prescriptionTitleRegex, 
+            `$1${prescriptionContentWrapper}`
+        );
+    } else {
+        // Fallback: add wrapper before the barcode section
+        const barcodeRegex = /(<div class="codebash-header">)/;
+        if (barcodeRegex.test(modifiedContent)) {
+            modifiedContent = modifiedContent.replace(
+                barcodeRegex, 
+                `${prescriptionContentWrapper}$1`
+            );
+        }
+    }
+    
+    htmlToSend.value = modifiedContent;
+} else {
+    // Handle other document types
 
-    body {
+
+    // Handle other document types
+
+      // Original logic for other document types
+      let css = '';
+      for (const sheet of document.styleSheets) {
+        try {
+          const rules = sheet.cssRules || sheet.rules;
+          for (const rule of rules) {
+            css += rule.cssText;
+          }
+        } catch (e) {
+          console.warn("Could not read stylesheet:", e);
+        }
+      }
+
+      htmlToSend.value = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Document</title>
+  <style>
+    ${css}
+
+    body, html { 
+      background-color: #fff !important; 
       margin: 0;
       padding: 0;
+      word-wrap: break-word; 
+      box-shadow: none !important;
+      border: none !important;
     }
 
-    /* Reduce margins/padding on elements aggressively to maximize content area */
-    h1, h2, h3, h4, h5, h6 {
-      font-weight: bold !important;
-      margin-top: 8px !important; /* Smaller top margin */
-      margin-bottom: 4px !important; /* Smaller bottom margin */
-      page-break-after: avoid !important;
-      color: #000 !important;
+    #pdf-container, 
+    #pdf-container *, 
+    .premium-preview-main,
+    .premium-document-editor {
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      border: none !important;
     }
 
-    h1 { font-size: 20px !important; } /* Smaller headings */
-    h2 { font-size: 18px !important; }
-    h3 { font-size: 16px !important; }
-    h4 { font-size: 14px !important; }
-    h5 { font-size: 12px !important; }
-    h6 { font-size: 11px !important; }
-
-    p {
-      margin: 0 0 6px 0 !important; /* Very tight paragraph spacing */
-      line-height: 1.2 !important; /* Tighter line height for paragraphs */
-      color: #000 !important;
+    #pdf-container > div {
+      border: none !important;
+      box-shadow: none !important;
     }
 
-    table {
-      border-collapse: collapse !important;
-      width: 100% !important;
-      margin: 8px 0 !important; /* Smaller table margins */
-      page-break-inside: avoid !important;
-      border: 1px solid #d1d5db !important;
-    }
-
-    td, th {
-      border: 1px solid #d1d5db !important;
-      padding: 5px !important; /* Smaller cell padding */
-      vertical-align: top !important;
-      background-color: transparent !important;
-      color: #000 !important;
-    }
-
-    th {
-      background-color: #f0f0f0 !important;
-      font-weight: bold !important;
-      color: #000 !important;
-    }
-
-    img {
+    #pdf-container img {
       max-width: 100% !important;
       height: auto !important;
-      display: block !important;
-      margin: 8px auto !important; /* Smaller image margins */
+    }
+
+    #pdf-container table,
+    #pdf-container figure,
+    #pdf-container pre {
       page-break-inside: avoid !important;
     }
 
-    ul, ol {
-      margin: 6px 0 !important; /* Smaller list margins */
-      padding-left: 10px !important; /* Less indentation */
-      color: #000 !important;
+    #pdf-container th, #pdf-container td {
+      border: 1px solid #bbb !important; 
+      padding: 8px !important;
+      color: #333 !important;
     }
 
-    li {
-      margin-bottom: 1px !important; /* Very tight list item spacing */
-      color: #000 !important;
+    .codebash-header {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      padding: 6px 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 1000;
+      background: #fff !important; /* Ensure white background */
+    }
+    .barcode-image {
+      max-width: 100%;
+      height: 40px;
+      display: block;
+    }
+    /* Other styles */
+  </style>
+</head>
+<body>
+  <div class="codebash-header">
+    <img src="data:image/png;base64,${barcodeBase64.value}" alt="Barcode" />
+    <div>${props.codebash}</div>
+  </div>
+
+  <div id="pdf-container">
+    ${documentContent.value}
+  </div>
+</body>
+</html>
+`;
     }
 
-    strong, b { font-weight: bold !important; }
-    em, i { font-style: italic !important; }
-    u { text-decoration: underline !important; }
-
-    .page-break {
-      page-break-before: always !important;
-    }
-
-    a { text-decoration: underline !important; color: blue !important; }
-
-    *:not(img) {
-      background-color: transparent !important;
-    }
-  `;
-  container.appendChild(style);
-};
-
-
-// Wait for all images to load
-const waitForImagesToLoad = (container) => {
-  const images = container.querySelectorAll('img');
-  const promises = Array.from(images).map(img => {
-    return new Promise((resolve) => {
-      if (img.complete && img.naturalHeight !== 0) {
-        resolve();
-      } else {
-        img.onload = () => resolve();
-        img.onerror = () => resolve(); // Resolve even on error to prevent hanging
-      }
-    });
-  });
-
-  return Promise.all(promises);
-};
-
-// Fallback PDF generation using backend
-const generatePdfDocumentFallback = async () => {
-  try {
-    const formData = new FormData();
-    formData.append('html_content', documentContent.value);
-
-    const response = await axios.post('/api/consultation/generate-pdf', formData, {
-      responseType: 'blob'
+    const response = await axios.post(`/api/consultation/${props.patientId}/save-pdf`, {
+      html: htmlToSend.value,
+      mime_type: mimeType,
+      template_ids: JSON.stringify(props.selectedTemplates),
+      patient_id: props.patientId,
+      appointment_id: props.appointmentId,
+      folder_id: props.folderid,
+      doctorId: props.doctorId
     });
 
-    const url = window.URL.createObjectURL(response.data);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `document-${Date.now()}.pdf`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
+    if (response.data.success) {
+      toaster.success('PDF generated and saved successfully!');
+      emit('document-saved', response.data);
+    } else {
+      throw new Error(response.data.message || 'Failed to save PDF');
+    }
 
-    toaster.success('PDF generated successfully!');
-  } catch (error) {
-    console.error('PDF generation error:', error);
-    toaster.error('Failed to generate PDF');
+  } catch (err) {
+    console.error('PDF Save Error:', err);
+    toaster.error(err.response?.data?.message || 'Failed to save PDF');
+  } finally {
+    isGeneratingPdf.value = false;
   }
 };
 
@@ -850,12 +530,12 @@ const preserveWordFormatting = (htmlContent) => {
     table.style.borderCollapse = 'collapse';
     table.style.width = '100%';
     table.style.margin = '10px 0';
-    table.style.border = '1px solid #d1d5db'; // Consistent border for tables
+    table.style.border = '1px solid #d1d5db';
     table.setAttribute('data-word-table', 'true');
   });
 
   processElements(doc.querySelectorAll('td, th'), (cell) => {
-    cell.style.border = '1px solid #d1d5db'; // Consistent border for cells
+    cell.style.border = '1px solid #d1d5db';
     if (!cell.style.padding) {
       cell.style.padding = '8px';
     }
@@ -899,19 +579,12 @@ const preserveWordFormatting = (htmlContent) => {
 };
 
 const cleanDocxPreviewHtml = (html) => {
-  // Remove docx-preview specific inline styles that might interfere with rendering
   html = html.replace(/style="[^"]*(?:position|top|left|width|height|z-index|min-height)[^"]*"/g, '');
-  // Remove empty tags
   html = html.replace(/<[^\/>][^>]*>\s*<\/[^>]+>/g, '');
-  // Remove docx-preview specific classes but keep others
   html = html.replace(/class="(?!docx-)[^"]*"/g, '');
-  // Remove data attributes not explicitly marked to be preserved
   html = html.replace(/(?<!data-word-)data-[^=]+="[^"]*"/g, '');
-  // Normalize paragraph breaks
   html = html.replace(/<\/p>\s*<p/g, '</p><p');
-  // Trim excessive whitespace
   html = html.replace(/\s+/g, ' ');
-  // Remove whitespace between tags
   html = html.replace(/>\s+</g, '><');
 
   return html;
@@ -923,9 +596,9 @@ const formatText = (command, value = null) => {
   document.execCommand(command, false, value);
   editorRef.value.focus();
 
+  // Don't apply preserveWordFormatting during editing to maintain original structure
   const rawContent = editorRef.value.innerHTML;
-  const preservedContent = preserveWordFormatting(rawContent);
-  documentContent.value = preservedContent;
+  documentContent.value = rawContent;
   emit('update:previewContent', documentContent.value);
 };
 
@@ -965,15 +638,18 @@ const toggleEditMode = () => {
 
 const saveEditedContent = () => {
   if (editorRef.value) {
+    // Save the raw content without applying preserveWordFormatting
     const rawContent = editorRef.value.innerHTML;
-    const preservedContent = preserveWordFormatting(rawContent);
-    documentContent.value = preservedContent;
+    documentContent.value = rawContent;
     emit('update:previewContent', documentContent.value);
   }
   previewMode.value = true;
 };
 
 const refreshPreview = () => {
+  // Reset to original content when refreshing
+  documentContent.value = originalContent.value;
+  emit('update:previewContent', documentContent.value);
   emit('refresh');
 };
 
@@ -1002,330 +678,33 @@ const handleKeydown = (event) => {
 
 const handleEditorInput = () => {
   if (editorRef.value && !previewMode.value) {
+    // Don't apply preserveWordFormatting during real-time editing
     const rawContent = editorRef.value.innerHTML;
-    const preservedContent = preserveWordFormatting(rawContent);
-    documentContent.value = preservedContent;
+    documentContent.value = rawContent;
     emit('update:previewContent', documentContent.value);
   }
 };
 
 onMounted(() => {
   documentContent.value = props.previewContent;
+  originalContent.value = props.previewContent; // Store original content on mount
 });
-
-// New print method
-const printDocument = async () => {
-  toaster.info('Preparing document for printing...');
-  try {
-    // Generate the PDF in a blob
-    const jsPDF = (await import('jspdf')).jsPDF;
-    const html2canvas = (await import('html2canvas')).default;
-
-    let sourceContent = editorRef.value ? editorRef.value.innerHTML : documentContent.value;
-
-    if (!sourceContent) {
-      toaster.error('No content to print');
-      return;
-    }
-
-    const tempContainer = document.createElement('div');
-    tempContainer.style.cssText = `
-      width: 210mm; /* A4 width */
-      height: 347mm; /* A4 height - crucial for single page target */
-      padding: 5mm; /* Consistent margins (e.g., 10mm all around) */
-      box-sizing: border-box; /* Include padding in width/height */
-      background-color: #ffffff;
-      color: #000;
-      font-family: 'Times New Roman', serif;
-      font-size: 11pt; /* Keep a reasonable base font size, but it will scale */
-      line-height: 1.3;
-      word-wrap: break-word;
-      overflow: hidden; /* Important: content that overflows this div will be clipped by html2canvas */
-      display: flex; /* Use flexbox to encourage content compression/flow within the fixed height */
-      flex-direction: column;
-      justify-content: flex-start;
-    `;
-
-    sourceContent = sourceContent
-      .replace(/<h3[^>]*>.*?<\/h3>/gi, '')
-      .replace(/style="[^"]*background[^"]*"/gi, '');
-
-    sourceContent = sourceContent.replace(/<p>\s*<\/p>/g, '').replace(/(<br>\s*){2,}/g, '<br>');
-
-    tempContainer.innerHTML = sourceContent;
-    document.body.appendChild(tempContainer);
-    applyPdfStyling(tempContainer); // Apply styling for consistent rendering
-    await convertImagesToBase64(tempContainer);
-    await waitForImagesToLoad(tempContainer);
-
-    const canvas = await html2canvas(tempContainer, {
-      scale: 3,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      width: tempContainer.offsetWidth,
-      height: tempContainer.offsetHeight,
-      windowWidth: tempContainer.scrollWidth,
-      windowHeight: tempContainer.scrollHeight,
-      x: 0,
-      y: 0
-    });
-
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      compress: true
-    });
-
-    const imgData = canvas.toDataURL('image/jpeg', 1.0);
-    const pdfPageWidth = 210;
-    const pdfPageHeight = 297;
-    const aspectRatio = canvas.width / canvas.height;
-
-    let imgWidth = pdfPageWidth;
-    let imgHeight = imgWidth / aspectRatio;
-
-    if (imgHeight > pdfPageHeight) {
-      imgHeight = pdfPageHeight;
-      imgWidth = imgHeight * aspectRatio;
-    }
-
-    const xOffset = (pdfPageWidth - imgWidth) / 2;
-    const yOffset = (pdfPageHeight - imgHeight) / 2;
-
-    pdf.addImage(imgData, 'JPEG', xOffset, yOffset, imgWidth, imgHeight);
-
-    // Generate a Data URL for the PDF and open it in a new window for printing
-    const pdfUrl = pdf.output('bloburl');
-    const printWindow = window.open(pdfUrl);
-
-    if (printWindow) {
-      printWindow.onload = () => {
-        printWindow.print();
-        toaster.success('Print dialog opened.');
-        // Consider closing the window after a delay if auto-closing is desired
-        // printWindow.onafterprint = () => printWindow.close();
-      };
-    } else {
-      toaster.error('Could not open print window. Please allow pop-ups.');
-    }
-
-    document.body.removeChild(tempContainer);
-
-  } catch (error) {
-    console.error('Print error:', error);
-    toaster.error('Failed to prepare document for printing.');
-  }
-};
-
-// In DocumentPreview.vue, modify the savePdfToBackend function:
-
-const savePdfToBackend = async () => {
-  toaster.info('Saving PDF to backend...');
-  try {
-    const pdfBlob = await generatePdfDocument(true); // Generate the PDF and get its blob
-
-    if (!pdfBlob) {
-      toaster.error('Failed to generate PDF for saving.');
-      return;
-    }
-
-    const formData = new FormData();
-    const pdfFileName = `consultation_${props.patientId}_${Date.now()}.pdf`;
-    formData.append('pdf_file', pdfBlob, pdfFileName);
-
-    // Add template IDs and placeholder data to the form
-    formData.append('template_ids', JSON.stringify(props.selectedTemplates));
-    formData.append('placeholder_data', JSON.stringify(props.templateData));
-    formData.append('patient_id', 1);
-
-    // Post the PDF and trigger the event
-    // const response = await axios.post(`/api/consultation/${props.patientId}/save-pdf`, formData, {
-    const response = await axios.post(`/api/consultation/${1}/save-pdf`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-
-    if (response.data.success) {
-      // The event will be triggered from the backend when the PDF is saved
-      toaster.success('PDF saved successfully!');
-      // You might want to emit an event to the parent component
-      emit('documentSaved', response.data.path);
-    } else {
-      toaster.error(response.data.message || 'Failed to save PDF.');
-    }
-  } catch (error) {
-    console.error('Error saving PDF:', error);
-    toaster.error('An error occurred while saving the PDF.');
-  }
-};
 
 // Expose methods for parent component
 defineExpose({
   generateDocumentWithData,
   downloadGeneratedDocument,
-  generateWordDocument,
-  generatePdfDocument,
-  printDocument,
-  savePdfToBackend // Expose the new save function
+  generatePdf,
 });
 </script>
 
-<template>
-  <div class="premium-document-editor">
-    <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress">
-      <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
-      </div>
-      <div class="progress-text">{{ uploadProgress }}% - Processing document...</div>
-    </div>
-
-    <div class="premium-preview-main">
-      <div class="premium-preview-header">
-        <div class="premium-preview-title">
-          <h3 class="title-text">
-            Document Preview
-            <span v-if="isTemplate" class="template-badge">Template</span>
-          </h3>
-        </div>
-
-        <div class="premium-preview-actions">
-          <button
-            @click="toggleEditMode"
-            class="premium-btn premium-edit-btn"
-            :class="{ 'active': !previewMode }"
-          >
-            {{ previewMode ? '✏️ Edit' : '👁️ Preview' }}
-          </button>
-
-          <button @click="refreshPreview" class="premium-btn premium-refresh-btn">
-            🔄 Refresh
-          </button>
-
-          <button
-            @click="generatePdfDocument(false)"
-            class="premium-btn premium-pdf-btn"
-            :disabled="!documentContent"
-          >
-            📑 PDF
-          </button>
-
-          <button
-            @click="printDocument"
-            class="premium-btn premium-print-btn"
-            :disabled="!documentContent"
-          >
-            🖨️ Print
-          </button>
-
-          <button
-            @click="savePdfToBackend"
-            class="premium-btn premium-save-to-backend-btn"
-            :disabled="!documentContent"
-          >
-            💾 Save PDF
-          </button>
-
-          <button
-            v-if="isTemplate"
-            @click="downloadGeneratedDocument()"
-            class="premium-download-btn"
-            :disabled="!templateFile"
-          >
-            ⬇️ Download
-          </button>
-        </div>
-      </div>
-
-      <div v-if="!previewMode" class="premium-editor-toolbar">
-        <div class="toolbar-group">
-          <button @click="formatText('bold')" class="toolbar-btn" title="Bold">
-            <strong>B</strong>
-          </button>
-          <button @click="formatText('italic')" class="toolbar-btn" title="Italic">
-            <em>I</em>
-          </button>
-          <button @click="formatText('underline')" class="toolbar-btn" title="Underline">
-            <u>U</u>
-          </button>
-        </div>
-
-        <div class="toolbar-group">
-          <select @change="changeHeading($event.target.value)" class="heading-select">
-            <option value="p">Paragraph</option>
-            <option value="1">Heading 1</option>
-            <option value="2">Heading 2</option>
-            <option value="3">Heading 3</option>
-            <option value="4">Heading 4</option>
-          </select>
-        </div>
-
-        <div class="toolbar-group">
-          <button @click="insertList(false)" class="toolbar-btn" title="Bullet List">
-            • List
-          </button>
-          <button @click="insertList(true)" class="toolbar-btn" title="Numbered List">
-            1. List
-          </button>
-        </div>
-
-        <div class="toolbar-group">
-          <button @click="insertLink()" class="toolbar-btn" title="Insert Link">
-            🔗 Link
-          </button>
-        </div>
-
-        <div class="toolbar-group">
-          <button @click="saveEditedContent()" class="toolbar-btn save-btn" title="Save (Ctrl+S)">
-            💾 Save
-          </button>
-        </div>
-      </div>
-
-      <div class="premium-document-preview-container">
-        <div v-if="loading" class="loading-state">
-          <div class="loading-spinner"></div>
-          <p>Loading document preview...</p>
-        </div>
-
-        <div v-else-if="!documentContent" class="empty-state">
-          <div class="empty-icon">📄</div>
-          <h3>No Document Loaded</h3>
-          <p>Upload a DOCX file or add content to get started</p>
-        </div>
-
-        <div v-else class="document-wrapper">
-          <div
-            v-if="previewMode"
-            class="document-preview"
-            v-html="documentContent"
-          ></div>
-
-          <div
-            v-else
-            ref="editorRef"
-            class="document-editor"
-            contenteditable="true"
-            @input="handleEditorInput"
-            @keydown="handleKeydown"
-            spellcheck="false"
-          ></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
 <style scoped>
 .premium-document-editor {
   width: 100%;
   max-width: 100%;
-  height: 500px;
-  overflow: hidden;
-
+  min-height: 1000px; /* Use min-height instead of height */
+  /* Remove overflow: hidden; */
 }
-
 .upload-progress {
   padding: 1rem 1.5rem;
   background-color: #f8fafc;
@@ -1358,7 +737,7 @@ defineExpose({
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  overflow : hidden;
+  overflow: hidden;
 }
 
 .premium-preview-header {
@@ -1396,7 +775,6 @@ defineExpose({
   gap: 0.5rem;
   flex-wrap: wrap;
   overflow: hidden;
-
 }
 
 .premium-upload-btn, .premium-download-btn {
@@ -1474,6 +852,7 @@ defineExpose({
   transform: none;
 }
 
+/* New toolbar styling */
 .premium-editor-toolbar {
   display: flex;
   align-items: center;
@@ -1702,20 +1081,20 @@ defineExpose({
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .premium-preview-actions {
     justify-content: center;
   }
-  
+
   .premium-editor-toolbar {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .toolbar-group {
     justify-content: center;
   }
-  
+
   .premium-document-preview-container {
     padding: 1rem;
   }
@@ -1727,17 +1106,72 @@ defineExpose({
   .premium-editor-toolbar {
     display: none;
   }
-  
+
   .premium-document-preview-container {
     max-height: none;
     overflow: visible;
     padding: 0;
   }
-  
+
   .document-preview,
   .document-editor {
     font-size: 12pt;
     line-height: 1.5;
   }
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-dialog {
+  background: #fff;
+  border-radius: 8px;
+  padding: 2rem 2.5rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  min-width: 320px;
+  max-width: 90vw;
+  text-align: center;
+}
+.modal-actions {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+.modal-overlay {
+  z-index: 99999 !important; /* Extremely high z-index */
+  pointer-events: auto !important; /* Ensure clicks pass through overlay */
+}
+
+.modal-dialog {
+  z-index: 100000 !important; /* Higher than overlay */
+  pointer-events: auto !important; /* Ensure clicks are active on dialog */
+}
+
+.modal-btn {
+  pointer-events: auto !important; /* Ensure clicks are active on buttons */
+  z-index: 100001 !important; /* Highest for buttons */
+}
+.modal-btn {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+.modal-btn.confirm {
+  background: #10b981;
+  color: #fff;
+}
+.modal-btn.cancel {
+  background: #e5e7eb;
+  color: #374151;
 }
 </style>

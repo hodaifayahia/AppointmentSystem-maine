@@ -31,8 +31,8 @@ const userRole = ref(null);
 const appointmentStore = useAppointmentStore();
 const doctors = useAuthStoreDoctor(); // Initialize Pinia store
 
-onMounted( () => {
-   appointmentStore.getAppointments(doctorId, 1, 0);
+onMounted( async() => {
+ await  appointmentStore.getAppointments(doctorId, 1, 0);
   appointments.value = appointmentStore.appointments;
   pagination.value = appointmentStore.pagination;
 });

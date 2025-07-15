@@ -2,28 +2,53 @@
 
 namespace App\Models;
 
-use App\Models\Doctor;
-use App\Models\Placeholder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Attribute extends Model
 {
+    use HasFactory;
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<string>
+     */
     protected $fillable = [
         'name',
         'value',
         'input_type',
-        'placeholder_id'
+        'is_required',
+        'placeholder_id',
+        'doctor_id'
     ];
 
-    public function placeholder()
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array
+     */
+    protected $casts = [
+        'input_type' => 'integer',
+        'is_required' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
+    /**
+     * Get the placeholder that owns the attribute.
+     */
+    public function placeholder(): BelongsTo
     {
         return $this->belongsTo(Placeholder::class);
     }
 
-    public function doctor()
+    /**
+     * Get the doctor that owns the attribute.
+     */
+    public function doctor(): BelongsTo
     {
         return $this->belongsTo(Doctor::class);
     }
-    
-
 }

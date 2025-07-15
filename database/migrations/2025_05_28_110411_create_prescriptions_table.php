@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('consultation_id')->nullable()->constrained('consultations')->onDelete('set null');
             $table->foreignId('patient_id')->constrained('patients')->onDelete('cascade'); // Assuming 'patients' table exists
             $table->string('signature_status');
+            $table->date('prescription_date');
             $table->timestamps();
         });
     }

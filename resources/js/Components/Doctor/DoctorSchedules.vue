@@ -314,6 +314,8 @@ const handlePatientsChange = (day, shift, event) => {
             </div>
           </div>
         </div>
+
+        
       </div>
     </div>
   </div>

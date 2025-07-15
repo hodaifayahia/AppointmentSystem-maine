@@ -13,9 +13,11 @@ return new class extends Migration
     {
         Schema::create('consultations', function (Blueprint $table) {
             $table->id();
+            $table->string('name')->nullable();
             $table->foreignId('template_id')->constrained('templates')->onDelete('cascade');
             $table->foreignId('patient_id')->constrained('patients')->onDelete('cascade');
             $table->foreignId('doctor_id')->constrained('doctors')->onDelete('cascade');
+            $table->foreignId('consultation_end_at')->nullable()->timestamps();
             //appointment id
             $table->foreignId('appointment_id')->constrained('appointments')->onDelete('cascade');
 

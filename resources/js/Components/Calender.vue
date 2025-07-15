@@ -407,24 +407,31 @@ const filteredAppointments = computed(() => {
 const generatePdf = async () => {
   try {
     const response = await axios.post('/generate-appointments-pdf', filters.value, {
-      responseType: 'blob', // Important for handling binary data
+      responseType: 'blob',
     });
-    
-    // Create a blob URL for the PDF
+
+    // 🔍 Extract filename from headers
+    const disposition = response.headers['content-disposition'];
+    let filename = 'appointments.pdf'; // fallback
+    const match = disposition && disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match && match[1]) {
+      filename = match[1].replace(/['"]/g, ''); // clean quotes
+    }
+
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'appointments.pdf'); // Set the file name
+    link.setAttribute('download', filename); // ✅ Use dynamic filename
     document.body.appendChild(link);
     link.click();
 
-    // Clean up
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   } catch (error) {
     console.error('Error generating PDF:', error);
   }
 };
+
 const printTable = () => {
   window.print();
 };

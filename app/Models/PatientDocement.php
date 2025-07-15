@@ -15,6 +15,7 @@ class PatientDocement extends Model
         'document_type',
         'document_path',
         'document_name',
+        'appointment_id',
         'document_size'
     ];
 
@@ -23,10 +24,11 @@ class PatientDocement extends Model
         return $this->belongsTo(Patient::class);
     }
 
-    public function doctor()
-    {
-        return $this->belongsTo(Doctor::class);
-    }
+   
+public function doctor()
+{
+    return $this->belongsTo(Doctor::class, 'doctor_id');
+}
 
     public function folder()
     {

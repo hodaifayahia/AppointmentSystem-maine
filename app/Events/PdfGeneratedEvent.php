@@ -34,6 +34,8 @@ class PdfGeneratedEvent
         $this->patientId = $patientId;
         $this->appointmentId = $appointmentId;
     }
+    
+    
 
     /**
      * Get the channels the event should broadcast on.
@@ -42,6 +44,7 @@ class PdfGeneratedEvent
      */
     public function broadcastOn(): array
     {
+        
         return [
             new PrivateChannel('channel-name'),
         ];

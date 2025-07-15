@@ -5,14 +5,50 @@ import { useToastr } from '../../../Components/toster';
 import { useSweetAlert } from '../../../Components/useSweetAlert';
 import TemplateModel from '../template/templateModel.vue';
 import templateListitem from '../template/templateListitem.vue';
+import { useAuthStoreDoctor } from '../../../stores/AuthDoctor';
 
 import { useRoute ,useRouter } from 'vue-router';
 const router = useRouter();
 const route = useRoute();
-const folderid = route.params.id;
+const folderid = route.params.folderid;
+
 
 const swal = useSweetAlert();
 const toaster = useToastr();
+
+const doctors = useAuthStoreDoctor(); // Initialize Pinia store
+const currentDoctorId = ref(null);
+const specializationId = ref(null);
+
+onMounted(async () => {
+  await doctors.getDoctor(); 
+  // Ensure the doctor data is fetched and awaited.
+  // Assuming doctors.getDoctor() populates doctors.doctorData in the store.
+
+  // After the async operation, doctorData should be available.
+  // Always add a check in case the API call failed or doctorData isn't populated.
+  if (doctors.doctorData) {
+    currentDoctorId.value = doctors.doctorData.id;
+    // Ensure specializationId is a number. Convert it if it might come as a string.
+    specializationId.value = doctors.doctorData.specialization_id 
+                             ? Number(doctors.doctorData.specialization_id) 
+                             : null; // Or 0, depending on your default for an empty ID
+  } else {
+    // Handle the case where doctor data couldn't be loaded (e.g., show error, redirect)
+    toaster.error('Failed to load doctor profile. Please try again.');
+    // Optionally, return or redirect to prevent further execution if doctor data is crucial
+    // router.push({ name: 'login' }); 
+    return; 
+  }
+
+  // Now that currentDoctorId is guaranteed to be set (or handled as null),
+  // you can safely call getFolders.
+  if (currentDoctorId.value !== null) {
+    getTemplates();
+  } else {
+    toaster.info('Doctor ID not found. Cannot fetch folders.');
+  }
+});
 
 // State
 const templates = ref([]);
@@ -82,10 +118,13 @@ const openModal = (template = null, edit = false) => {
 };
 
 
-// Navigate to create Template page
 const goToAddTemplatePage = () => {
   router.push({
     name: 'admin.consultation.template.add',
+    params: {
+      folderid: folderid,
+      doctor_id: currentDoctorId.value, // Pass the doctor_id here
+    }
   });
 };
 const closeModal = () => {
@@ -101,11 +140,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="template-page">
+  <div class="template-page ">
     <div class="card">
       <div class="card-header bg-white">
+        <button  class="btn btn-light bg-primary rounded-pill shadow-sm position-absolute"
+              style="top: 19px; left: 10px; " @click="router.go(-1)">
+              <i class="fas fa-arrow-left"></i> Back
+          </button>
         <div class="d-flex justify-content-between align-items-center">
-          <h3 class="mb-0">Templates</h3>
+          <h3 class="mb-0 ml-4 pl-5">Templates</h3>
           <div class="d-flex gap-3 align-items-center">
             <div class="position-relative">
               <input 
@@ -140,7 +183,7 @@ onMounted(() => {
             <i class="fas fa-file-alt fa-3x text-muted"></i>
           </div>
           <p class="mb-3">No templates found. Create your first template now!</p>
-          <button class="btn btn-primary" @click="openModal()">
+          <button class="btn btn-primary" @click="goToAddTemplatePage()">
             <i class="fas fa-plus me-2"></i>Add Template
           </button>
         </div>
@@ -159,8 +202,7 @@ onMounted(() => {
                 <th class="ps-4">#</th>
                 <th>Name</th>
                 <th>Description</th>
-                <th>Doctor</th>
-                <th>MIME Type</th>
+                <th>Type</th>
                 <th class="text-center">Actions</th>
               </tr>
             </thead>
@@ -168,7 +210,9 @@ onMounted(() => {
               <templateListitem
                 v-for="(template, index) in filteredTemplates"
                 :key="template.id"
+                :folderid="folderid"
                 :template="template"
+                :currentDoctorId="currentDoctorId"
                 :index="index"
                 @edit="(t) => openModal(t, true)"
                 @delete="deleteTemplate"
@@ -191,6 +235,7 @@ onMounted(() => {
 
 <style scoped>
 .template-page {
+  margin-top: 20px ;
   padding: 1rem;
 }
 

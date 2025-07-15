@@ -12,7 +12,8 @@ class ConsultationPlaceholderAttributes extends Model
         'consultation_id',
         'placeholder_id',
         'attribute_id',
-        'attribute_value'
+        'attribute_value',
+        'appointment_id',
     ];
 
     public function consultation()

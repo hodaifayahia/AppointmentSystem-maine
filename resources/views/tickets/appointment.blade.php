@@ -86,7 +86,7 @@
             </div>
             <div class="ticket-row">
                 <span class="ticket-label">Médecin :</span> 
-                Dr. {{ $doctor_name }}
+                 {{ $doctor_name }}
             </div>
             <div class="ticket-row">
                 <span class="ticket-label">Date :</span> 

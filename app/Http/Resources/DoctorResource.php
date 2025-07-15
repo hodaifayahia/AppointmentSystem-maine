@@ -13,12 +13,14 @@ class DoctorResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->user->name ?? '',
+            'is_active'=> $this->user->is_active,
             'avatar' => $this->getAvatarUrl(),
             'email' => $this->user->email ?? '',
             'phone' => $this->user->phone ?? '',
             'specialization' => $this->specialization->name ?? null,
             'specialization_id' => $this->specialization->id ?? null,
             'time_slots' => $this->time_slot,
+            'include_time' => $this->include_time,
             'frequency' => $this->frequency,
             'patients_based_on_time' => $this->patients_based_on_time,
             'specific_date' => $this->specific_date,
@@ -63,6 +65,7 @@ class DoctorResource extends JsonResource
         if ($this->appointmentAvailableMonths) {
             return $this->appointmentAvailableMonths->map(function ($month) {
                 return [
+                    'year' => $month->year, // Include the year
                     'month' => $month->month,
                     'is_available' => $month->is_available,
                 ];

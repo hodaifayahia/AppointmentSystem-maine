@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Models\Appointment;
 use App\Models\AppointmentForcer;
+use App\Models\AppointmentAvailableMonth;
+use App\Models\OpinionRequest;
 use App\Models\Schedule;
 use App\Models\Specialization;
 use App\Models\User;
@@ -12,7 +14,9 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+
 use Illuminate\Database\Eloquent\SoftDeletes;
+
 
 class Doctor extends Model 
 {
@@ -32,8 +36,11 @@ class Doctor extends Model
         'add_to_waitlist',
         'notes',
         'avatar',
+        'include_time', // <-- Add this
         'appointment_booking_window',
         'time_slot',
+        'doctor',
+        'is_active',
         'created_by',
         'user_id',
     ];
@@ -59,6 +66,9 @@ class Doctor extends Model
     {
         return $this->hasOne(AppointmentForcer::class, 'doctor_id');
     }
+    // doctorname
+
+    
 
     public function schedules(): HasMany
     {
@@ -111,6 +121,15 @@ public function appointmentAvailableMonths()
     public function getTimeSlotAttribute(?string $value): ?string
     {
         return $value;
+    }
+     public function sentOpinionRequests()
+    {
+        return $this->hasMany(OpinionRequest::class, 'sender_doctor_id');
+    }
+
+    public function receivedOpinionRequests()
+    {
+        return $this->hasMany(OpinionRequest::class, 'reciver_doctor_id');
     }
 
     /**

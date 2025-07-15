@@ -4,129 +4,148 @@ import axios from 'axios';
 import { useToastr } from '../../Components/toster';
 import PatientModel from "../../Components/PatientModel.vue";
 import PatientListItem from './PatientListItem.vue';
+import { useAuthStore } from '../../stores/auth'; // Import your Pinia store
 
 const patients = ref([]);
 const loading = ref(false);
 const error = ref(null);
-const role= ref(null);
 const toaster = useToastr();
 
+// Use the Pinia store
+const authStore = useAuthStore();
+const role = ref(''); // Initialize with empty string, will be updated by Pinia
+
 // Changed from pagination to paginationData for clarity
-const paginationData = ref({
-});
+const paginationData = ref({});
 
 const selectedPatient = ref({});
 const searchQuery = ref('');
 const isModalOpen = ref(false);
 
 const getPatients = async (page = 1) => {
-  try {
-    loading.value = true;
-    const response = await axios.get(`/api/patients?page=${page}`);
-    
-    // Store the entire response data
-    if (response.data.data) {
-      patients.value = response.data.data;
-      paginationData.value = response.data.meta;  // Store the complete pagination object
-    } else {
-      patients.value = response.data;
+    try {
+        loading.value = true;
+        const response = await axios.get(`/api/patients?page=${page}`);
+
+        // Store the entire response data
+        if (response.data.data) {
+            patients.value = response.data.data;
+            paginationData.value = response.data.meta; // Store the complete pagination object
+        } else {
+            patients.value = response.data;
+        }
+
+        console.log('Pagination Data:', paginationData.value);
+    } catch (err) {
+        console.error('Error fetching patients:', err);
+        error.value = err.response?.data?.message || 'Failed to load patients';
+    } finally {
+        loading.value = false;
     }
-    
-    console.log('Pagination Data:', paginationData.value);
-  } catch (err) {
-    console.error('Error fetching patients:', err);
-    error.value = err.response?.data?.message || 'Failed to load patients';
-  } finally {
-    loading.value = false;
-  }
-};
-const initializeRole = async () => {
-  try {
-    const user = await axios.get('/api/role');
-    role.value = user.data.role;
-
-
-    if (user.data.role === 'admin') {
-      role.value = user.data.role;
-      // console.log('User role:', userRole.value);
-
-    }
-  } catch (err) {
-    console.error('Error fetching user role:', err);
-  }
 };
 
 const openModal = (patient = null) => {
-  selectedPatient.value = patient ? { ...patient } : {};
-  isModalOpen.value = true;
+    selectedPatient.value = patient ? { ...patient } : {};
+    isModalOpen.value = true;
 };
 
 const closeModal = () => {
-  isModalOpen.value = false;
+    isModalOpen.value = false;
 };
 
 const refreshPatients = async () => {
-  await getPatients();
+    await getPatients();
 };
 
-onMounted(() => {
-  getPatients();
-  initializeRole();
+onMounted(async () => { // Make onMounted async
+    await getPatients();
+    // Fetch user details including role using the Pinia store
+    await authStore.getUser();
+    role.value = authStore.user.role; // Access the role from the store's user ref
 });
 </script>
 
 <template>
-  <div class="appointment-page">
-    <!-- Header -->
-    
-    <!-- Main Content -->
-    <div class="content">
-      <div class="container-fluid">
-        <div class="row">
-          <div class="col-lg-12">
-            <PatientListItem
-              :role="role"
-              @edit="openModal"
-             
-            />
-            <!-- Pagination Component -->
-           
-             
-            
-          </div>
+    <div class="appointment-page">
+        <div class="container-fluid">
+            <div class="row ">
+                <div class="col-sm-6">
+                    <h1 class="m-0">Patients</h1> </div>
+                <div class="col-sm-6">
+                    <ol class="breadcrumb float-sm-right">
+                        <li class="breadcrumb-item"><a href="#">Home</a></li>
+                        <li class="breadcrumb-item active">Patient</li>
+                    </ol>
+                </div>
+            </div>
         </div>
-      </div>
+    </div>
+    <div class="content">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-lg-12">
+                    <PatientListItem
+                        :role="role"
+                        :patients="patients"
+                        :loading="loading"
+                        :error="error"
+                        :paginationData="paginationData"
+                        @edit="openModal"
+                        @refresh="refreshPatients"
+                        @paginate="getPatients"
+                    />
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Patient Modal -->
     <PatientModel
-      :show-modal="isModalOpen"
-      :spec-data="selectedPatient"
-      @close="closeModal"
-      @specUpdate="refreshPatients"
+        :show-modal="isModalOpen"
+        :spec-data="selectedPatient"
+        @close="closeModal"
+        @specUpdate="refreshPatients"
     />
-  </div>
 </template>
 
 <style scoped>
 .appointment-page {
-  padding: 20px;
+    padding: 20px;
 }
 
 /* Add styling for pagination if needed */
 :deep(.pagination) {
-  margin-bottom: 0;
+    margin-bottom: 0;
+    display: flex; /* Ensures proper alignment */
+    justify-content: center; /* Center pagination */
+    margin-top: 20px; /* Add some space above pagination */
 }
 
 :deep(.page-link) {
-  color: #007bff;
-  background-color: #fff;
-  border: 1px solid #dee2e6;
+    color: #007bff;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    padding: 0.5rem 0.75rem; /* Adjust padding */
+    border-radius: 5px; /* Slightly rounded corners */
+    margin: 0 2px; /* Small gap between pages */
+    transition: all 0.2s ease-in-out;
+}
+
+:deep(.page-link:hover) {
+    background-color: #e9ecef; /* Light hover background */
+    border-color: #007bff;
 }
 
 :deep(.page-item.active .page-link) {
-  background-color: #007bff;
-  border-color: #007bff;
-  color: #fff;
+    background-color: #007bff;
+    border-color: #007bff;
+    color: #fff;
+    box-shadow: 0 2px 5px rgba(0, 123, 255, 0.2); /* Subtle shadow for active page */
+}
+
+:deep(.page-item.disabled .page-link) {
+    color: #6c757d;
+    pointer-events: none;
+    background-color: #e9ecef;
+    border-color: #dee2e6;
 }
 </style>

@@ -106,7 +106,7 @@
             <br><br>
             Nous vous confirmons votre rendez-vous au niveau du :
             <div class="service-info">
-                Service : {{ strtoupper($specialization_name) }} (Dr. {{ strtoupper($doctor_name) }})
+                Service : {{ strtoupper($specialization_name) }} ( {{ strtoupper($doctor_name) }})
             </div>
         </div>
 

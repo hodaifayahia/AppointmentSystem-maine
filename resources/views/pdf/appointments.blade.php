@@ -87,7 +87,9 @@
         <thead>
             <tr>
                 <th>#</th>
-                <!-- <th>Appointment Time</th> -->
+            @if($includeTime)
+                <th>Appointment Time</th>
+            @endif
                 <th>Patient Name</th>
                 <th>Status</th>
             </tr>
@@ -95,8 +97,10 @@
         <tbody>
             @foreach ($appointments as $index => $appointment)
                 <tr>
-                    <td>{{ $index + 1 }}</td>
-                    <!-- <td>{{ date('H:i', strtotime($appointment->appointment_time)) }}</td> -->
+                     <td>{{ $index + 1 }}</td>
+                @if($includeTime)
+                    <td>{{ date('H:i', strtotime($appointment->appointment_time)) }}</td>
+                @endif
                     <td>{{ $appointment->patient->Firstname }} {{ $appointment->patient->Lastname }}</td>
                     <td></td>
                 </tr>
@@ -104,7 +108,7 @@
         </tbody>
     </table>
 
-    <div class="footer">z
+    <div class="footer">
         Generated on {{ date('Y-m-d H:i:s') }}
     </div>
 </body>

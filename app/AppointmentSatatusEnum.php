@@ -8,6 +8,7 @@ enum AppointmentSatatusEnum:int
     case CONFIRMED = 1;
     case CANCELED = 2;
     case PENDING = 3;
+    case ONWORKING= 5;
     case DONE = 4;
 
     public function color(): string
@@ -18,6 +19,7 @@ enum AppointmentSatatusEnum:int
             self::DONE => 'info',         // Light Blue
             self::CANCELED => 'danger',  // Red
             self::PENDING => 'warning',  // Yellow
+            self::ONWORKING => 'warning',  // Yellow
             default => 'secondary',      // Gray
         };
     }
@@ -30,6 +32,7 @@ enum AppointmentSatatusEnum:int
             self::CANCELED => 'fa fa-ban',
             self::PENDING => 'fa fa-hourglass-half',
             self::CONFIRMED => 'fa fa-check',
+            self::ONWORKING => 'warning',  // Yellow
             default => 'fa fa-question-circle',
         };
     }

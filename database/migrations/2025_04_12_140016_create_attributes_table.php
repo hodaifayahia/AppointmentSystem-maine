@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('attributes', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('value');
+            $table->string('value')->nullable();
             $table->foreignId('placeholder_id')->constrained('placeholders')->onDelete('cascade');
             $table->timestamps();
         });

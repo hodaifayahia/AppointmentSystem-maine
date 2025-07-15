@@ -21,6 +21,7 @@ public function up(): void
         $table->boolean('patients_based_on_time')->default(false);
         $table->integer('time_slot')->nullable();
         $table->integer('appointment_booking_window')->default(1);
+        $table->integer('include_time')->nullable()->default(0);
         $table->integer('created_by')->default(2);
         $table->unsignedBigInteger('user_id');
         $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');

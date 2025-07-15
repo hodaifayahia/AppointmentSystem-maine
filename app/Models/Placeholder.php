@@ -25,6 +25,24 @@ class Placeholder extends Model
         return $this->belongsTo(Specialization::class ,'specializations_id');
     }
     
+    public function attributes()
+    {
+        return $this->hasMany(Attribute::class, 'placeholder_id');
+    }
+    public function consultationPlaceholderAttributes()
+    {
+        return $this->hasMany(ConsultationPlaceholderAttributes::class, 'placeholder_id');
+    }
+    public function getPlaceholderAttributes()
+    {
+        return $this->hasMany(ConsultationPlaceholderAttributes::class, 'placeholder_id')
+            ->with('attribute');
+    }
+    public function getPlaceholderAttributesWithAttribute()
+    {
+        return $this->hasMany(ConsultationPlaceholderAttributes::class, 'placeholder_id')
+            ->with('attribute');
+    }
     
 
 }

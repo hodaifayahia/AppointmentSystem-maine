@@ -9,10 +9,11 @@ export default defineConfig({
     //     port: 5173,       // Default Vite port
     //     strictPort: true,
     //     hmr: {
-    //         host: '192.168.1.140' // Replace with your actual local network IP
+    //         host: '172.26.240.1' // Replace with your actual local network IP
     //     }
     // },
     plugins: [
+   
 
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.js'],

@@ -5,12 +5,13 @@ import { useToastr } from '../../../Components/toster';
 import AttributesModel from "../attributes/AttributesModel.vue";
 import AttributesItem from "../attributes/attributesListitem.vue";
 import { useSweetAlert } from '../../../Components/useSweetAlert';
-import { useRoute} from 'vue-router';
+import { useRoute ,useRouter} from 'vue-router';
 
 const swal = useSweetAlert();
 const toaster = useToastr();
 const route = useRoute();
 const placeholderId = route.params.id;
+const router = useRouter();
 
 
 // State management
@@ -174,10 +175,14 @@ onMounted(() => {
   <div class="attributes-page">
     <!-- Update the header to show placeholder info -->
     <div class="content-header">
+      <button class="btn mt-2 btn-light bg-primary rounded-pill shadow-sm position-absolute"
+             style="z-index: 1000;" @click="router.go(-1)">
+             <i class="fas fa-arrow-left"></i> Back
+         </button>
       <div class="container-fluid">
         <div class="row mb-2">
           <div class="col-sm-6">
-            <h1 class="m-0">Attributes for Placeholder #{{ placeholderId }}</h1>
+            <h1 class="ml-5 pl-3">Attributes for Placeholder #{{ placeholderId }}</h1>
           </div>
           <div class="col-sm-6">
             <ol class="breadcrumb float-sm-right">

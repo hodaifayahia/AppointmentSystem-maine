@@ -14,6 +14,10 @@ class prescription extends Model
     protected $fillable = [
         'patient_id',
         'consultation_id',
+        'doctor_id',
+        'appointment_id',
+        'prescription_date',
+        'pdf_path',
         'signature_status',
     ];
 

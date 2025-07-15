@@ -85,7 +85,8 @@ class UserController extends Controller
             'email' => 'required|unique:users,email',
             'phone' => 'required|string',
             'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Max 2MB file size
-            'role' => 'required|string|in:admin,doctor,receptionist,SuperAdmin', 
+            'role' => 'required|string', 
+            'is_active'=>'nullable|boolean',
             'password' => 'required|string|min:8',
         ]);
     
@@ -109,11 +110,12 @@ class UserController extends Controller
                 'name' => $validatedData['name'],
                 'email' => $validatedData['email'],
                 'phone' => $validatedData['phone'],
-                'role' => $validatedData['role'],
+                'is_active' => $validatedData['is_active'] ?? 0, // <-- Fix here
                 'password' => Hash::make($validatedData['password']),
                 'avatar' => $avatarPath ?? $request->user()->avatar, // Keep old avatar if none uploaded
             ]
         );
+        $user->syncRoles([$validatedData['role']]);
     
         return new UserResource($user);
     }
@@ -130,6 +132,7 @@ public function update(Request $request, string $id)
         'name' => 'required|string|max:255',
         'email' => 'required|unique:users,email,' . $id,
         'phone' => 'required|string|min:10|max:15',
+        'is_active'=>'nullable|boolean',
         'password' => 'nullable|string|min:8',
         'role' => 'required|string|in:admin,doctor,receptionist,SuperAdmin',
         'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Avatar validation
@@ -140,6 +143,7 @@ public function update(Request $request, string $id)
         'name' => $validatedData['name'],
         'email' => $validatedData['email'],
         'phone' => $validatedData['phone'],
+        'is_active' => $validatedData['is_active'],
         'role' => $validatedData['role'],
     ];
 
@@ -176,10 +180,7 @@ public function update(Request $request, string $id)
         $validatedData = $request->validate([
             'role' => 'required|string|in:admin,doctor,receptionist',
         ]);
-        
-        $user->update([
-            'role' => $validatedData['role']
-        ]);
+       $user->syncRoles([$validatedData['role']]);
         
         return response()->json([
             "success" => true,

@@ -15,6 +15,11 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('doctor_id')->nullable(); // Column for Doctor ID
             $table->date('start_date')->nullable(); // Column for Start Date
+            $table->string('start_time')->nullable(); // Column for Start Date
+            $table->string('end_time')->nullable(); // Column for Start Date
+            $table->integer('number_of_patients_per_day')->nullable(); // Column for Start Date
+            $table->string('shift_period')->nullable(); // Column for Start Date
+            $table->boolean('is_active')->nullable(); // Column for Start Date
             $table->date('end_date')->nullable();   // Column for End Date
             $table->string('reason')->nullable(); // Optional reason for exclusion
             $table->boolean('apply_for_all_years'); // Indicates if the exclusion applies to all years

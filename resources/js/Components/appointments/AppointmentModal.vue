@@ -5,7 +5,7 @@
       <button class="close-button bg-danger rounded-pill" @click="closeModal"> <i class="fas fa-times"></i>
       </button>
       <div class="modal-body">
-        <AppointmentForm :doctorId="doctorId" :edit-mode="true" :specialization_id="specialization_id" @close="closeModal" :NextAppointment="true" :appointmentId="appointmentId" />
+        <AppointmentForm :isConsulation="props.isConsulation" :doctorId="doctorId" :edit-mode="true" :specialization_id="specialization_id" @close="closeModal" :NextAppointment="true" :appointmentId="appointmentId" />
       </div>
     </div>
   </div>
@@ -31,6 +31,10 @@ const props = defineProps({
   editMode: {
     type: Boolean,
     default: true
+  },
+  isConsulation: {
+    type: Boolean,
+    default: false
   }
 });
 

@@ -23,6 +23,7 @@ return new class extends Migration
             $table->string('avatar')->nullable(); // Add avatar field
             $table->string('background')->nullable(); // Add background field
             $table->integer('created_by')->default(2);
+            $table->integer('is_active')->default(1);
             $table->rememberToken();
             $table->softDeletes(); 
             $table->timestamps();

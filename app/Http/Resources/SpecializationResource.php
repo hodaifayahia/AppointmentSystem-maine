@@ -22,6 +22,9 @@ class SpecializationResource extends JsonResource
             'photo_url' => $this->photo 
             ? asset(Storage::url($this->photo)) 
             : asset('storage/default.png'),
+            'service_id' => $this->service_id,
+'service_name' => $this->service?->name ?? 'No Service', // ✅ Safe null access
+            'is_active' => $this->is_active,
             'created_at' => $this->created_at?->toDateTimeString(), // Format the created_at timestamp
             'updated_at' => $this->updated_at?->toDateTimeString(), // Format the updated_at timestamp
         ];

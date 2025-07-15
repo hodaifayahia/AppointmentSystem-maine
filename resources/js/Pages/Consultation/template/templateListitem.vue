@@ -1,24 +1,33 @@
 <script setup>
 import { defineProps, defineEmits } from 'vue';
+import { useRouter } from 'vue-router';
+import { useToastr } from '../../../Components/toster';
+
+const router = useRouter();
+const toaster = useToastr();
 
 const props = defineProps({
   template: Object,
-  index: Number
+  index: Number,
+  folderid:Number,
+  currentDoctorId:Number,
 });
 
 const emit = defineEmits(['edit', 'delete']);
 
 const handleEdit = () => {
-  emit('edit', props.template);
-};
-
-
-// Navigate to create Template page
-const goToEditTemplatePage = () => {
+  console.log('Editing template:', props.template);
   router.push({
     name: 'admin.consultation.template.edit',
-    params: { id: props.template.id },
-    query: { name: props.template.name },
+    params: { 
+      id: props.template.id ,
+      folderid:props.folderid,
+      doctor_id:props.currentDoctorId,
+    },
+    query: { 
+      name: props.template.name,
+      action: 'edit'
+    }
   });
 };
 
@@ -44,23 +53,7 @@ const getMimeTypeBadgeClass = (mimeType) => {
   }
 };
 
-// Helper to get readable MIME type
-const getReadableMimeType = (mimeType) => {
-  if (!mimeType) return 'Unknown';
-  
-  switch (mimeType.toLowerCase()) {
-    case 'text/html':
-      return 'HTML';
-    case 'text/plain':
-      return 'Plain Text';
-    case 'application/pdf':
-      return 'PDF';
-    case 'application/msword':
-      return 'Word Document';
-    default:
-      return mimeType;
-  }
-};
+
 </script>
 
 <template>
@@ -76,20 +69,19 @@ const getReadableMimeType = (mimeType) => {
       <span v-if="template.description" class="description-text">{{ template.description }}</span>
       <span v-else class="text-muted fst-italic">No description</span>
     </td>
-    <td>
+    <!-- <td>
       <div v-if="template.doctor" class="d-flex align-items-center">
         <i class="fas fa-user-md me-1 text-secondary"></i>
         {{ template.doctor.name }}
       </div>
       <span v-else class="text-muted fst-italic">No Doctor</span>
-    </td>
+    </td> -->
     <td>
       <span 
         v-if="template.mime_type" 
         class="badge rounded-pill"
-        :class="getMimeTypeBadgeClass(template.mime_type)"
       >
-        {{ getReadableMimeType(template.mime_type) }}
+        {{ (template.mime_type == 'Consultation' ? 'A4' : template.mime_type) }}
       </span>
       <span v-else class="badge rounded-pill bg-secondary">Unknown</span>
     </td>
@@ -97,7 +89,7 @@ const getReadableMimeType = (mimeType) => {
       <div class="btn-group d-flex justify-content-center">
         <button 
           class="btn btn-sm btn-outline-primary action-btn" 
-          @click.stop="goToEditTemplatePage(template.id)" 
+          @click.stop="handleEdit" 
           title="Edit Template"
         >
           <i class="fas fa-edit"></i>

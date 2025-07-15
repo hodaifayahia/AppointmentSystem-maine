@@ -8,6 +8,7 @@ import AvailableAppointments from './AvailableAppointments.vue';
 import NextAppointmentDate from './NextAppointmentDate.vue';
 import AppointmentCalendar from './AppointmentCalendar.vue';
 import { useToastr } from '../../Components/toster';
+import { useAuthStore } from '../../stores/auth';
 
 const route = useRoute();
 const router = useRouter();
@@ -16,18 +17,19 @@ const searchQuery = ref('');
 const toastr = useToastr();
 const isEmpty = ref(false);
 const importanceLevels = ref([]);
-import { useAuthStore } from '../../stores/auth';
-
 const authStore = useAuthStore();
 const doctors = ref([]);
+const autoPrint = ref(false);
 
 const props = defineProps({
   editMode: { type: Boolean, default: false },
   NextAppointment: { type: Boolean, default: false },
   doctorId: { type: Number, default: null },
   specialization_id: { type: Number, default: null },
+  isConsulation : {type: Boolean, default: false},
   appointmentId: { type: Number, default: null }
 });
+
 const emit = defineEmits(['close']);
 
 const fetchDoctors = async () => {
@@ -49,7 +51,7 @@ const form = reactive({
   last_name: '',
   patient_Date_Of_Birth: '',
   phone: '',
-  doctor_id: null, // Initialize as null
+  doctor_id: null,
   appointment_date: '',
   appointment_time: '',
   description: '',
@@ -66,7 +68,6 @@ const fetchAppointmentData = async () => {
       const response = await axios.get(`/api/appointments/${props.doctorId}/${props.appointmentId}`);
       if (response.data.success) {
         const appointment = response.data.data;
-        // Populate form with appointment data
         Object.assign(form, {
           id: appointment.id,
           first_name: appointment.first_name,
@@ -74,7 +75,7 @@ const fetchAppointmentData = async () => {
           last_name: appointment.last_name,
           patient_Date_Of_Birth: appointment.patient_Date_Of_Birth,
           phone: appointment.phone,
-          doctor_id: appointment.doctor_id || props.doctorId, // Use appointment's doctor_id if available, otherwise use props
+          doctor_id: appointment.doctor_id || props.doctorId,
           appointment_date: appointment.appointment_date,
           appointment_time: appointment.appointment_time,
           description: appointment.description,
@@ -88,12 +89,10 @@ const fetchAppointmentData = async () => {
       console.error('Failed to fetch appointment data:', error);
     }
   } else if (!props.editMode && props.doctorId) {
-    // If not in edit mode but doctorId is provided, set it as the initial doctor
     form.doctor_id = props.doctorId;
   }
 };
 
-// Rest of the existing functions remain the same
 const fetchImportanceEnum = async () => {
   const response = await axios.get('/api/importance-enum');
   importanceLevels.value = response.data;
@@ -113,21 +112,16 @@ const handlePatientSelect = (patient) => {
 };
 
 const getPatientFullName = (patient) => {
-    // Validate input
-    if (!patient || typeof patient !== 'object') {
-        return 'N/A';
-    }
+  if (!patient || typeof patient !== 'object') {
+    return 'N/A';
+  }
 
-    // Extract and sanitize properties
-    const {  patient_last_name = '', patient_first_name = '' } = patient;
+  const { patient_last_name = '', patient_first_name = '' } = patient;
+  const fullName = [patient_first_name, patient_last_name]
+    .filter(Boolean)
+    .join(' ');
 
-    // Construct full name
-    const fullName = [ patient_first_name , patient_last_name]
-        .filter(Boolean) // Remove empty strings
-        .join(' ')       // Join with spaces
-
-    // Capitalize the result (assuming capitalize is defined elsewhere)
-    return fullName ? capitalize(fullName) : 'N/A';
+  return fullName ? capitalize(fullName) : 'N/A';
 };
 
 const handleDaysChange = (days) => {
@@ -143,10 +137,6 @@ const handleTimeSelected = (time) => {
   form.appointment_time = time;
 };
 
-// Add this ref at the top with other refs
-const autoPrint = ref(false);
-
-// Update the handleSubmit function
 const handleSubmit = async (values, { setErrors }) => {
   try {
     let url = '/api/appointments';
@@ -164,12 +154,13 @@ const handleSubmit = async (values, { setErrors }) => {
     const response = await axios[method](url, form);
     toastr.success(`${props.editMode ? 'Appointment updated' : 'Appointment created'} successfully`);
 
-    // Print ticket if autoPrint is checked
     if (autoPrint.value && response.data.data) {
       await PrintTicket(response.data.data);
     }
 
-    if (props.NextAppointment) {
+    if (props.isConsulation) {
+      router.push({ name: 'admin.consultations.consulation' });
+    } else if (props.NextAppointment) {
       emit('close');
     } else {
       router.push({ name: 'admin.appointments', params: { doctorId: form.doctor_id } });
@@ -180,40 +171,41 @@ const handleSubmit = async (values, { setErrors }) => {
   }
 };
 
-// Update the PrintTicket function
-const PrintTicket = async () => {
-    try {
-        // Prepare the ticket data
-        const ticketData = {
-            patient_name: `${form.first_name} ${form.last_name}`,
-            patient_first_name: form.first_name,
-            patient_last_name: form.last_name,
-            doctor_id: form.doctor_id || 'N/A',
-            appointment_date: form.appointment_date,
-            appointment_time: form.appointment_time,
-            description: form.description || 'N/A'
-        };
+const handleCancel = () => {
+  emit('close');
+  if (props.isConsulation) {
+    router.push({ name: 'admin.consultations.consulation' });
+  }
+};
 
-        // Send POST request with the ticket data
-        const response = await axios.post('/api/appointments/print-ticket', ticketData, {
-            responseType: 'blob'
-        });
-        
-        // Create PDF URL
-        const pdfUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-        
-        // Open in new tab
-        const printWindow = window.open(pdfUrl);
-        
-        // Automatically trigger print dialog
-        printWindow.onload = function() {
-            printWindow.print();
-        };
-    } catch (error) {
-        console.error('Error printing ticket:', error);
-        toastr.error('Failed to print ticket');
-    }
-}
+const PrintTicket = async () => {
+  try {
+    const ticketData = {
+      patient_name: `${form.first_name} ${form.last_name}`,
+      patient_first_name: form.first_name,
+      patient_last_name: form.last_name,
+      doctor_id: form.doctor_id || 'N/A',
+      appointment_date: form.appointment_date,
+      appointment_time: form.appointment_time,
+      description: form.description || 'N/A'
+    };
+
+    const response = await axios.post('/api/appointments/print-ticket', ticketData, {
+      responseType: 'blob'
+    });
+    
+    const pdfUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const printWindow = window.open(pdfUrl);
+    
+    printWindow.onload = function() {
+      printWindow.print();
+    };
+  } catch (error) {
+    console.error('Error printing ticket:', error);
+    toastr.error('Failed to print ticket');
+  }
+};
+
 const resetSelection = () => {
   if (form.selectionMethod === 'days') {
     form.appointment_date = '';
@@ -237,10 +229,12 @@ onMounted(async () => {
 
 <template>
   <Form @submit="handleSubmit" v-slot="{ errors }">
-    <!-- Patient Search Component -->
-    <PatientSearch v-model="searchQuery" :patientId="form.patient_id" @patientSelected="handlePatientSelect" />
+    <PatientSearch 
+      v-model="searchQuery" 
+      :patientId="form.patient_id" 
+      @patientSelected="handlePatientSelect" 
+    />
 
-    <!-- Doctor Selection - Show only if user is not a doctor -->
     <div class="mb-3" v-if="props.editMode && authStore.user.role !== 'doctor'">
       <label for="doctor_id" class="form-label">Select Doctor</label>
       <select id="doctor_id" v-model="form.doctor_id" class="form-control" required>
@@ -252,17 +246,15 @@ onMounted(async () => {
       <span class="text-sm invalid-feedback">{{ errors.doctor_id }}</span>
     </div>
 
-    <!-- Available Appointments -->
-    <AvailableAppointments 
-      v-if="!form.selectionMethod" 
-      :waitlist="false" 
-      :isEmpty="isEmpty" 
+    <AvailableAppointments
+      v-if="!form.selectionMethod"
+      :waitlist="false"
+      :isEmpty="isEmpty"
       :doctorId="form.doctor_id || props.doctorId"
-      @dateSelected="handleDateSelected" 
-      @timeSelected="handleTimeSelected" 
+      @dateSelected="handleDateSelected"
+      @timeSelected="handleTimeSelected"
     />
 
-    <!-- Appointment Method Selection -->
     <div class="form-group mb-4">
       <label for="selectionMethod" class="form-label">Select Appointment Method</label>
       <select id="selectionMethod" v-model="form.selectionMethod" class="form-control">
@@ -272,8 +264,7 @@ onMounted(async () => {
       </select>
     </div>
 
-    <!-- By Days Option -->
-    <NextAppointmentDate 
+    <NextAppointmentDate
       v-if="form.selectionMethod === 'days'"
       :doctorId="form.doctor_id || props.doctorId"
       :initialDays="form.days"
@@ -282,44 +273,53 @@ onMounted(async () => {
       @timeSelected="handleTimeSelected"
     />
 
-    <!-- Calendar Option -->
-    <AppointmentCalendar 
+    <AppointmentCalendar
       v-if="form.selectionMethod === 'calendar'"
       :doctorId="form.doctor_id || props.doctorId"
       @timeSelected="handleTimeSelected"
       @dateSelected="handleDateSelected"
     />
 
-    <!-- Waitlist Checkbox -->
     <div class="form-group mb-4">
       <label for="addToWaitlist" class="form-label">Add to Waitlist</label>
-      <input type="checkbox" id="addToWaitlist" v-model="form.addToWaitlist" class="form-check-input" />
+      <input 
+        type="checkbox" 
+        id="addToWaitlist" 
+        v-model="form.addToWaitlist" 
+        class="form-check-input" 
+      />
     </div>
 
-    <!-- Description -->
     <div class="form-group mb-4">
       <label for="description" class="form-label">Description</label>
-      <textarea 
-        id="description" 
-        v-model="form.description" 
-        class="form-control" 
+      <textarea
+        id="description"
+        v-model="form.description"
+        class="form-control"
         rows="3"
         placeholder="Enter appointment details..."
       ></textarea>
     </div>
 
-    <!-- Auto Print Checkbox -->
     <div class="form-group mb-4">
       <label for="autoPrint" class="form-label">
-        <input type="checkbox" id="autoPrint" v-model="autoPrint"  />
+        <input type="checkbox" id="autoPrint" v-model="autoPrint" />
         Print ticket automatically after creating appointment
       </label>
     </div>
 
-    <!-- Submit Button -->
-    <div class="form-group">
+    <div class="form-group d-flex justify-content-between align-items-center">
       <button type="submit" class="btn btn-primary rounded-pill">
         {{ props.NextAppointment ? 'Create Appointment' : props.editMode ? 'Update Appointment' : 'Create Appointment' }}
+      </button>
+
+      <button
+        type="button"
+        class="btn btn-secondary rounded-pill"
+        @click="handleCancel"
+        v-if="isConsulation"
+      >
+        No Next Appointment
       </button>
     </div>
   </Form>
@@ -340,6 +340,7 @@ onMounted(async () => {
   width: 100%;
   padding: 0.5rem;
   border-radius: 4px;
+  border: 1px solid #ddd;
 }
 
 .form-check-input {
@@ -349,10 +350,27 @@ onMounted(async () => {
 .btn {
   padding: 0.8rem 1.5rem;
   font-size: 16px;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
 }
 
 .text-muted {
   color: #6c757d;
+}
+
+.invalid-feedback {
+  color: #dc3545;
+  font-size: 0.875rem;
 }
 
 .rounded-pill {
@@ -366,5 +384,29 @@ onMounted(async () => {
 
 .no-slots button {
   width: 200px;
+}
+
+.d-flex {
+  display: flex;
+}
+
+.justify-content-between {
+  justify-content: space-between;
+}
+
+.align-items-center {
+  align-items: center;
+}
+
+.mb-3 {
+  margin-bottom: 1rem;
+}
+
+.mb-4 {
+  margin-bottom: 1.5rem;
+}
+
+.text-sm {
+  font-size: 0.875rem;
 }
 </style>
