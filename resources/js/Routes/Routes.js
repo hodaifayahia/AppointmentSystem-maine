@@ -6,6 +6,8 @@ import adminRoutes from './admin';
 import doctorRoutes from './doctor';
 import configurationRoutes from './configuration'; // 👈 NEW IMPORT
 import infrastructureRoutes from './infrastructure'; // 👈 NEW IMPORT
+import convenationRoutes from './convenation'; // 👈 NEW IMPORT
+
 
 
 
@@ -15,7 +17,9 @@ export const allRoutes = [
     ...adminRoutes,
     ...doctorRoutes,
     ...configurationRoutes, // 👈 ADDED HERE
-    ...infrastructureRoutes
+    ...infrastructureRoutes,
+    ...convenationRoutes,
+    
 
 
 

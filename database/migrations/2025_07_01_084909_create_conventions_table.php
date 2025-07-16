@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('name'); // Not null
             $table->date('start_date'); // Not null
             $table->date('end_date'); // Not null
+            $table->date('is_general'); // Not null
             $table->string('status')->default('active'); // Not null with default
             $table->timestamps(); // Adds created_at and updated_at columns
         });

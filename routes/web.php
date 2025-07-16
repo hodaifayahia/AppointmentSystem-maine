@@ -43,7 +43,9 @@ use App\Http\Controllers\INFRASTRUCTURE\RoomTypeController;
 use App\Http\Controllers\INFRASTRUCTURE\RoomController;
 use App\Http\Controllers\INFRASTRUCTURE\BedController;
 use App\Http\Controllers\INFRASTRUCTURE\InfrastructureDashboardController;
-
+use App\Http\Controllers\B2B\ConventionController;
+use App\Http\Controllers\B2B\AgreementsController;
+use App\Http\Controllers\B2B\ConventionDetailController;
 
 use Illuminate\Support\Facades\Route;
 
@@ -375,7 +377,27 @@ Route::prefix('api')->group(function () {
 Route::get('/api/organismes/settings', [OrganismeController::class, 'OrganismesSettings']);
 Route::apiResource('/api/organismes',OrganismeController::class);
 Route::apiResource('/api/pavilions', PavilionController::class);
+Route::apiResource('/api/conventions', ConventionController::class);
+Route::apiResource('/api/agreements', AgreementsController::class);
+Route::apiResource('/api/rooms', ConventionController::class);
+Route::apiResource('/api/rooms', PavilionController::class);
 Route::apiResource('/api/rooms', RoomController::class);
+
+// Routes for ConventionDetailController
+Route::prefix('/api/convention/agreementdetails')->group(function () {
+    // Get details for a specific convention
+    Route::get('{conventionId}', [ConventionDetailController::class, 'getDetailsByConvention']);
+    // Update a specific detail for a convention
+    Route::put('{conventionId}/{detailId}', [ConventionDetailController::class, 'update']);
+
+    // Get details for a specific avenant
+    Route::get('avenant/{avenantId}', [ConventionDetailController::class, 'getDetailsByAvenant']);
+    // Update a specific detail for an avenant
+    Route::put('avenant/{avenantId}/{detailId}', [ConventionDetailController::class, 'update']);
+
+    // If you also need a general resource route for ConventionDetails (e.g., for adding/deleting without convention/avenant context)
+    // Route::apiResource('/', ConventionDetailController::class)->except(['index', 'show', 'update']); // Adjust as needed
+});
 Route::get('/api/pavilions/{pavilionId}/services', [PavilionController::class, 'PavilionServices']);
 
 Route::apiResource('/api/room-types', RoomTypeController::class);

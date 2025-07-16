@@ -45,6 +45,7 @@
         "mammoth": "^1.9.0",
         "pinia": "^2.3.1",
         "pizzip": "^3.1.0",
+        "primevue": "^3.53.1",
         "puppeteer": "^24.10.0",
         "quill": "^2.0.3",
         "toastr": "^2.1.4",

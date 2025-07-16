@@ -72,7 +72,7 @@ const allApps = ref([
     name: 'Convention', 
     icon: 'fas fa-handshake',
     color: '#7C3AED',
-    route: '/admin/convention'
+    route: '/convention'
   },
   { 
     id: 12, 

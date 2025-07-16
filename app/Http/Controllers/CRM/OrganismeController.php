@@ -17,34 +17,31 @@ class OrganismeController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
-    {
-        $organismes = Organisme::all();
-        return response()->json($organismes);
-    }
+   
+public function index()
+{
+    $organismes = Organisme::all();
+    return OrganisemResource::collection($organismes); // Use collection for multiple resources
+}
 
-    /**
-     * Store a newly created resource in storage.
-     *
-     * @param  \App\Http\Requests\CRM\OrganismeStoreRequest  $request
-     */
-    public function store(OrganismeStoreRequest $request)
-    {
-        $validatedData = $request->validated();
+public function store(OrganismeStoreRequest $request)
+{
+    $validatedData = $request->validated();
+    $organisme = Organisme::create($validatedData);
+    return new OrganisemResource($organisme); // Use new for a single resource
+}
 
-        $organisme = Organisme::create($validatedData);
-        return response()->json($organisme, 201); // 201 Created
-    }
+public function show(Organisme $organisme)
+{
+    return new OrganisemResource($organisme); // Use new for a single resource
+}
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Organisme $organisme)
-    {
-        return response()->json($organisme);
-    }
-
-
+public function update(OrganismeUpdateRequest $request, Organisme $organisme)
+{
+    $validatedData = $request->validated();
+    $organisme->update($validatedData);
+    return new OrganisemResource($organisme); // Return the updated resource
+}
     public function OrganismesSettings()
 {
     $organisme = Organisme::first(); // or however you get your data
@@ -62,21 +59,7 @@ class OrganismeController extends Controller
     ]);
 }
 
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \App\Http\Requests\CRM\OrganismeUpdateRequest  $request
-     * @param  \App\Models\Organisme  $organisme
-     */
-    public function update(OrganismeUpdateRequest $request, Organisme $organisme)
-    {
-        // The validation logic is now handled by OrganismeUpdateRequest.
-        $validatedData = $request->validated();
-
-        $organisme->update($validatedData);
-        return response()->json($organisme);
-    }
-
+    
     /**
      * Remove the specified resource from storage.
      */

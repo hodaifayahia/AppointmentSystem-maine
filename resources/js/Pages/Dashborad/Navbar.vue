@@ -149,7 +149,6 @@ const formatDate = (date) => {
 <style scoped>
 /* Premium Navbar */
 .premium-navbar {
-    
     background: linear-gradient(135deg, #5271fa 0%, #2d72f1 100%);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
@@ -160,7 +159,7 @@ const formatDate = (date) => {
     left: 0;
     right: 0;
     z-index: 1030;
-        margin-bottom: 1rem; /* or use 16px or any other value you prefer */
+    margin-bottom: 1rem; /* or use 16px or any other value you prefer */
 
 }
 

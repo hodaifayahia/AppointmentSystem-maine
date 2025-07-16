@@ -55,7 +55,6 @@ const goBack = () => {
            style="width: 40px; height: 40px;" :alt="appName">
       <span class="brand-text font-weight-light ms-2">{{ appName }}</span>
     </a>
-   
     <div class="sidebar">
       <div class="user-panel mt-3 pb-3 mb-3 d-flex justify-content-between">
         <div class="image">
