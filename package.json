@@ -10,7 +10,7 @@
         "@types/html-docx-js": "^0.3.4",
         "@vue/babel-plugin-jsx": "^1.4.0",
         "autoprefixer": "^10.4.21",
-        "axios": "^1.7.9",
+        "axios": "^1.10.0",
         "concurrently": "^9.2.0",
         "laravel-echo": "^2.1.6",
         "laravel-vite-plugin": "^1.0",
