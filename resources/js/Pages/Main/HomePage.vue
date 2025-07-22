@@ -88,12 +88,12 @@ const allApps = ref([
     color: '#EC4899',
     route: '/infrastructure'
   },
-  { 
+   { 
     id: 14, 
     name: 'CRM', 
-    icon: 'fas fa-users',
+    icon: 'fas fa-address-book',  // Better for customer relations
     color: '#6366F1',
-    route: '/admin/crm'
+    route: '/crm'
   },
   { 
     id: 15, 
@@ -186,13 +186,13 @@ const allApps = ref([
     color: '#8B5CF6',
     route: '/admin/biomedical'
   },
-  { 
-    id: 29, 
-    name: 'Ticket Management', 
-    icon: 'fas fa-ticket-alt',
-    color: '#F97316',
-    route: '/admin/ticket-management'
-  },
+   { 
+        id: 29, 
+        name: 'Ticket Management', 
+        icon: 'fas fa-tags',  // Better for multiple tickets
+        color: '#F97316',
+        route: '/ticket-management'
+    },
   { 
     id: 30, 
     name: 'Catheterization', 
