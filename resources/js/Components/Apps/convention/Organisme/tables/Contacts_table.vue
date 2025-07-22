@@ -1,85 +1,84 @@
-
 <script setup>
-import { ref, computed, defineProps, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import axios from "axios";
+import { useRouter } from "vue-router"; // Assuming you still need useRouter for navigation
+import { useToast } from "primevue/usetoast";
+import { useConfirm } from "primevue/useconfirm";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''; // Ensure API_BASE_URL is defined
+// PrimeVue Components
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
+import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
+import ProgressSpinner from 'primevue/progressspinner';
+import Toast from 'primevue/toast';
+import ConfirmDialog from 'primevue/confirmdialog';
+
+const toast = useToast();
+const confirm = useConfirm();
+const router = useRouter(); // Initialize useRouter
 
 const props = defineProps({
   companyId: {
     type: String,
-    required: true
-  }
+    required: true,
+  },
 });
 
-// Custom Toast/Alert System
-const toastMessage = ref({
-  visible: false,
-  severity: '', // 'success' or 'danger'
-  summary: '',
-  detail: '',
-  life: 3000 // duration in ms
-});
-
-const showToast = (severity, summary, detail) => {
-  toastMessage.value = { visible: true, severity, summary, detail };
-  setTimeout(() => {
-    toastMessage.value.visible = false;
-  }, toastMessage.value.life);
-};
-
-const hideToast = () => {
-  toastMessage.value.visible = false;
-};
+const loading = ref(false);
+const addDialog = ref(false);
+const editDialog = ref(false);
 
 const searchQuery = ref("");
-const searchFilter = ref("Name"); // Default filter by name
+const searchFilter = ref({ label: "By name", value: "name" }); // Default filter by name
 
-// Dropdown options for filtering
 const filterOptions = ref([
-  { label: "By Name", value: "Name" },
+  { label: "By name", value: "name" },
   { label: "By ID", value: "id" },
-  { label: "By Job Function", value: "job_function" },
-  { label: "By Phone", value: "phone_number" },
+  { label: "By Job Function", value: "role" },
+  { label: "By Phone", value: "phone" },
   { label: "By Email", value: "email" }
 ]);
 
 const items = ref([]);
-const addDialog = ref(false);
-const editDialog = ref(false);
-const newContact = ref({ Name: "", job_function: "", phone_number: "", email: "", company_id: props.companyId });
+const newContact = ref({ name: "", role: "", phone: "", email: "", company_id: props.companyId });
 const selectedContact = ref({});
 const formErrors = ref({
-  Name: "",
-  job_function: "",
-  phone_number: "",
+  name: "",
+  role: "",
+  phone: "",
   email: ""
 });
-
-const loading = ref(false); // Loading state for data fetching
 
 // Fetch contacts for the current company
 const fetchContacts = async () => {
   loading.value = true;
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/convention/contacts/${props.companyId}`);
+    // Using /api/organisme-contacts with company_id as a query parameter
+    // This assumes your backend's OrganismeContactController can filter by company_id
+    const response = await axios.get(`/api/organisme-contacts`, {
+      params: { organisme_id: props.companyId }
+    });
+
     const contactData = Array.isArray(response.data) ? response.data :
       (response.data.contacts || response.data.data || []);
 
-    items.value = contactData.map(contact => {
-      return {
-        id: contact.id,
-        Name: contact.Name || contact.name,
-        company_id: contact.company_id,
-        job_function: contact.job_function || contact.fonction || "", // Handle both possible cases
-        phone_number: contact.phone_number || contact.phone || "",
-        email: contact.email || ""
-      };
-    });
-    showToast('success', 'Success', 'Contacts loaded successfully');
+    items.value = contactData.map(contact => ({
+      id: contact.id,
+      name: contact.name || contact.name,
+      organisme_id: contact.company_id,
+      role: contact.role || contact.fonction || "",
+      phone: contact.phone || contact.phone || "",
+      email: contact.email || ""
+    }));
+
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Contacts loaded successfully', life: 3000 });
   } catch (error) {
     console.error("Failed to fetch contacts:", error);
-    showToast('danger', 'Error', error.response?.data?.message || 'Failed to load contacts');
+    items.value = [];
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to load contacts', life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -87,21 +86,30 @@ const fetchContacts = async () => {
 
 onMounted(() => {
   fetchContacts();
+  
 });
 
 const filteredItems = computed(() => {
-  return items.value.filter(item => {
-    const searchValue = searchQuery.value.toLowerCase();
-    const filterValue = String(item[searchFilter.value] || '').toLowerCase(); // Handle null/undefined values
-    return filterValue.includes(searchValue);
+  const itemsArray = Array.isArray(items.value) ? items.value : [];
+
+  if (!searchQuery.value && !searchFilter.value) {
+    return itemsArray;
+  }
+
+  const searchValue = searchQuery.value.toLowerCase();
+  const filterKey = searchFilter.value.value; // Get the value from the selected dropdown option
+
+  return itemsArray.filter((item) => {
+    const itemValue = String(item[filterKey] || "").toLowerCase();
+    return itemValue.includes(searchValue);
   });
 });
 
 const resetFormErrors = () => {
   formErrors.value = {
-    Name: "",
-    job_function: "",
-    phone_number: "",
+    name: "",
+    role: "",
+    phone: "",
     email: ""
   };
 };
@@ -110,16 +118,16 @@ const validateForm = (formData) => {
   resetFormErrors();
   let isValid = true;
 
-  if (!formData.Name) {
-    formErrors.value.Name = "Name is required";
+  if (!formData.name) {
+    formErrors.value.name = "name is required";
     isValid = false;
   }
 
-  if (!formData.phone_number) {
-    formErrors.value.phone_number = "Phone number is required";
+  if (!formData.phone) {
+    formErrors.value.phone = "Phone number is required";
     isValid = false;
-  } else if (formData.phone_number.length !== 10 || !/^\d+$/.test(formData.phone_number)) {
-    formErrors.value.phone_number = "Phone number must be 10 digits";
+  } else if (formData.phone.length !== 10 || !/^\d+$/.test(formData.phone)) {
+    formErrors.value.phone = "Phone number must be 10 digits";
     isValid = false;
   }
 
@@ -133,36 +141,47 @@ const validateForm = (formData) => {
       isValid = false;
     }
   }
-
   return isValid;
 };
 
 const openAddDialog = () => {
   resetFormErrors();
-  newContact.value = { Name: "", job_function: "", phone_number: "", email: "", company_id: props.companyId };
+  newContact.value = { name: "", role: "", phone: "", email: "", company_id: props.companyId };
   addDialog.value = true;
 };
 
 const saveContact = async () => {
   if (!validateForm(newContact.value)) {
-    showToast('danger', 'Validation Error', 'Please correct the form errors.');
+    toast.add({ severity: 'error', summary: 'Validation Error', detail: 'Please correct the form errors.', life: 3000 });
     return;
   }
 
   try {
-    const response = await axios.post(`${API_BASE_URL}/api/convention/contacts/${props.companyId}`, {
-      Name: newContact.value.Name,
-      job_function: newContact.value.job_function,
-      phone_number: newContact.value.phone_number,
-      email: newContact.value.email
+    // POST to /api/organisme-contacts
+    const response = await axios.post(`/api/organisme-contacts`, {
+      name: newContact.value.name,
+      role: newContact.value.role,
+      phone: newContact.value.phone,
+      email: newContact.value.email,
+      organisme_id: props.companyId // Ensure company_id is sent with new contact
     });
 
-    showToast('success', 'Success', 'Contact created successfully');
+    // Assuming the API returns the created contact data
+    const createdContact = response.data.data || response.data;
+    items.value.push({
+      id: createdContact.id,
+      name: createdContact.name || createdContact.name,
+      organisme_id: createdContact.company_id,
+      role: createdContact.role || createdContact.fonction || "",
+      phone: createdContact.phone || createdContact.phone || "",
+      email: createdContact.email || ""
+    });
+
     addDialog.value = false;
-    fetchContacts(); // Refresh the list
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Contact created successfully', life: 3000 });
   } catch (error) {
     const errorMessage = error.response?.data?.message || 'Failed to create contact';
-    showToast('danger', 'Error', errorMessage);
+    toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 3000 });
     console.error("Error creating contact:", error);
   }
 };
@@ -175,758 +194,513 @@ const editItem = (item) => {
 
 const updateContact = async () => {
   if (!validateForm(selectedContact.value)) {
-    showToast('danger', 'Validation Error', 'Please correct the form errors.');
+    toast.add({ severity: 'error', summary: 'Validation Error', detail: 'Please correct the form errors.', life: 3000 });
     return;
   }
 
   try {
-    await axios.put(`${API_BASE_URL}/api/convention/contacts/edit/${selectedContact.value.id}`, {
-      Name: selectedContact.value.Name,
-      job_function: selectedContact.value.job_function,
-      phone_number: selectedContact.value.phone_number,
-      email: selectedContact.value.email
+    // PUT to /api/organisme-contacts/{id}
+    await axios.put(`/api/organisme-contacts/${selectedContact.value.id}`, {
+      name: selectedContact.value.name,
+      role: selectedContact.value.role,
+      phone: selectedContact.value.phone,
+      email: selectedContact.value.email,
+      organisme_id: selectedContact.value.company_id // Ensure company_id is sent for update
     });
 
-    showToast('success', 'Success', 'Contact updated successfully');
+    // Update the item in the local array
+    const index = items.value.findIndex(item => item.id === selectedContact.value.id);
+    if (index !== -1) {
+      items.value[index] = { ...selectedContact.value };
+    }
+
     editDialog.value = false;
-    fetchContacts(); // Refresh the list
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Contact updated successfully', life: 3000 });
   } catch (error) {
     const errorMessage = error.response?.data?.message || 'Failed to update contact';
-    showToast('danger', 'Error', errorMessage);
+    toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 3000 });
     console.error("Error updating contact:", error);
   }
 };
 
-// Confirm delete contact
 const confirmDelete = (contact) => {
-  if (window.confirm(`Are you sure you want to delete the contact "${contact.Name}"?`)) {
-    deleteContact(contact.id);
-  } else {
-    showToast('info', 'Cancelled', 'You have cancelled the deletion');
+  confirm.require({
+    message: `Are you sure you want to delete contact "${contact.name}"? This action cannot be undone.`,
+    header: 'Confirm Deletion',
+    icon: 'pi pi-exclamation-triangle',
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      await deleteContact(contact.id);
+    },
+    reject: () => {
+      toast.add({ severity: 'info', summary: 'Info', detail: 'Contact deletion cancelled.', life: 3000 });
+    }
+  });
+};
+
+const deleteContact = async (contactId) => {
+  try {
+    // DELETE to /api/organisme-contacts/{id}
+    const response = await axios.delete(`/api/organisme-contacts/${contactId}`);
+    items.value = items.value.filter((item) => item.id !== contactId);
+    toast.add({ severity: 'success', summary: 'Success', detail: response.data.message || "Contact deleted successfully", life: 3000 });
+  } catch (error) {
+    console.error("Error deleting contact:", error);
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || "Failed to delete contact", life: 3000 });
   }
 };
 
-// Delete contact
-const deleteContact = async (contactId) => {
-  try {
-    const response = await axios.delete(`${API_BASE_URL}/api/convention/contacts/${contactId}`);
-    showToast('success', 'Success', response.data.message || "Contact deleted successfully");
-    fetchContacts(); // Refresh the list
-  } catch (error) {
-    console.error("Error deleting contact:", error);
-    showToast('danger', 'Error', error.response?.data?.message || "Failed to delete contact");
-  }
+// Placeholder for moreInfo as it navigates to a different route
+const moreInfo = (contact) => {
+  // This function is kept for consistency with the example,
+  // but for contacts, you might not have a separate "details" page
+  // or it might be handled by the edit dialog.
+  // If you do have a contact details page, adjust the route name.
+  router.push({
+    name: "contact.details", // Example route name, adjust as per your router setup
+    params: { id: contact.id },
+  });
 };
 </script>
 
 <template>
-  <div class="container-fluid py-4">
-    <!-- Custom Toast/Alert Placeholder (replace with your actual toast system) -->
-    <div v-if="toastMessage.visible" :class="['alert', toastMessage.severity === 'success' ? 'alert-success' : 'alert-danger', 'alert-dismissible', 'fade', 'show']" role="alert">
-      <strong>{{ toastMessage.summary }}:</strong> {{ toastMessage.detail }}
-      <button type="button" class="btn-close" @click="hideToast" aria-label="Close"></button>
-    </div>
+  <div class="container">
+    <Toast />
+    <ConfirmDialog />
 
-    <!-- Search Bar & Add Button -->
-    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-center mb-4 gap-2">
-      <div class="position-relative flex-grow-1 d-flex align-items-center gap-2 w-100">
-        <select v-model="searchFilter" class="form-select border rounded-3">
-          <option v-for="option in filterOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-        <input type="text" v-model="searchQuery" placeholder="Search..." class="form-control w-100 rounded-3" />
+    <div class="header-row">
+      <div class="filters">
+        <Dropdown
+          v-model="searchFilter"
+          :options="filterOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Filter"
+          class="filter-dropdown"
+        />
+        <InputText
+          v-model="searchQuery"
+          placeholder="Search contacts..."
+          class="filter-input"
+        />
       </div>
-      <button class="btn btn-primary add-contact-button" @click="openAddDialog">
-        <i class="fas fa-plus me-2"></i> Add Contact
-      </button>
+      <Button
+        label="Add Contact"
+        icon="pi pi-plus"
+        class="add-btn"
+        @click="openAddDialog"
+      />
     </div>
 
-    <!-- Data Table -->
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div v-if="items.length === 0 && !loading" class="text-center text-muted py-5 d-flex flex-column align-items-center">
-          <i class="fas fa-users fs-3 mb-2"></i>
-          <span>No contacts found.</span>
-        </div>
-        <div v-else-if="loading" class="loading-state">
-          <div class="spinner" role="status">
-            <span class="sr-only">Loading...</span>
-          </div>
-          <p class="loading-text">Loading contacts...</p>
-        </div>
-        <div v-else class="table-responsive">
-          <table class="table table-striped table-hover contact-table">
-            <thead>
-              <tr class="table-header-row">
-                <th class="table-header">ID</th>
-                <th class="table-header">Name</th>
-                <th class="table-header">Function</th>
-                <th class="table-header">Phone</th>
-                <th class="table-header">Email</th>
-                <th class="table-header text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in filteredItems" :key="item.id" class="table-row">
-                <td class="table-cell">{{ item.id }}</td>
-                <td class="table-cell">{{ item.Name }}</td>
-                <td class="table-cell">{{ item.job_function }}</td>
-                <td class="table-cell">{{ item.phone_number }}</td>
-                <td class="table-cell">{{ item.email }}</td>
-                <td class="table-cell actions-cell">
-                  <button class="btn btn-sm btn-warning action-button edit-button me-2" @click="editItem(item)">
-                    <i class="fas fa-pencil-alt"></i>
-                  </button>
-                  <button class="btn btn-sm btn-danger action-button delete-button" @click="confirmDelete(item)">
-                    <i class="fas fa-trash-alt"></i>
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+    <div class="table-card">
+      <div v-if="loading" class="centered-col loading">
+        <ProgressSpinner style="width:48px; height:48px" strokeWidth="5" />
+        <span class="loading-label">Loading contacts...</span>
       </div>
-    </div>
 
-    <!-- Add Contact Dialog (Bootstrap Modal Structure with Custom CSS) -->
-    <div v-if="addDialog" class="custom-modal-overlay">
-      <div class="custom-modal-container">
-        <div class="custom-modal-header">
-          <div class="header-content">
-            <div class="modal-icon">
-              <i class="fas fa-user-plus"></i>
-            </div>
-            <div>
-              <h3 class="modal-title">Add Contact</h3>
-              <p class="modal-subtitle">Create a new contact entry</p>
-            </div>
-          </div>
-          <button @click="addDialog = false" class="modal-close-button">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-        <div class="custom-modal-body">
-          <form @submit.prevent="saveContact" class="modal-form">
-            <div class="form-group">
-              <label for="addName" class="form-label">
-                <i class="fas fa-tag label-icon"></i> Name:
-              </label>
-              <input type="text" id="addName" v-model="newContact.Name" class="form-control form-input"
-                     :class="{ 'input-error': formErrors.Name }" />
-              <small v-if="formErrors.Name" class="error-message">
-                <i class="fas fa-exclamation-circle"></i> {{ formErrors.Name }}
-              </small>
-            </div>
+      <div v-else-if="filteredItems.length === 0" class="centered-col empty-state">
+        <i class="pi pi-folder-open empty-icon"></i>
+        <span>No contacts found</span>
+      </div>
 
-            <div class="form-group">
-              <label for="addFunction" class="form-label">
-                <i class="fas fa-briefcase label-icon"></i> Function:
-              </label>
-              <input type="text" id="addFunction" v-model="newContact.job_function" class="form-control form-input"
-                     :class="{ 'input-error': formErrors.job_function }" />
-              <small v-if="formErrors.job_function" class="error-message">
-                <i class="fas fa-exclamation-circle"></i> {{ formErrors.job_function }}
-              </small>
-            </div>
-
-            <div class="form-group">
-              <label for="addPhone" class="form-label">
-                <i class="fas fa-phone-alt label-icon"></i> Phone:
-              </label>
-              <input type="text" id="addPhone" v-model="newContact.phone_number" class="form-control form-input"
-                     :class="{ 'input-error': formErrors.phone_number }" />
-              <small v-if="formErrors.phone_number" class="error-message">
-                <i class="fas fa-exclamation-circle"></i> {{ formErrors.phone_number }}
-              </small>
-            </div>
-
-            <div class="form-group">
-              <label for="addEmail" class="form-label">
-                <i class="fas fa-envelope label-icon"></i> Email:
-              </label>
-              <input type="text" id="addEmail" v-model="newContact.email" class="form-control form-input"
-                     :class="{ 'input-error': formErrors.email }" />
-              <small v-if="formErrors.email" class="error-message">
-                <i class="fas fa-exclamation-circle"></i> {{ formErrors.email }}
-              </small>
-            </div>
-
-            <div class="custom-modal-footer">
-              <button type="button" class="btn btn-secondary" @click="addDialog = false">
-                <i class="fas fa-times me-2"></i> Cancel
-              </button>
-              <button type="submit" class="btn btn-primary ms-2">
-                <i class="fas fa-check me-2"></i> Save
-              </button>
-            </div>
-          </form>
-        </div>
+      <div v-else>
+        <DataTable
+          :value="filteredItems"
+          stripedRows
+          :paginator="true"
+          :rows="10"
+          :rowsPerPageOptions="[5, 10, 20]"
+          responsiveLayout="scroll"
+          class="contacts-table"
+        >
+          <Column field="id" header="ID" />
+          <Column field="name" header="name" />
+          <Column field="role" header="Function" />
+          <Column field="phone" header="Phone" />
+          <Column field="email" header="Email" />
+          <Column header="Actions" :exportable="false">
+            <template #body="slotProps">
+              <div class="action-btns">
+                <Button
+                  icon="pi pi-pencil"
+                  class="p-button-sm p-button-text info-btn"
+                  @click="editItem(slotProps.data)"
+                  v-tooltip.top="'Edit Contact'"
+                />
+                <Button
+                  icon="pi pi-trash"
+                  class="p-button-sm p-button-text delete-btn"
+                  @click="confirmDelete(slotProps.data)"
+                  v-tooltip.top="'Delete Contact'"
+                />
+              </div>
+            </template>
+          </Column>
+        </DataTable>
       </div>
     </div>
 
-    <!-- Edit Contact Dialog (Bootstrap Modal Structure with Custom CSS) -->
-    <div v-if="editDialog" class="custom-modal-overlay">
-      <div class="custom-modal-container">
-        <div class="custom-modal-header">
-          <div class="header-content">
-            <div class="modal-icon">
-              <i class="fas fa-user-edit"></i>
-            </div>
-            <div>
-              <h3 class="modal-title">Edit Contact</h3>
-              <p class="modal-subtitle">Update contact information</p>
-            </div>
-          </div>
-          <button @click="editDialog = false" class="modal-close-button">
-            <i class="fas fa-times"></i>
-          </button>
+    <!-- Add Contact Dialog -->
+    <Dialog
+      v-model:visible="addDialog"
+      modal
+      header="Add Contact"
+      :style="{ width: '40vw' }"
+      :breakpoints="{ '1199px': '75vw', '575px': '90vw' }"
+    >
+      <template #header>
+        <div class="p-d-flex p-ai-center p-gap-2">
+          <i class="pi pi-user-plus p-text-xl"></i>
+          <span class="p-dialog-title">Add Contact</span>
         </div>
-        <div class="custom-modal-body">
-          <form @submit.prevent="updateContact" class="modal-form">
-            <div class="form-group">
-              <label for="editName" class="form-label">
-                <i class="fas fa-tag label-icon"></i> Name:
-              </label>
-              <input type="text" id="editName" v-model="selectedContact.Name" class="form-control form-input"
-                     :class="{ 'input-error': formErrors.Name }" />
-              <small v-if="formErrors.Name" class="error-message">
-                <i class="fas fa-exclamation-circle"></i> {{ formErrors.Name }}
-              </small>
-            </div>
-
-            <div class="form-group">
-              <label for="editFunction" class="form-label">
-                <i class="fas fa-briefcase label-icon"></i> Function:
-              </label>
-              <input type="text" id="editFunction" v-model="selectedContact.job_function" class="form-control form-input"
-                     :class="{ 'input-error': formErrors.job_function }" />
-              <small v-if="formErrors.job_function" class="error-message">
-                <i class="fas fa-exclamation-circle"></i> {{ formErrors.job_function }}
-              </small>
-            </div>
-
-            <div class="form-group">
-              <label for="editPhone" class="form-label">
-                <i class="fas fa-phone-alt label-icon"></i> Phone:
-              </label>
-              <input type="text" id="editPhone" v-model="selectedContact.phone_number" class="form-control form-input"
-                     :class="{ 'input-error': formErrors.phone_number }" />
-              <small v-if="formErrors.phone_number" class="error-message">
-                <i class="fas fa-exclamation-circle"></i> {{ formErrors.phone_number }}
-              </small>
-            </div>
-
-            <div class="form-group">
-              <label for="editEmail" class="form-label">
-                <i class="fas fa-envelope label-icon"></i> Email:
-              </label>
-              <input type="text" id="editEmail" v-model="selectedContact.email" class="form-control form-input"
-                     :class="{ 'input-error': formErrors.email }" />
-              <small v-if="formErrors.email" class="error-message">
-                <i class="fas fa-exclamation-circle"></i> {{ formErrors.email }}
-              </small>
-            </div>
-
-            <div class="custom-modal-footer">
-              <button type="button" class="btn btn-secondary" @click="editDialog = false">
-                <i class="fas fa-times me-2"></i> Cancel
-              </button>
-              <button type="submit" class="btn btn-primary ms-2">
-                <i class="fas fa-check me-2"></i> Save
-              </button>
-            </div>
-          </form>
+      </template>
+      <div class="p-fluid p-formgrid p-grid">
+        <div class="p-col-12 p-mb-3">
+          <label for="addname" class="p-mb-2">name:</label>
+          <InputText
+            id="addname"
+            v-model="newContact.name"
+            :class="{ 'p-invalid': formErrors.name }"
+          />
+          <small class="p-error" v-if="formErrors.name">{{ formErrors.name }}</small>
+        </div>
+        <div class="p-col-12 p-mb-3">
+          <label for="addFunction" class="p-mb-2">Function:</label>
+          <InputText
+            id="addFunction"
+            v-model="newContact.role"
+            :class="{ 'p-invalid': formErrors.role }"
+          />
+          <small class="p-error" v-if="formErrors.role">{{ formErrors.role }}</small>
+        </div>
+        <div class="p-col-12 p-mb-3">
+          <label for="addPhone" class="p-mb-2">Phone:</label>
+          <InputText
+            id="addPhone"
+            v-model="newContact.phone"
+            :class="{ 'p-invalid': formErrors.phone }"
+          />
+          <small class="p-error" v-if="formErrors.phone">{{ formErrors.phone }}</small>
+        </div>
+        <div class="p-col-12 p-mb-3">
+          <label for="addEmail" class="p-mb-2">Email:</label>
+          <InputText
+            id="addEmail"
+            v-model="newContact.email"
+            :class="{ 'p-invalid': formErrors.email }"
+          />
+          <small class="p-error" v-if="formErrors.email">{{ formErrors.email }}</small>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <Button label="Cancel" icon="pi pi-times" text @click="addDialog = false" />
+        <Button label="Save" icon="pi pi-check" @click="saveContact" />
+      </template>
+    </Dialog>
+
+    <!-- Edit Contact Dialog -->
+    <Dialog
+      v-model:visible="editDialog"
+      modal
+      header="Edit Contact"
+      :style="{ width: '40vw' }"
+      :breakpoints="{ '1199px': '75vw', '575px': '90vw' }"
+    >
+      <template #header>
+        <div class="p-d-flex p-ai-center p-gap-2">
+          <i class="pi pi-user-edit p-text-xl"></i>
+          <span class="p-dialog-title">Edit Contact</span>
+        </div>
+      </template>
+      <div class="p-fluid p-formgrid p-grid">
+        <div class="p-col-12 p-mb-3">
+          <label for="editname" class="p-mb-2">name:</label>
+          <InputText
+            id="editname"
+            v-model="selectedContact.name"
+            :class="{ 'p-invalid': formErrors.name }"
+          />
+          <small class="p-error" v-if="formErrors.name">{{ formErrors.name }}</small>
+        </div>
+        <div class="p-col-12 p-mb-3">
+          <label for="editFunction" class="p-mb-2">Function:</label>
+          <InputText
+            id="editFunction"
+            v-model="selectedContact.role"
+            :class="{ 'p-invalid': formErrors.role }"
+          />
+          <small class="p-error" v-if="formErrors.role">{{ formErrors.role }}</small>
+        </div>
+        <div class="p-col-12 p-mb-3">
+          <label for="editPhone" class="p-mb-2">Phone:</label>
+          <InputText
+            id="editPhone"
+            v-model="selectedContact.phone"
+            :class="{ 'p-invalid': formErrors.phone }"
+          />
+          <small class="p-error" v-if="formErrors.phone">{{ formErrors.phone }}</small>
+        </div>
+        <div class="p-col-12 p-mb-3">
+          <label for="editEmail" class="p-mb-2">Email:</label>
+          <InputText
+            id="editEmail"
+            v-model="selectedContact.email"
+            :class="{ 'p-invalid': formErrors.email }"
+          />
+          <small class="p-error" v-if="formErrors.email">{{ formErrors.email }}</small>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" icon="pi pi-times" text @click="editDialog = false" />
+        <Button label="Save" icon="pi pi-check" @click="updateContact" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
-
 <style scoped>
-/* General Page Layout */
-.container-fluid {
-  padding-top: 1.5rem;
-  padding-bottom: 1.5rem;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+/* Main container styling */
+.container {
+  padding: 2rem 1.5rem;
   min-height: 100vh;
+  min-width: 80vw; /* Adjust as needed */
+  background: linear-gradient(135deg, #f4f8fa 0%, #e9edf2 100%);
 }
 
-/* Custom Alert/Toast Styling */
-.alert {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 1050; /* Above modals */
-  min-width: 250px;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  animation: slideInRight 0.5s forwards;
-}
-
-.alert.fade.show {
-  opacity: 1;
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-/* Header and Search Bar */
-.add-contact-button {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: #ffffff;
-  font-weight: 600;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
-  transition: all 0.2s;
-  border: none;
-  cursor: pointer;
-  font-size: 0.875rem;
-  padding: 0.75rem 1.5rem;
-}
-
-.add-contact-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 8px -1px rgba(59, 130, 246, 0.4);
-}
-
-.form-select, .form-control {
-  border: 2px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  transition: all 0.2s;
-  background-color: #ffffff;
-}
-
-.form-select:focus, .form-control:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* Card and Table Styling */
-.card {
-  background: #ffffff;
-  border-radius: 1rem;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
-  border: 1px solid #e2e8f0;
-}
-
-.contact-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.table-header-row {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  border-bottom: 2px solid #cbd5e1;
-}
-
-.table-header {
-  padding: 1rem 1.5rem;
-  text-align: left;
-  font-weight: 600;
-  color: #374151;
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-}
-
-.table-row {
-  transition: background-color 0.2s ease;
-}
-
-.table-row:nth-child(odd) {
-  background-color: #f9fafb;
-}
-
-.table-row:hover {
-  background-color: #f1f5f9;
-}
-
-.table-cell {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: middle;
-  color: #4b5563;
-}
-
-.actions-cell {
-  text-align: center;
-  white-space: nowrap;
-}
-
-.action-button {
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.action-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.edit-button {
-  background-color: #ffc107; /* Bootstrap yellow */
-  border-color: #ffc107;
-  color: #212529;
-}
-
-.edit-button:hover {
-  background-color: #e0a800;
-  border-color: #e0a800;
-}
-
-.delete-button {
-  background-color: #dc3545; /* Bootstrap red */
-  border-color: #dc3545;
-  color: #ffffff;
-}
-
-.delete-button:hover {
-  background-color: #c82333;
-  border-color: #bd2130;
-}
-
-/* Loading State */
-.loading-state {
-  text-align: center;
-  padding: 4rem 2rem;
-}
-
-.spinner {
-  display: inline-block;
-  width: 3rem;
-  height: 3rem;
-  border: 4px solid #e5e7eb;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.loading-text {
-  color: #64748b;
-  margin-top: 1rem;
-  font-size: 1rem;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* No Contacts Found */
-.no-contacts {
-  padding: 4rem 2rem;
-  text-align: center;
-}
-
-.no-contacts-content {
-  max-width: 400px;
-  margin: 0 auto;
-}
-
-.no-contacts-icon {
-  font-size: 4rem;
-  color: #cbd5e1;
+/* Header row for filters and add button */
+.header-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 1.5rem;
 }
 
-.no-contacts-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.5rem;
-}
-
-.no-contacts-text {
-  color: #6b7280;
-  margin-bottom: 2rem;
-  line-height: 1.6;
-}
-
-/* Custom Modal Styling (mimicking PrimeVue Dialog) */
-.custom-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(17, 24, 39, 0.8), rgba(55, 65, 81, 0.6));
-  backdrop-filter: blur(4px);
+.filters {
   display: flex;
-  justify-content: center;
+  flex: 1;
+  gap: 1rem;
+  min-width: 250px; /* Ensures filters don't collapse too much */
+}
+
+.filter-dropdown,
+.filter-input {
+  width: 220px; /* Fixed width for filters */
+  max-width: 100%; /* Ensures responsiveness */
+  font-size: 1rem;
+  border-radius: 6px;
+}
+
+/* Responsive adjustments for header and filters */
+@media (max-width: 700px) {
+  .header-row {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch; /* Stretch items to full width */
+  }
+  .filters {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .filter-dropdown,
+  .filter-input {
+    width: 100%; /* Full width on small screens */
+  }
+}
+
+/* Add button styling */
+.add-btn {
+  font-weight: bold;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #007ad9 40%, #094989 100%);
+  color: #fff;
+  border: none;
+  letter-spacing: 0.01em;
+  box-shadow: 0 3px 12px -6px rgba(0, 122, 217, 0.33); /* Adjusted shadow for consistency */
+}
+.add-btn:hover,
+.add-btn:focus {
+  background: linear-gradient(90deg, #116ab8 0%, #094989 100%);
+}
+
+/* Table card styling */
+.table-card {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px -8px rgba(0, 122, 217, 0.08); /* Adjusted shadow for consistency */
+  padding: 1.5rem;
+}
+
+/* Centered content for loading and empty states */
+.centered-col {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  z-index: 1040; /* Below toast, above other content */
-  padding: 1rem;
+  justify-content: center;
+}
+.loading {
+  min-height: 220px;
+}
+.loading-label {
+  margin-top: 1.1rem;
+  color: #5580a0;
+}
+.empty-state {
+  min-height: 220px;
+  color: #a0a7b3;
+}
+.empty-icon {
+  font-size: 2.7rem;
+  margin-bottom: 0.7rem;
+  color: #b0bdc9;
 }
 
-.custom-modal-container {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  border-radius: 1rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
-  width: 100%;
-  max-width: 42rem;
-  max-height: 90vh;
-  overflow: hidden;
-  position: relative;
-  animation: fadeInScale 0.3s ease-out;
+/* DataTable specific styling */
+.contacts-table {
+  font-size: 0.95rem;
+  border-radius: 6px;
 }
 
-@keyframes fadeInScale {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+/* PrimeVue DataTable header and cell padding/font-size */
+.p-datatable .p-datatable-thead > tr > th {
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); /* Match original header */
+  color: #374151; /* Match original header text color */
 }
 
-.custom-modal-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4);
+.p-datatable .p-datatable-tbody > tr > td {
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem; /* Slightly smaller for table cells */
+  color: #4b5563; /* Match original cell text color */
 }
 
-.custom-modal-header {
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-  padding: 2rem;
+/* Striped rows for DataTable */
+.p-datatable.p-datatable-stripedRows .p-datatable-tbody > tr:nth-child(even) {
+  background-color: #f9fafb; /* Lighter background for even rows */
+}
+.p-datatable.p-datatable-stripedRows .p-datatable-tbody > tr:nth-child(odd) {
+  background-color: #ffffff; /* White background for odd rows */
+}
+
+/* Status tags styling (copied from your example) */
+.status-tag {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 3px 16px;
+  border-radius: 16px;
+  letter-spacing: 0.04em;
+  text-transform: capitalize;
+  margin: 0 2px;
+}
+.status-tag.active {
+  background: #e6fbee;
+  color: #2b974c;
+  border: 1px solid #56dd8e55;
+}
+.status-tag.pending {
+  background: #fff8e1;
+  color: #be8301;
+  border: 1px solid #f6bf26aa;
+}
+.status-tag.expired {
+  background: #ffeaea;
+  color: #c11c2a;
+  border: 1px solid #e2606055;
+}
+
+/* Action buttons styling */
+.action-btns {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center; /* Center actions in the column */
+}
+/* Override PrimeVue button styles for text buttons to match example */
+.p-button.p-button-text {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.info-btn {
+  color: #007ad9 !important; /* Blue from example */
+}
+.info-btn:hover {
+  background: #e8f1fd !important; /* Light blue hover */
+}
+.delete-btn {
+  color: #d94233 !important; /* Red from example */
+}
+.delete-btn:hover {
+  background: #fddede !important; /* Light red hover */
+}
+
+/* PrimeVue Dialog header styling */
+.p-dialog .p-dialog-header {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); /* Match modal header */
+  padding: 1.5rem;
   border-bottom: 1px solid #e2e8f0;
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
 }
 
-.custom-modal-header .header-content {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.custom-modal-header .modal-icon {
-  width: 3rem;
-  height: 3rem;
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  border-radius: 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
+.p-dialog .p-dialog-header .p-dialog-title {
   font-size: 1.25rem;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.custom-modal-header .modal-title {
-  font-size: 1.5rem;
   font-weight: 700;
   color: #1f2937;
-  margin: 0;
-}
-
-.custom-modal-header .modal-subtitle {
-  color: #6b7280;
-  font-size: 0.875rem;
-  margin: 0.25rem 0 0 0;
-}
-
-.modal-close-button {
-  width: 2.5rem;
-  height: 2.5rem;
-  border: none;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 0.5rem;
-  color: #6b7280;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
+  display: flex; /* For icon alignment */
   align-items: center;
-  justify-content: center;
+  gap: 0.75rem;
+}
+
+.p-dialog .p-dialog-header .p-dialog-header-icon {
+  width: 2rem; /* Adjust icon button size */
+  height: 2rem;
   font-size: 1rem;
-  backdrop-filter: blur(4px);
-}
-
-.modal-close-button:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  transform: scale(1.1);
-}
-
-.custom-modal-body {
-  padding: 2rem;
-  max-height: calc(90vh - 8rem);
-  overflow-y: auto;
-}
-
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.form-group {
-  position: relative;
-}
-
-.form-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.5rem;
-}
-
-.label-icon {
   color: #6b7280;
-  font-size: 0.875rem;
 }
 
-.form-input {
+/* PrimeVue Form Field Overrides */
+.p-fluid .p-formgrid.p-grid {
+  display: flex;
+  flex-wrap: wrap;
+  margin: -0.75rem; /* Adjust negative margin for spacing */
+}
+
+.p-fluid .p-formgrid.p-grid > .p-col-12 {
+  padding: 0.75rem; /* Padding for each form column */
   width: 100%;
+}
+
+.p-inputtext {
   padding: 0.75rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  transition: all 0.3s ease;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  font-size: 1rem;
 }
 
-.form-input:focus {
+.p-inputtext:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 0.2rem var(--blue-200); /* PrimeVue focus ring */
+  border-color: var(--blue-500);
 }
 
-.form-input::placeholder {
-  color: #9ca3af;
+.p-invalid {
+  border-color: var(--red-500) !important;
 }
 
-.input-error {
-  border-color: #ef4444;
+.p-error {
+  color: var(--red-500);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
 }
 
-.input-error:focus {
-  border-color: #ef4444;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
-}
-
-.error-message {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #ef4444;
-  font-size: 0.75rem;
-  margin-top: 0.5rem;
-  padding: 0.5rem;
-  background: rgba(239, 68, 68, 0.1);
-  border-radius: 0.25rem;
-  border-left: 3px solid #ef4444;
-}
-
-.custom-modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid #e5e7eb;
-  margin-top: 1.5rem;
-}
-
-/* Custom Scrollbar for modal body */
-.custom-modal-body::-webkit-scrollbar {
-  width: 6px;
-}
-
-.custom-modal-body::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 3px;
-}
-
-.custom-modal-body::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.custom-modal-body::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-  .container-fluid {
-    padding: 1rem;
-  }
-
-  .d-flex.flex-column.flex-lg-row {
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .position-relative.flex-grow-1 {
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .form-select, .form-control {
-    width: 100%;
-  }
-
-  .add-contact-button {
-    width: 100%;
-  }
-
-  .custom-modal-container {
-    max-width: 95%;
-  }
-
-  .custom-modal-header,
-  .custom-modal-body {
-    padding: 1.5rem;
-  }
-
-  .custom-modal-header .modal-title {
-    font-size: 1.25rem;
-  }
-
-  .custom-modal-footer {
-    flex-direction: column;
-  }
-
-  .btn {
-    width: 100%;
-    justify-content: center;
-  }
+/* Dialog footer buttons */
+.p-dialog-footer .p-button {
+  font-weight: bold;
 }
 </style>

@@ -17,7 +17,8 @@ class Convention extends Model
         'name',
         'status',
         'created_at',
-        'updated_at'
+        'updated_at',
+        'activation_at'
     ];
 
     public function conventionDetail(): HasOne
@@ -28,4 +29,19 @@ class Convention extends Model
     {
         return $this->belongsTo(Organisme::class, 'organisme_id'); // Assuming Organisme is the model and 'organisme_id' is the foreign key
     }
+      public function avenants(): HasMany
+    {
+        return $this->hasMany(Avenant::class, 'convention_id'); // Changed to convention_id
+    }
+
+    public function annexes(): HasMany
+    {
+        return $this->hasMany(Annex::class, 'convention_id'); // Changed to convention_id
+    }
+
+    // public function agreementDetails(): HasMany
+    // {
+    //     return $this->hasMany(ConventionDetail::class, 'convention_id'); // Changed to convention_id
+    // }
+
 }

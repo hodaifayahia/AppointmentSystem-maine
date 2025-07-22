@@ -46,8 +46,8 @@ class ServiceController extends Controller
                 'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif,svg', 'max:2048'],
                 'name' => ['required', 'string', 'max:255', 'unique:services,name'],
                 'description' => ['nullable', 'string', 'max:1000'],
-                'start_time' => ['nullable', 'date_format:H:i:s'], // Use date_format for time validation
-                'end_time' => ['nullable', 'date_format:H:i:s', 'after:start_time'], // Ensure end_time is after start_time
+                'start_time' => ['nullable'], // Use date_format for time validation
+                'end_time' => ['nullable'], // Ensure end_time is after start_time
                 'agmentation' => ['nullable', 'string', 'max:255'], // Typo: Should be 'augmentation'?
                 'is_active' => ['nullable', 'boolean']
             ]);
@@ -127,8 +127,8 @@ class ServiceController extends Controller
                 'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif,svg', 'max:2048'],
                 'name' => ['required', 'string', 'max:255', Rule::unique('services', 'name')->ignore($service->id)],
                 'description' => ['nullable', 'string', 'max:1000'],
-                'start_time' => ['nullable', 'date_format:H:i:s'],
-                'end_time' => ['nullable', 'date_format:H:i:s', 'after:start_time'],
+                'start_time' => ['nullable'],
+                'end_time' => ['nullable'],
                 'agmentation' => ['nullable', 'string', 'max:255'],
                 'is_active' => ['nullable', 'boolean'],
                 'image_url_keep' => ['nullable', 'boolean'], // New field to indicate keeping existing image

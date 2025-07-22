@@ -43,7 +43,7 @@ class PrestationRequest extends FormRequest
             'is_social_security_reimbursable' => 'boolean',
             'reimbursement_conditions' => 'nullable|string',
             'non_applicable_discount_rules' => 'nullable|array',
-            'fee_distribution_model' => 'required|in:percentage,fixed',
+            'fee_distribution_model' => 'nullable|in:percentage,fixed',
             'primary_doctor_share' => 'nullable|string',
             'primary_doctor_is_percentage' => 'boolean',
             'assistant_doctor_share' => 'nullable|string',

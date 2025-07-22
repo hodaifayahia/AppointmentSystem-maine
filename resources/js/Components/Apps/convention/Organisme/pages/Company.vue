@@ -53,7 +53,7 @@ onMounted(() => {
     <div class="title">
       <h1 id="contracts">Company Content</h1>
     </div>
-    <Contract_contact_tab :companyId="id" />
+    <Contract_contact_tab :companyId="company.id" />
   </div>
 </template>
 

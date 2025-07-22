@@ -363,12 +363,12 @@ const prestationApiService = {
     },
 
     async createPrestation(data) {
-        const response = await axios.post('/api/prescriptions', data);
+        const response = await axios.post('/api/prestation', data);
         return response.data;
     },
 
     async updatePrestation(id, data) {
-        const response = await axios.put(`/api/prescriptions/${id}`, data);
+        const response = await axios.put(`/api/prestation/${id}`, data);
         return response.data;
     }
 };

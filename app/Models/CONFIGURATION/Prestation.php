@@ -82,11 +82,10 @@ class Prestation extends Model
     ];
 
     // Relationships
-    public function service(): BelongsTo
+      public function service(): BelongsTo 
     {
         return $this->belongsTo(Service::class);
     }
-
     public function specialization(): BelongsTo
     {
         return $this->belongsTo(Specialization::class , 'specialization_id');
@@ -95,6 +94,10 @@ class Prestation extends Model
     public function modalityType(): BelongsTo
     {
         return $this->belongsTo(ModalityType::class, 'required_modality_type_id');
+    }
+     public function prestationPrices(): HasMany // Assuming PrestationPrice is PrestationPricing
+    {
+        return $this->hasMany(PrestationPricing::class, 'prestation_id'); // Corrected foreign key
     }
 
     // Accessors
@@ -106,10 +109,17 @@ class Prestation extends Model
     public function getFormattedDurationAttribute()
     {
         if (!$this->default_duration_minutes) return null;
-        
+
         $hours = floor($this->default_duration_minutes / 60);
         $minutes = $this->default_duration_minutes % 60;
-        
+
         return $hours > 0 ? "{$hours}h {$minutes}min" : "{$minutes}min";
+    }
+
+    // Add an accessor for formatted_id if it's not a direct column
+    // For example, if you want 'internal_code' or 'billing_code' as the "code"
+    public function getFormattedIdAttribute(): string
+    {
+        return $this->internal_code ?: $this->billing_code; // Or whatever logic you use
     }
 }

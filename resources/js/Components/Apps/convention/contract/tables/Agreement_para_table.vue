@@ -4,6 +4,7 @@ import axios from "axios";
 import { useToastr } from '../../../../toster'; // Ensure this path is correct
 
 const toast = useToastr();
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL; // Assuming this is defined in your environment variables
 
 const props = defineProps({
   contractState: String,
@@ -130,19 +131,39 @@ const fetchAgreementDetails = async () => {
         toast.error('Avenant ID is missing for Avenant page');
         return;
       }
+      // Use API_BASE_URL here for consistency
       response = await axios.get(`/api/convention/agreementdetails/avenant/${props.avenantid}`);
     } else {
       if (!props.contractid) {
         toast.error('Contract ID is missing');
         return;
       }
+      // Use API_BASE_URL here for consistency
       response = await axios.get(`/api/convention/agreementdetails/${props.contractid}`);
     }
 
-    items.value = response.data.map(item => ({
+    console.log("Raw API Response for Agreement Details:", response.data); // Log the raw response
+
+    let fetchedData = response.data;
+
+    // --- CRITICAL FIX: Check response structure ---
+    // If your API wraps the array in a 'data' property (common with Laravel API Resources for collections)
+    if (fetchedData && typeof fetchedData === 'object' && fetchedData.data !== undefined) {
+      fetchedData = fetchedData.data;
+    }
+
+    // If the API returns a single object instead of an array, wrap it in an array
+    if (!Array.isArray(fetchedData)) {
+      fetchedData = fetchedData ? [fetchedData] : []; // If it's an object, make it an array with that object. If null/undefined, make it an empty array.
+    }
+    // --- END CRITICAL FIX ---
+    
+    items.value = fetchedData.map(item => ({
       ...item,
+      // Ensure these fields exist before trying to create a Date object
       start_date: item.start_date ? new Date(item.start_date) : null,
       end_date: item.end_date ? new Date(item.end_date) : null,
+      // Ensure these fields are parsed correctly as numbers
       max_price: item.max_price !== null && item.max_price !== undefined ? parseFloat(item.max_price) : null,
       min_price: item.min_price !== null && item.min_price !== undefined ? parseFloat(item.min_price) : null,
       discount_percentage: item.discount_percentage !== null && item.discount_percentage !== undefined ? parseFloat(item.discount_percentage) : null,
@@ -150,8 +171,9 @@ const fetchAgreementDetails = async () => {
     }));
     currentPage.value = 1;
   } catch (error) {
-    toast.error(`Failed to load agreement details: ${error.message}`);
-    console.error("Error fetching agreement details:", error);
+    // Improved error message to show backend's message or a generic one
+    toast.error(`Failed to load agreement details: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+    console.error("Error fetching agreement details:", error.response?.data || error);
   }
 };
 
@@ -161,16 +183,18 @@ onMounted(() => {
 
 const editItem = (item) => {
   currentItem.value = { ...item };
+  // Ensure dates are converted to Date objects for the input type="date"
   currentItem.value.start_date = item.start_date ? new Date(item.start_date) : null;
   currentItem.value.end_date = item.end_date ? new Date(item.end_date) : null;
+  
 
-  // Simply toggle dialogVisible to true
   dialogVisible.value = true;
 };
 
 const saveItem = async () => {
   try {
     const payload = {
+      // Ensure dates are formatted as YYYY-MM-DD for the API
       start_date: formatDateForAPI(currentItem.value.start_date),
       end_date: formatDateForAPI(currentItem.value.end_date),
       family_auth: currentItem.value.family_auth,
@@ -194,9 +218,9 @@ const saveItem = async () => {
 
     await axios.put(apiUrl, payload);
 
+    // Refresh data after successful save
     await fetchAgreementDetails();
 
-    // Simply toggle dialogVisible to false
     dialogVisible.value = false;
 
     toast.success('Agreement details updated successfully');

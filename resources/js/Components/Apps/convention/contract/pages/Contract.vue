@@ -1,207 +1,357 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
+import axios from 'axios';
+
+// PrimeVue Imports
+import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
+import RadioButton from 'primevue/radiobutton';
+import Calendar from 'primevue/calendar';
+import Toast from 'primevue/toast'; // For PrimeVue's built-in toast
+import ConfirmDialog from 'primevue/confirmdialog'; // For confirmation dialogs
+import { useToast } from 'primevue/usetoast'; // PrimeVue's toast service
+import { useConfirm } from 'primevue/useconfirm'; // PrimeVue's confirm service
+
+// Custom component imports
 import Contract_card from '../cards/Contract_card.vue';
 import Contract_content_tab from '../tabs/Contract_content_tab.vue';
 
-import { useToastr } from '../../../../toster'; 
+// Initialize PrimeVue services
+const toast = useToast();
+const confirm = useConfirm();
 
-
-import axios from 'axios';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-
-// Get the route and router objects
+// Get the route object
 const route = useRoute();
-// const router = useRouter();
-const toast = useToastr(); // Use the toastr instance
-
-// Get contract ID from route params as string
-const contractId = route.params.id
-
+const contractId = route.params.id;
 
 // Contract data with reactive reference
-const contract = ref({
-    id: contractId,
-    contract_name: '',
-    status: 'pending',
-    company_name: '',
-    is_general: 'no'
-});
+const contract = ref(null); // Initialize as null to handle loading state more clearly
+const loadingContract = ref(true); // New loading state for fetching contract data
+const contractError = ref(null); // New error state for fetching contract data
 
-// Date variables (these are not directly used in template, but kept for data fetching)
-const startDate = ref('');
-const endDate = ref('');
+// Dialog control for activation
+const activationDialog = ref(false);
+const activationType = ref('now'); // 'now' or 'later'
+const activationDate = ref(null); // For 'later' activation
 
-// Loading state for buttons
-const loading = ref({
-    activate: false,
-    terminate: false
-});
+// Loading state for activation/termination buttons
+const processingAction = ref(false); // Unified loading for actions
 
-// Function to fetch contract data
+// Fetch contract data
 const fetchContractData = async () => {
+    loadingContract.value = true;
+    contractError.value = null;
     try {
         const response = await axios.get(`/api/conventions/${contractId}`);
-        
-        if (response.data) {
+        if (response.data && response.data.data) {
             contract.value = {
                 ...response.data.data,
                 id: contractId // Ensure ID is always a string
             };
-            
-            // Set the date variables
-            startDate.value = response.data.data.start_date;
-            endDate.value = response.data.data.end_date;
+        } else {
+           
         }
-    } catch (error) {
-        console.error('Error fetching contract data:', error);
-        toast.error('Failed to load contract data'); // Using toastr.error
+    } catch (err) {
+        contractError.value = 'Failed to load contract data.';
+        console.error('Error fetching contract data:', err);
+        toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: contractError.value,
+            life: 3000
+        });
+    } finally {
+        loadingContract.value = false;
     }
 };
 
-// Fetch data when component is mounted
-onMounted(() => {
-    fetchContractData();
-    
-});
+// Open activation dialog
+const openActivationDialog = () => {
+    activationDialog.value = true;
+    // Reset dialog state when opening
+    activationType.value = 'now';
+    activationDate.value = null;
+};
 
-// Function to activate the contract
-const activateContract = async () => {
+// Close dialog
+const closeDialog = () => {
+    activationDialog.value = false;
+};
+
+// Format date for API - YYYY-MM-DD format (no time for DATE type)
+const formatDate = (date) => {
+    if (!date) return null;
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// Handle activation
+const handleActivation = async () => {
+    if (processingAction.value) return;
+
+    processingAction.value = true;
+
     try {
-        loading.value.activate = true;
-        await axios.patch(`${API_BASE_URL}/api/convention/contracts/contract/${contractId}/activate`);
-        
-        // Update the contract status locally
-        contract.value.status = 'Active';
-        
-        // Show success toast
-        toast.success('The contract has been successfully activated.'); // Using toastr.success
-        
-        // Refresh data
-        fetchContractData();
+        let formattedDate = formatDate(new Date()); // Default to today
+        let isDelayedActivation = false;
+
+        if (activationType.value === 'later') {
+            if (!activationDate.value) {
+                toast.add({
+                    severity: 'error',
+                    summary: 'Missing Date',
+                    detail: 'Please select an activation date',
+                    life: 3000
+                });
+                processingAction.value = false;
+                return;
+            }
+            formattedDate = formatDate(activationDate.value);
+            isDelayedActivation = true;
+        }
+
+        await axios.patch(
+            `/api/conventions/${contractId}/activate`,
+            { activationDate: formattedDate },
+            { params: { activate_later: isDelayedActivation ? 'yes' : 'no' } }
+        );
+
+        const successMessage = isDelayedActivation
+            ? `The contract has been scheduled for activation on ${formattedDate}`
+            : 'The contract has been activated';
+
+        toast.add({
+            severity: 'success',
+            summary: 'Operation Successful',
+            detail: successMessage,
+            life: 3000
+        });
+
+        await fetchContractData(); // Refresh contract data to show updated status/timestamp
+        closeDialog();
+
     } catch (error) {
-        toast.error(error.response?.data?.message || 'An error occurred during activation.'); // Using toastr.error
+        console.error('Error processing contract activation:', error);
+        toast.add({
+            severity: 'error',
+            summary: 'Operation Failed',
+            detail: error.response?.data?.error || error.response?.data?.message || 'Failed to process the contract',
+            life: 3000
+        });
     } finally {
-        loading.value.activate = false;
+        processingAction.value = false;
     }
+};
+
+// Confirm termination using PrimeVue ConfirmDialog
+const confirmTerminate = () => {
+    confirm.require({
+        message: 'Are you sure you want to terminate this contract? This action cannot be undone.',
+        header: 'Confirm Termination',
+        icon: 'pi pi-exclamation-triangle',
+        acceptClass: 'p-button-danger',
+        accept: async () => {
+            await terminateContract();
+        },
+        reject: () => {
+            toast.add({ severity: 'info', summary: 'Cancelled', detail: 'Termination cancelled', life: 3000 });
+        }
+    });
 };
 
 // Function to terminate the contract
 const terminateContract = async () => {
+    if (processingAction.value) return;
+
+    processingAction.value = true;
     try {
-        loading.value.terminate = true;
-        await axios.patch(`${API_BASE_URL}/api/convention/contracts/contract/${contractId}/expire`);
-        
-        // Update the contract status locally
-        contract.value.status = 'Terminated';
-        
-        // Show success toast
-        toast.success('The contract has been successfully terminated.'); // Using toastr.success
-        
-        // Refresh data
-        fetchContractData();
+        await axios.patch(`/api/conventions/${contractId}/expire`);
+
+        toast.add({
+            severity: 'success',
+            summary: 'Operation Successful',
+            detail: 'The contract has been successfully terminated.',
+            life: 3000
+        });
+
+        await fetchContractData(); // Refresh data
+
     } catch (error) {
-        toast.error(error.response?.data?.message || 'An error occurred during termination.'); // Using toastr.error
+        console.error('Error terminating contract:', error);
+        toast.add({
+            severity: 'error',
+            summary: 'Operation Failed',
+            detail: error.response?.data?.error || error.response?.data?.message || 'An error occurred during termination.',
+            life: 3000
+        });
     } finally {
-        loading.value.terminate = false;
+        processingAction.value = false;
     }
 };
 
-// Function to confirm activation (using native confirm)
-const confirmActivate = () => {
-    if (window.confirm('Are you sure you want to activate this contract?')) {
-        activateContract();
-    }
-};
-
-// Function to confirm termination (using native confirm)
-const confirmTerminate = () => {
-    if (window.confirm('Are you sure you want to terminate this contract? This action cannot be undone.')) {
-        terminateContract();
-    }
-};
+// Fetch data when component mounts
+onMounted(() => {
+    fetchContractData();
+});
 </script>
 
 <template>
-    <div class="container-fluid py-4">
-        <div class="row">
-            <div class="col-lg-12">
-                <div class="card shadow-sm mb-4">
-                    <div class="card-body p-4">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h4 class="mb-0 text-primary">Contract Details</h4>
-                            <div class="d-flex gap-2">
-                                <button
-                                    v-if="contract.status === 'pending'"
-                                    class="btn btn-success"
-                                    :disabled="loading.activate"
-                                    @click="confirmActivate"
-                                >
-                                    <span v-if="loading.activate" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                    <i v-else class="fas fa-check me-1"></i>
-                                    {{ loading.activate ? 'Activating...' : 'Activate Contract' }}
-                                </button>
+    <Toast />
+    <ConfirmDialog />
 
-                                <button
-                                    v-if="contract.status === 'Active' || contract.status === 'pending'"
-                                    class="btn btn-danger"
-                                    :disabled="loading.terminate"
-                                    @click="confirmTerminate"
-                                >
-                                    <span v-if="loading.terminate" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                    <i v-else class="fas fa-times me-1"></i>
-                                    {{ loading.terminate ? 'Terminating...' : 'Terminate Contract' }}
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <Contract_card :contract="contract" />
+    <div class="content">
+        <div class="title">
+            <h1 id="maintitle">Contract</h1>
+        </div>
 
-                        <Contract_content_tab :contract="contract" />
-                    </div>
+        <div v-if="loadingContract" class="loading-state">
+            Loading contract data...
+        </div>
+        <div v-else-if="contractError" class="error-state">
+            {{ contractError }}
+        </div>
+
+        <div v-else-if="contract">
+            <Contract_card
+                :contract="contract"
+                :activateAt="contract.activate_at ? contract.activate_at : 'Not selected yet'"
+            />
+            <div class="action-buttons">
+                <Button
+                    v-if="contract.status === 'pending' || contract.status === 'scheduled'"
+                    icon="pi pi-file-check"
+                    severity="success"
+                    label="Activate "
+                    @click="openActivationDialog"
+                    :loading="processingAction"
+                    :disabled="processingAction"
+                    class="p-button-sm"
+                />
+
+                <Button
+                    v-if="contract.status === 'active' || contract.status === 'scheduled'"
+                    icon="pi pi-times"
+                    severity="danger"
+                    label="Terminate "
+                    @click="confirmTerminate"
+                    :loading="processingAction"
+                    :disabled="processingAction"
+                    class="p-button-sm"
+                />
+            </div>
+            <div class="title">
+                <h1 id="contracts">Contract Content</h1>
+            </div>
+            <Contract_content_tab :contract="contract" />
+        </div>
+
+        <Dialog
+            v-model:visible="activationDialog"
+            modal
+            header="Activate Contract"
+            :style="{ width: '450px' }"
+            :closable="true"
+            @hide="closeDialog"
+        >
+            <div class="activation-options">
+                <div class="radio-option">
+                    <RadioButton v-model="activationType" inputId="activate-now" name="activation-type" value="now" />
+                    <label for="activate-now" class="ml-2">Activate now</label>
+                </div>
+                <div class="radio-option">
+                    <RadioButton v-model="activationType" inputId="activate-later" name="activation-type" value="later" />
+                    <label for="activate-later" class="ml-2">Select activation date</label>
+                </div>
+
+                <div v-if="activationType === 'later'" class="date-picker-container">
+                    <Calendar v-model="activationDate" :showIcon="true" dateFormat="dd/mm/yy" />
                 </div>
             </div>
-        </div>
+
+            <template #footer>
+                <Button label="Cancel" severity="secondary" text @click="closeDialog" />
+                <Button
+                    label="OK"
+                    severity="success"
+                    @click="handleActivation"
+                    :loading="processingAction" />
+            </template>
+        </Dialog>
     </div>
 </template>
 
 <style scoped>
-/* These styles should work with Bootstrap */
-.card {
-    border-radius: 0.75rem;
+/* Main layout and general styles */
+.content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    padding-top: 10px;
+    padding-right: 20px;
+    padding-bottom: 20px;
+}
+.title h1 {
+    margin-top: 40px;
+    margin-bottom: 30px;
+    font-weight: bold;
+    font-size: 2rem;
+}
+.title #maintitle {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-weight: bold;
+    font-size: 2rem;
+}
+#contracts {
+    margin-top: 1rem;
 }
 
-.text-primary {
-    color: #007bff !important; /* Example primary color, adjust to your theme */
+/* Loading and Error states */
+.loading-state,
+.error-state {
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 1.1rem;
+}
+.loading-state {
+    background-color: #e0f2f7; /* Light blue */
+    color: #01579b; /* Darker blue */
+}
+.error-state {
+    background-color: #ffebee; /* Light red */
+    color: #c62828; /* Darker red */
 }
 
-/* Specific styles for Bootstrap buttons for consistency with previous PrimeVue styles */
-.btn-success {
-    background-color: #28a745;
-    border-color: #28a745;
+/* Action buttons section */
+.action-buttons {
+    margin-top: 1rem;
+    margin-left: 1rem; /* Aligns with Avenant_Details .activer */
+    margin-bottom: 0.5rem;
+    display: flex;
+    gap: 0.75rem; /* Space between buttons */
 }
 
-.btn-danger {
-    background-color: #dc3545;
-    border-color: #dc3545;
+/* PrimeVue Dialog specific styles */
+.activation-options {
+    padding: 1rem 0;
 }
-
-.btn-success:hover {
-    background-color: #218838;
-    border-color: #1e7e34;
+.radio-option {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
 }
-
-.btn-danger:hover {
-    background-color: #c82333;
-    border-color: #bd2130;
+.radio-option label {
+    margin-left: 0.5rem; /* Space between radio button and label */
 }
-
-/* Adding gap for buttons if not handled by Bootstrap's d-flex gap-2 utility */
-.d-flex.gap-2 > .btn {
-    margin-right: 0.5rem; /* Adjust as needed */
-}
-
-.d-flex.gap-2 > .btn:last-child {
-    margin-right: 0;
+.date-picker-container {
+    margin-top: 0.5rem;
+    margin-left: 1.5rem; /* Indent for date picker */
+    margin-bottom: 1rem;
 }
 </style>

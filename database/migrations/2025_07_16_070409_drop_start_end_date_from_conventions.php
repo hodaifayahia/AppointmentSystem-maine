@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::table('conventions', function (Blueprint $table) {
             $table->dropColumn(['start_date', 'end_date']);
+            
         });
     }
 

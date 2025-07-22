@@ -15,6 +15,8 @@ class CreateAnnexesTable extends Migration
             $table->unsignedBigInteger('service_id');
             $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
+            $table->integer('min_price');
+            $table->string('prestation_prix_status')->default('empty');
             $table->timestamps();
             $table->unsignedBigInteger('created_by')->nullable();
             $table->unsignedBigInteger('updated_by')->nullable();

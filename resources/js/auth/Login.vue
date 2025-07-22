@@ -14,7 +14,7 @@ const handleLogin = async (event) => {
     try {
         const response = await axios.post('/login', form);
         // Assuming a successful login redirects to the dashboard
-        window.location.href = '/dashboard';
+        window.location.href = '/home';
     } catch (error) {
         // Handle the error, assuming the backend returns a message for invalid credentials
         if (error.response && error.response.data.message) {

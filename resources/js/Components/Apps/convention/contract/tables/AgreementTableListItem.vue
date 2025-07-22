@@ -1,4 +1,74 @@
+<script setup>
+import { defineProps, defineEmits, computed } from 'vue';
+
+const props = defineProps({
+  agreement: {
+    type: Object,
+    required: true,
+  },
+  contractState: {
+    type: String,
+    required: true,
+  },
+});
+
+const emit = defineEmits(['edit', 'delete', 'showInfo']); // Removed 'viewDocument' as it's handled internally
+
+// Computed property to check if file is PDF
+const isPDF = computed(() => {
+  if (!props.agreement.file_path) return false;
+  const extension = getFileExtension(props.agreement.file_path).toLowerCase();
+  return extension === 'pdf';
+});
+
+// Helper function to get file extension
+const getFileExtension = (filePath) => {
+  if (!filePath) return '';
+  const parts = filePath.split('.');
+  return parts[parts.length - 1].toUpperCase();
+};
+
+// Helper function to get filename from path
+const getFileName = (filePath) => {
+  if (!filePath) return '';
+  const parts = filePath.split('/');
+  return parts[parts.length - 1];
+};
+
+// Format date function
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-GB');
+};
+
+// Download document function
+const downloadDocument = () => {
+  // Use the full URL from the backend or construct it
+  const fileUrl = props.agreement.file_url || `/storage/${props.agreement.file_path}`;
+  if (!fileUrl) return;
+
+  const link = document.createElement('a');
+  link.href = fileUrl;
+  link.download = getFileName(props.agreement.file_path) || 'document';
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// View document function (for PDFs)
+const viewDocument = () => {
+  // Use the full URL from the backend or construct it
+  const fileUrl = props.agreement.file_url || `/storage/${props.agreement.file_path}`;
+  if (!fileUrl) return;
+
+  window.open(fileUrl, '_blank');
+};
+</script>
+
 <template>
+  
   <tr>
     <td>{{ agreement.id }}</td>
     <td>{{ agreement.name || agreement.title }}</td>
@@ -75,74 +145,6 @@
   </tr>
 </template>
 
-<script setup>
-import { defineProps, defineEmits, computed } from 'vue';
-
-const props = defineProps({
-  agreement: {
-    type: Object,
-    required: true,
-  },
-  contractState: {
-    type: String,
-    required: true,
-  },
-});
-
-const emit = defineEmits(['edit', 'delete', 'showInfo']); // Removed 'viewDocument' as it's handled internally
-
-// Computed property to check if file is PDF
-const isPDF = computed(() => {
-  if (!props.agreement.file_path) return false;
-  const extension = getFileExtension(props.agreement.file_path).toLowerCase();
-  return extension === 'pdf';
-});
-
-// Helper function to get file extension
-const getFileExtension = (filePath) => {
-  if (!filePath) return '';
-  const parts = filePath.split('.');
-  return parts[parts.length - 1].toUpperCase();
-};
-
-// Helper function to get filename from path
-const getFileName = (filePath) => {
-  if (!filePath) return '';
-  const parts = filePath.split('/');
-  return parts[parts.length - 1];
-};
-
-// Format date function
-const formatDate = (dateString) => {
-  if (!dateString) return '';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-GB');
-};
-
-// Download document function
-const downloadDocument = () => {
-  // Use the full URL from the backend or construct it
-  const fileUrl = props.agreement.file_url || `/storage/${props.agreement.file_path}`;
-  if (!fileUrl) return;
-
-  const link = document.createElement('a');
-  link.href = fileUrl;
-  link.download = getFileName(props.agreement.file_path) || 'document';
-  link.target = '_blank';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
-
-// View document function (for PDFs)
-const viewDocument = () => {
-  // Use the full URL from the backend or construct it
-  const fileUrl = props.agreement.file_url || `/storage/${props.agreement.file_path}`;
-  if (!fileUrl) return;
-
-  window.open(fileUrl, '_blank');
-};
-</script>
 
 <style scoped>
 .description-cell {

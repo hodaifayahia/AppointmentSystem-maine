@@ -46,6 +46,10 @@ use App\Http\Controllers\INFRASTRUCTURE\InfrastructureDashboardController;
 use App\Http\Controllers\B2B\ConventionController;
 use App\Http\Controllers\B2B\AgreementsController;
 use App\Http\Controllers\B2B\ConventionDetailController;
+use App\Http\Controllers\B2B\AnnexController;
+use App\Http\Controllers\B2B\PrestationPricingController;
+use App\Http\Controllers\B2B\AvenantController;
+use App\Http\Controllers\CRM\OrganismeContactController;
 
 use Illuminate\Support\Facades\Route;
 
@@ -307,6 +311,17 @@ Route::get('prescription-templates/{templateId}/medications', [PrescriptionContr
         Route::apiResource('/api/modality-types', ModalityTypeController::class);
         Route::apiResource('/api/modalities', ModalityController::class);
         Route::apiResource('/api/prestation', PrestationController::class);
+// In your routes/api.php or web.php
+Route::prefix('/api')->group(function () {
+    // Get annexes for a specific contract
+    Route::get('/annex/contract/{contractId}', [AnnexController::class, 'getByContract']);
+    
+    // Standard resource routes
+    Route::apiResource('annex', AnnexController::class);
+    
+    // Custom route for creating annex with contractId
+    Route::post('/annex/{contractId}', [AnnexController::class, 'storeWithContract']);
+});
            // --- Prescription Management ---
 
  Route::prefix('/api/prestation')->group(function () {
@@ -376,8 +391,15 @@ Route::prefix('api')->group(function () {
 
 Route::get('/api/organismes/settings', [OrganismeController::class, 'OrganismesSettings']);
 Route::apiResource('/api/organismes',OrganismeController::class);
+Route::apiResource('/api/organisme-contacts', OrganismeContactController::class);
+
 Route::apiResource('/api/pavilions', PavilionController::class);
 Route::apiResource('/api/conventions', ConventionController::class);
+Route::patch('/api/conventions/{conventionId}/activate', [ConventionController::class, 'activate']);
+Route::patch('/api/conventions/{conventionId}/expire', [ConventionController::class, 'expire']); // Ensure this exists if you use it
+
+Route::get('/api/prestation/annex/price', [PrescriptionController::class, 'getAnnexPrestation']);
+Route::post('/api/organismes/settings', [ConventionController::class, 'activateConvenation']);
 Route::apiResource('/api/agreements', AgreementsController::class);
 Route::apiResource('/api/rooms', ConventionController::class);
 Route::apiResource('/api/rooms', PavilionController::class);
@@ -394,9 +416,6 @@ Route::prefix('/api/convention/agreementdetails')->group(function () {
     Route::get('avenant/{avenantId}', [ConventionDetailController::class, 'getDetailsByAvenant']);
     // Update a specific detail for an avenant
     Route::put('avenant/{avenantId}/{detailId}', [ConventionDetailController::class, 'update']);
-
-    // If you also need a general resource route for ConventionDetails (e.g., for adding/deleting without convention/avenant context)
-    // Route::apiResource('/', ConventionDetailController::class)->except(['index', 'show', 'update']); // Adjust as needed
 });
 Route::get('/api/pavilions/{pavilionId}/services', [PavilionController::class, 'PavilionServices']);
 
@@ -404,7 +423,35 @@ Route::apiResource('/api/room-types', RoomTypeController::class);
 Route::apiResource('/api/beds', BedController::class);
 Route::get('/api/beds/availablerooms', [BedController::class, 'getAvailableRooms']);
 
+// Add these new routes for Prestation Pricing
+Route::prefix('/api/prestation-pricings')->group(function () {
+    Route::get('/', [PrestationPricingController::class, 'index']); // To get all pricings for an annex
+    Route::post('/', [PrestationPricingController::class, 'store']); // To get all pricings for an annex
+    Route::put('/{id}', [PrestationPricingController::class, 'update']); // To update a specific pricing
+    Route::patch('/{id}', [PrestationPricingController::class, 'update']); // Alias for update
+    Route::delete('/{id}', [PrestationPricingController::class, 'destroy']); // Alias for update
+    // Add other routes like show, destroy if needed
+    // Route::get('/{id}', [PrestationPricingController::class, 'show']);
+    // Route::delete('/{id}', [PrestationPricingController::class, 'destroy'])
+    Route::get('/avenant/{avenantId}', [PrestationPricingController::class, 'getPrestationsByAvenantId']);
 
+
+});
+Route::get('prestations/available-for-avenant/{avenantId}', [PrestationPricingController::class, 'getAvailablePrestations']);
+Route::get('/api/prestations/available-for-service-avenant/{serviceId}/{avenantId}', [PrestationPricingController::class, 'getAvailablePrestationsForServiceAndAvenant']); // Specific filter
+
+
+Route::prefix('/api/avenants')->group(function () {
+    // Changed contractId to conventionId
+    Route::post('/convention/{conventionId}/duplicate', [AvenantController::class, 'createAvenantAndDuplicatePrestations']);
+    Route::patch('/{avenantId}/activate', [AvenantController::class, 'activateAvenant']);
+    Route::get('/{avenantId}', [AvenantController::class, 'getAvenantById']);
+    // Changed contractId to conventionId
+    Route::get('/convention/{conventionId}/pending', [AvenantController::class, 'checkPendingAvenantByConventionId']);
+    // Changed contractId to conventionId
+    Route::get('/convention/{conventionId}', [AvenantController::class, 'getAvenantsByConventionId']);
+
+});
 
 
 // Catch-all route for views

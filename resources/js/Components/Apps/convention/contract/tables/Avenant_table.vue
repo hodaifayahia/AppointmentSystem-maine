@@ -5,13 +5,12 @@ import axios from "axios";
 // Ensure this path is correct for your toastr setup
 import { useToastr } from '../../../../toster';
 
-// No PrimeVue imports needed anymore
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Use import.meta.env.VITE_API_BASE_URL if it's a Vite project
+// Otherwise, define it directly or get it from a global config
 
 const props = defineProps({
-    contractState: String,
-    contractid: String
+    contractState: String, // This prop still refers to the contract's overall state
+    conventionId: String // Renamed from contractid to conventionId for consistency
 });
 
 const router = useRouter();
@@ -28,7 +27,7 @@ const itemsPerPage = ref(8); // Corresponds to PrimeVue's :rows="8"
 
 const filterOptions = [
     { label: "By ID", value: "id" },
-    { label: "By Contract ID", value: "contract_id" },
+    { label: "By Convention ID", value: "convention_id" }, // Changed label and value
     { label: "By Status", value: "status" },
     { label: "By Creation Date", value: "created_at" },
 ];
@@ -51,17 +50,17 @@ const changePage = (page) => {
 
 const fetchAvenants = async () => {
     try {
-        // Fetch avenants by contract ID
-        if (!props.contractid) {
-            toast.error('Contract ID is missing.');
-            return;
-        }
-        const response = await axios.get(`${API_BASE_URL}/api/convention/avenants/contract/${props.contractid}`);
-        items.value = response.data;
+     
+        // Corrected API endpoint for fetching all avenants for a convention
+        const response = await axios.get(`/api/avenants/convention/${props.conventionId}`);
+        console.log("Response data:", response.data);
+        
+        items.value = response.data; // Assuming your AvenantResource returns data in a 'data' key
         currentPage.value = 1; // Reset pagination on new data
 
         // Check for pending avenants
-        const pendingResponse = await axios.get(`${API_BASE_URL}/api/convention/avenants/pending/check/${props.contractid}`);
+        // Corrected API endpoint for checking pending avenants
+        const pendingResponse = await axios.get(`/api/avenants/convention/${props.conventionId}/pending`);
         hasPendingAvenant.value = pendingResponse.data.hasPending;
     } catch (error) {
         console.error("Failed to fetch avenants data:", error);
@@ -71,11 +70,12 @@ const fetchAvenants = async () => {
 
 const createAvenant = async () => {
     try {
-        if (!props.contractid) {
-            toast.error('Contract ID is missing for avenant creation.');
+        if (!props.conventionId) {
+            toast.error('Convention ID is missing for avenant creation.');
             return;
         }
-        await axios.post(`${API_BASE_URL}/api/convention/avenants/avenant_creat/${props.contractid}`);
+        // Corrected API endpoint for duplicating/creating avenant
+        await axios.post(`/api/avenants/convention/${props.conventionId}/duplicate`);
         toast.success('New avenant created successfully');
         // Refresh the data after creating new avenant
         fetchAvenants();
@@ -92,13 +92,17 @@ onMounted(() => {
 
 const getBadgeClass = (status) => {
     switch (String(status).toLowerCase()) { // Ensure case-insensitivity
-        case "active":
+        case "Active":
             return "bg-success";
         case "pending":
-            return "bg-warning text-dark"; // Bootstrap warning needs text-dark for readability
+        case "pending-approval": // Added pending-approval status from your migration comment
+            return "bg-warning text-dark";
         case "expired":
         case "inactive":
+        case "archived": // Added archived status from your service logic
             return "bg-danger";
+        case "draft": // Added draft status from your migration comment
+            return "bg-secondary";
         default:
             return "bg-info";
     }
@@ -113,14 +117,13 @@ const filteredItemsComputed = computed(() => {
         switch (selectedFilter.value) {
             case "id":
                 return item.id && String(item.id).includes(query);
-            case "contract_id":
-                return item.contract_id && String(item.contract_id).includes(query);
+            case "convention_id":
+                return item.convention_id && String(item.convention_id).includes(query);
             case "status":
                 return item.status && String(item.status).toLowerCase().includes(query);
             case "created_at":
-                // If searchQuery is a Date object (from HTML type="date" input), format it for comparison
-                const searchDateFormatted = searchQuery.value instanceof Date 
-                    ? formatDateForDisplay(searchQuery.value) // Format to 'DD/MM/YYYY' for comparison
+                const searchDateFormatted = searchQuery.value instanceof Date
+                    ? formatDateForDisplay(searchQuery.value)
                     : query;
                 return item.created_at && formatDateForDisplay(item.created_at).includes(searchDateFormatted);
             default:
@@ -129,9 +132,11 @@ const filteredItemsComputed = computed(() => {
     });
 });
 
-const moreInfo = (item) => {
+const moreInfo = (id) => {
+    
     router.push({
-        path: `/Avenant/${item.id}`,
+       name:'convention.avenants.details',
+       query: { id:id }
     });
 };
 
@@ -139,7 +144,18 @@ const moreInfo = (item) => {
 const formatDateForDisplay = (dateString) => {
     if (!dateString) return 'N/A';
     try {
-        const date = new Date(dateString);
+        // Attempt to parse 'DD/MM/YYYY HH:mm:ss' or 'YYYY-MM-DD HH:mm:ss'
+        // For 'DD/MM/YYYY HH:mm:ss', reorder to 'YYYY-MM-DD HH:mm:ss' for robust Date parsing
+        const parts = dateString.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/);
+        let date;
+        if (parts) {
+            // Reconstruct as YYYY-MM-DD HH:mm:ss for reliable Date object creation
+            date = new Date(`${parts[3]}-${parts[2]}-${parts[1]}T${parts[4]}:${parts[5]}:${parts[6]}`);
+        } else {
+            // Try direct parsing for other formats (like YYYY-MM-DD HH:mm:ss)
+            date = new Date(dateString);
+        }
+
         if (isNaN(date.getTime())) return dateString; // Fallback if invalid date
         const day = String(date.getDate()).padStart(2, '0');
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -166,7 +182,7 @@ const formatDateForDisplay = (dateString) => {
                 <input v-if="selectedFilter === 'created_at'" type="date" v-model="searchQuery"
                     placeholder="Select Date" class="form-control flex-grow-1" />
             </div>
-            <button v-if="!hasPendingAvenant && (props.contractState ==='Pending'||props.contractState ==='Active')"
+            <button v-if="!hasPendingAvenant && (props.contractState ==='pending'||props.contractState ==='active')"
                 class="btn btn-primary d-flex align-items-center" @click="createAvenant">
                 <i class="fas fa-plus me-1"></i> Add Avenant
             </button>
@@ -184,7 +200,7 @@ const formatDateForDisplay = (dateString) => {
                         <thead>
                             <tr>
                                 <th scope="col">ID</th>
-                                <th scope="col">Contract ID</th>
+                                <th scope="col">Convention </th> <!-- Changed header -->
                                 <th scope="col">Status</th>
                                 <th scope="col">Created At</th>
                                 <th scope="col">Details</th>
@@ -193,7 +209,7 @@ const formatDateForDisplay = (dateString) => {
                         <tbody>
                             <tr v-for="item in paginatedFilteredItems" :key="item.id">
                                 <td>{{ item.id }}</td>
-                                <td>{{ item.contract_id }}</td>
+                                <td>{{ item.convention_id }}</td> <!-- Changed to convention_id -->
                                 <td>
                                     <span :class="['badge', getBadgeClass(item.status)]">
                                         {{ item.status }}
@@ -201,7 +217,7 @@ const formatDateForDisplay = (dateString) => {
                                 </td>
                                 <td>{{ formatDateForDisplay(item.created_at) }}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-info" @click="moreInfo(item)">
+                                    <button class="btn btn-sm btn-info" @click="moreInfo(item.id)">
                                         <i class="fas fa-eye me-1"></i> Details
                                     </button>
                                 </td>
@@ -299,23 +315,25 @@ const formatDateForDisplay = (dateString) => {
 .badge.bg-warning.text-dark { color: #212529 !important; } /* For better contrast on warning */
 .badge.bg-danger { background-color: #dc3545 !important; }
 .badge.bg-info { background-color: #17a2b8 !important; }
+.badge.bg-secondary { background-color: #6c757d !important; } /* Added for 'draft' status */
+
 
 /* General button styles for consistency with Bootstrap theme */
 .btn-primary {
-  background-color: #007bff;
-  border-color: #007bff;
+    background-color: #007bff;
+    border-color: #007bff;
 }
 .btn-primary:hover {
-  background-color: #0056b3;
-  border-color: #0056b3;
+    background-color: #0056b3;
+    border-color: #0056b3;
 }
 
 .btn-info {
-  background-color: #17a2b8;
-  border-color: #17a2b8;
+    background-color: #17a2b8;
+    border-color: #17a2b8;
 }
 .btn-info:hover {
-  background-color: #138496;
-  border-color: #117a8b;
+    background-color: #138496;
+    border-color: #117a8b;
 }
 </style>

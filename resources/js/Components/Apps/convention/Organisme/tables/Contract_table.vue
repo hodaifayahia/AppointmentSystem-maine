@@ -2,11 +2,22 @@
 import { ref, computed, defineProps, onMounted } from "vue";
 import axios from "axios";
 import { useRouter } from "vue-router";
-import AddContractModal from "../Models/AddContractModal.vue";
-import { useToastr } from '../../../../toster';
-import Contract_tablelistitem from "./Contract_tablelistitem.vue";
+import { useToast } from "primevue/usetoast"; // PrimeVue Toast service
 
-const toastr = useToastr();
+// PrimeVue Components
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
+import Button from 'primevue/button';
+import Dialog from 'primevue/dialog'; // Not strictly needed here if ContractModal handles its own visibility, but good to keep if you ever make it a standalone dialog
+import ProgressSpinner from 'primevue/progressspinner';
+import Toast from 'primevue/toast'; // Toast component for display
+
+// Refactor AddContractModal to be a more general ContractModal
+import ContractModal from "../Models/AddContractModal.vue"; // We'll modify this file
+
+const toast = useToast(); // Initialize PrimeVue Toast
 
 const props = defineProps({
   companyId: {
@@ -18,6 +29,8 @@ const props = defineProps({
 const loading = ref(false);
 const router = useRouter();
 const addDialog = ref(false);
+const editDialog = ref(false); // New: State for edit dialog visibility
+const contractToEdit = ref(null); // New: Stores the contract object being edited
 
 const searchQuery = ref("");
 const searchFilter = ref("contract_name");
@@ -30,7 +43,6 @@ const filterOptions = ref([
   { label: "Expired Only", value: "Expired" },
 ]);
 
-// Initialize as empty array
 const items = ref([]);
 
 const fetchContracts = async () => {
@@ -39,14 +51,12 @@ const fetchContracts = async () => {
     const response = await axios.get(`/api/conventions/`, {
       params: { organisme_id: props.companyId }
     });
-    
-    // Add defensive checks for API response structure
+
     if (response.data && response.data.data) {
-      // Handle paginated response
       if (Array.isArray(response.data.data.data)) {
-        items.value = response.data.data.data; // Paginated response
+        items.value = response.data.data.data;
       } else if (Array.isArray(response.data.data)) {
-        items.value = response.data.data; // Direct array response
+        items.value = response.data.data;
       } else {
         console.warn("Unexpected API response structure:", response.data);
         items.value = [];
@@ -55,12 +65,12 @@ const fetchContracts = async () => {
       console.warn("No data in API response:", response.data);
       items.value = [];
     }
-    
-    toastr.success("Contracts loaded successfully");
+
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Contracts loaded successfully', life: 3000 });
   } catch (error) {
     console.error("Failed to fetch contracts:", error);
-    items.value = []; // Reset to empty array on error
-    toastr.danger("Failed to load contracts");
+    items.value = [];
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load contracts', life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -70,15 +80,13 @@ onMounted(() => {
   fetchContracts();
 });
 
-// Add defensive checks in computed property
 const filteredItems = computed(() => {
-  // Ensure items.value is always an array
   const itemsArray = Array.isArray(items.value) ? items.value : [];
-  
+
   if (["Active", "Pending", "Expired"].includes(searchFilter.value)) {
     return itemsArray.filter((item) => item.status === searchFilter.value);
   }
-  
+
   return itemsArray.filter((item) => {
     const searchValue = searchQuery.value.toLowerCase();
     const filterValue = String(item[searchFilter.value] || "").toLowerCase();
@@ -87,7 +95,14 @@ const filteredItems = computed(() => {
 });
 
 const openAddDialog = () => {
+  contractToEdit.value = null; // Clear any pre-existing data
   addDialog.value = true;
+};
+
+// New: Method to open edit dialog
+const openEditDialog = (contract) => {
+  contractToEdit.value = { ...contract }; // Create a shallow copy to avoid direct mutation
+  editDialog.value = true;
 };
 
 const saveContract = async (contractData) => {
@@ -96,44 +111,62 @@ const saveContract = async (contractData) => {
       ...contractData,
       organisme_id: props.companyId,
     });
-    
-    // Ensure items.value is an array before spreading
+
     const currentItems = Array.isArray(items.value) ? items.value : [];
     items.value = [...currentItems, response.data.data];
-    
+
     addDialog.value = false;
-    toastr.success("Contract created successfully");
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Contract created successfully', life: 3000 });
   } catch (error) {
     const errorMessage = error.response?.data?.message || "Failed to create contract";
-    toastr.danger(errorMessage);
+    toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 3000 });
+    console.error("API error details:", error.response?.data);
+  }
+};
+
+// New: Method to update contract
+const updateContract = async (contractData) => {
+  try {
+    const response = await axios.put(`/api/conventions/${contractData.id}`, contractData);
+
+    const currentItems = Array.isArray(items.value) ? items.value : [];
+    const index = currentItems.findIndex(item => item.id === contractData.id);
+    if (index !== -1) {
+      items.value[index] = response.data.data; // Update the item in the array
+    }
+
+    editDialog.value = false;
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Contract updated successfully', life: 3000 });
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || "Failed to update contract";
+    toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 3000 });
     console.error("API error details:", error.response?.data);
   }
 };
 
 const deleteContract = async (contractToDelete) => {
   try {
-    await axios.delete(`/api/conventions/${contractToDelete.id}`); // Fixed URL
-    
-    // Ensure items.value is an array before filtering
+    await axios.delete(`/api/conventions/${contractToDelete.id}`);
+
     const currentItems = Array.isArray(items.value) ? items.value : [];
     items.value = currentItems.filter((item) => item.id !== contractToDelete.id);
-    
-    toastr.success("Contract deleted successfully");
+
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Contract deleted successfully', life: 3000 });
   } catch (error) {
     console.error("Error deleting contract:", error);
-    toastr.danger("Failed to delete contract");
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete contract', life: 3000 });
   }
 };
 
 const confirmDelete = (contract) => {
   if (
     window.confirm(
-      `Are you sure you want to delete contract "${contract.name}"? This action cannot be undone.`
+      `Are you sure you want to delete contract "${contract.contract_name}"? This action cannot be undone.`
     )
   ) {
     deleteContract(contract);
   } else {
-    toastr.info("Contract deletion cancelled.");
+    toast.add({ severity: 'info', summary: 'Info', detail: 'Contract deletion cancelled.', life: 3000 });
   }
 };
 
@@ -146,306 +179,254 @@ const moreInfo = (contract) => {
 </script>
 
 <template>
-  <div class="container-fluid py-4">
-    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-center mb-4 gap-3">
-      <div class="position-relative flex-grow-1 d-flex align-items-center gap-3 w-100">
-        <select v-model="searchFilter" class="form-select border rounded-3">
-          <option v-for="option in filterOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-        <input type="text" v-model="searchQuery" placeholder="Search contracts..." class="form-control w-100 rounded-3" />
+  <div class="container">
+    <Toast />
+
+    <div class="header-row">
+      <div class="filters">
+        <Dropdown
+          v-model="searchFilter"
+          :options="filterOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Filter"
+          class="filter-dropdown"
+        />
+        <InputText
+          v-model="searchQuery"
+          placeholder="Search contracts..."
+          class="filter-input"
+        />
       </div>
-      <button class="btn btn-primary add-contract-button" @click="openAddDialog">
-        <i class="fas fa-plus"></i> <span> Contract</span>
-      </button>
+      <Button
+        label="Add Contract"
+        icon="pi pi-plus"
+        class="add-btn"
+        @click="openAddDialog"
+      />
     </div>
 
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div v-if="items.length === 0 && !loading" class="text-center text-muted py-5 d-flex flex-column align-items-center">
-          <i class="fas fa-file fs-3 mb-2"></i>
-          <span>No contracts found.</span>
-        </div>
-        <div v-else-if="loading" class="loading-state">
-          <div class="spinner" role="status">
-            <span class="sr-only">Loading...</span>
-          </div>
-          <p class="loading-text">Loading contracts...</p>
-        </div>
-        <div v-else class="table-responsive">
-          <table class="table table-striped table-hover contract-table">
-            <thead>
-              <tr class="table-header-row">
-                <th class="table-header">ID</th>
-                <th class="table-header">Name</th>
-                <th class="table-header">Start Date</th>
-                <th class="table-header">End Date</th>
-                <th class="table-header">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <Contract_tablelistitem
-                v-for="item in filteredItems"
-                :key="item.id"
-                :contract="item"
-                @delete-contract="confirmDelete"
-                @view-details="moreInfo"
-              />
-            </tbody>
-          </table>
-        </div>
+    <div class="table-card">
+      <div v-if="loading" class="centered-col loading">
+        <ProgressSpinner style="width:48px; height:48px" strokeWidth="5" />
+        <span class="loading-label">Loading contracts...</span>
+      </div>
+
+      <div v-else-if="filteredItems.length === 0" class="centered-col empty-state">
+        <i class="pi pi-folder-open empty-icon"></i>
+        <span>No contracts found</span>
+      </div>
+
+      <div v-else>
+        <DataTable
+          :value="filteredItems"
+          stripedRows
+          :paginator="true"
+          :rows="10"
+          :rowsPerPageOptions="[5, 10, 20]"
+          responsiveLayout="scroll"
+          class="contracts-table"
+        >
+          <Column field="id" header="ID" />
+          <Column field="contract_name" header="Name" />
+          <Column field="start_date" header="Start Date" />
+          <Column field="end_date" header="End Date" />
+          <Column field="status" header="Status">
+            <template #body="slotProps">
+              <span
+                :class="['status-tag', {
+                  active: slotProps.data.status === 'Active',
+                  pending: slotProps.data.status === 'Pending',
+                  expired: slotProps.data.status === 'Expired'
+                }]"
+              >
+                {{ slotProps.data.status }}
+              </span>
+            </template>
+          </Column>
+          <Column header="Actions" :exportable="false">
+            <template #body="slotProps">
+              <div class="action-btns">
+                <Button
+                  icon="pi pi-info-circle"
+                  class="p-button-sm p-button-text info-btn"
+                  @click="moreInfo(slotProps.data)"
+                  v-tooltip.top="'View Details'"
+                />
+                <Button
+                  icon="pi pi-pencil"
+                  class="p-button-sm p-button-text edit-btn"
+                  @click="openEditDialog(slotProps.data)"
+                  v-tooltip.top="'Edit Contract'"
+                />
+                <Button
+                  icon="pi pi-trash"
+                  class="p-button-sm p-button-text delete-btn"
+                  @click="confirmDelete(slotProps.data)"
+                  v-tooltip.top="'Delete Contract'"
+                />
+              </div>
+            </template>
+          </Column>
+        </DataTable>
       </div>
     </div>
 
-    <AddContractModal
+    <ContractModal
       :visible="addDialog"
       @close="addDialog = false"
       @save="saveContract"
+      :isEdit="false"
+    />
+
+    <ContractModal
+      :visible="editDialog"
+      @close="editDialog = false"
+      @save="updateContract"
+      :contractData="contractToEdit"
+      :isEdit="true"
     />
   </div>
 </template>
 
 <style scoped>
-/* All the remaining styles from the original component go here */
-.container-fluid {
-  padding-top: 1.5rem;
-  padding-bottom: 1.5rem;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+/* Your existing styles */
+.container {
+  padding: 2rem 1.5rem;
   min-height: 100vh;
+  min-width: 80vw;
+  background: linear-gradient(135deg, #f4f8fa 0%, #e9edf2 100%);
 }
 
-.alert {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 1050;
-  min-width: 250px;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  animation: slideInRight 0.5s forwards;
-}
-
-.alert.fade.show {
-  opacity: 1;
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.add-contract-button {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: #ffffff;
-  font-weight: 600;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
-  transition: all 0.2s;
-  border: none;
-  cursor: pointer;
-}
-
-.add-contract-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 8px -1px rgba(59, 130, 246, 0.4);
-}
-
-.form-select, .form-control {
-  border: 2px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.7rem;
-  transition: all 0.2s;
-  background-color: #ffffff;
-}
-
-.form-select:focus, .form-control:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.card {
-  background: #ffffff;
-  border-radius: 1rem;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
-  border: 1px solid #e2e8f0;
-}
-
-.contract-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.table-header-row {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  border-bottom: 2px solid #cbd5e1;
-}
-
-.table-header {
-  padding: 1rem 1.5rem;
-  text-align: left;
-  font-weight: 600;
-  color: #374151;
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-}
-
-.table-row {
-  transition: background-color 0.2s ease;
-}
-
-.table-row:nth-child(odd) {
-  background-color: #f9fafb;
-}
-
-.table-row:hover {
-  background-color: #f1f5f9;
-}
-
-.table-cell {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: middle;
-  color: #4b5563;
-}
-
-.actions-cell {
-  text-align: center;
-  white-space: nowrap;
-}
-
-.action-button {
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-}
-
-.action-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.info-button {
-  background-color: #17a2b8;
-  border-color: #17a2b8;
-  color: #ffffff;
-}
-
-.info-button:hover {
-  background-color: #138496;
-  border-color: #117a8b;
-}
-
-.delete-button {
-  background-color: #dc3545;
-  border-color: #dc3545;
-  color: #ffffff;
-}
-
-.delete-button:hover {
-  background-color: #c82333;
-  border-color: #bd2130;
-}
-
-.loading-state {
-  text-align: center;
-  padding: 4rem 2rem;
-}
-
-.spinner {
-  display: inline-block;
-  width: 3rem;
-  height: 3rem;
-  border: 4px solid #e5e7eb;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.loading-text {
-  color: #64748b;
-  margin-top: 1rem;
-  font-size: 1rem;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.no-contracts {
-  padding: 4rem 2rem;
-  text-align: center;
-}
-
-.no-contracts-content {
-  max-width: 400px;
-  margin: 0 auto;
-}
-
-.no-contracts-icon {
-  font-size: 4rem;
-  color: #cbd5e1;
+.header-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 1.5rem;
 }
 
-.no-contracts-title {
-  font-size: 1.5rem;
+.filters {
+  display: flex;
+  flex: 1;
+  gap: 1rem;
+  min-width: 250px;
+}
+
+.filter-dropdown,
+.filter-input {
+  width: 220px;
+  max-width: 100%;
+  font-size: 1rem;
+  border-radius: 6px;
+}
+
+@media (max-width: 700px) {
+  .header-row {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+  .filters {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .filter-dropdown,
+  .filter-input {
+    width: 100%;
+  }
+}
+
+.add-btn {
+  font-weight: bold;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #007ad9 40%, #094989 100%);
+  color: #fff;
+  border: none;
+  letter-spacing: 0.01em;
+  box-shadow: 0 3px 12px -6px #007ad955;
+}
+.add-btn:hover,
+.add-btn:focus {
+  background: linear-gradient(90deg, #116ab8 0%, #094989 100%);
+}
+
+.table-card {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px -8px #007ad915;
+  padding: 1.5rem;
+}
+
+.centered-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.loading { min-height: 220px; }
+.loading-label { margin-top: 1.1rem; color: #5580a0; }
+.empty-state {
+  min-height: 220px;
+  color: #a0a7b3;
+}
+.empty-icon {
+  font-size: 2.7rem;
+  margin-bottom: 0.7rem;
+  color: #b0bdc9;
+}
+
+.contracts-table {
+  font-size: 0.95rem;
+  border-radius: 6px;
+}
+
+/* Status tags styling */
+.status-tag {
+  display: inline-block;
   font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.5rem;
+  font-size: 0.92rem;
+  padding: 3px 16px;
+  border-radius: 16px;
+  letter-spacing: 0.04em;
+  text-transform: capitalize;
+  margin: 0 2px;
+}
+.status-tag.active {
+  background: #e6fbee;
+  color: #2b974c;
+  border: 1px solid #56dd8e55;
+}
+.status-tag.pending {
+  background: #fff8e1;
+  color: #be8301;
+  border: 1px solid #f6bf26aa;
+}
+.status-tag.expired {
+  background: #ffeaea;
+  color: #c11c2a;
+  border: 1px solid #e2606055;
 }
 
-.no-contracts-text {
-  color: #6b7280;
-  margin-bottom: 2rem;
-  line-height: 1.6;
+/* Action buttons styling */
+.action-btns {
+  display: flex;
+  gap: 0.5rem;
 }
-
-/* Responsive Design */
-@media (max-width: 768px) {
-  .container-fluid {
-    padding: 1rem;
-  }
-
-  .d-flex.flex-column.flex-lg-row {
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .position-relative.flex-grow-1 {
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .form-select, .form-control {
-    width: 100%;
-  }
-
-  .add-contract-button {
-    width: 100%;
-  }
+.info-btn {
+  color: #007ad9 !important;
 }
+.info-btn:hover { background: #e8f1fd !important; }
+/* New: Edit button styling */
+.edit-btn {
+  color: #f6bf26 !important; /* A yellow/orange color */
+}
+.edit-btn:hover { background: #fff8e1 !important; }
+
+.delete-btn {
+  color: #d94233 !important;
+}
+.delete-btn:hover { background: #fddede !important; }
+
 </style>

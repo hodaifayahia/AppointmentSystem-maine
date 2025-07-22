@@ -1,25 +1,20 @@
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
-import vue from '@vitejs/plugin-vue'; // Corrected import
-
+import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
-    // server: {
-    //     host: '0.0.0.0',  // Allow access from external devices
-    //     port: 5173,       // Default Vite port
-    //     strictPort: true,
-    //     hmr: {
-    //         host: '172.26.240.1' // Replace with your actual local network IP
-    //     }
-    // },
+    server: {
+        host: '0.0.0.0',
+        port: 5174,
+        strictPort: true,
+        hmr: { host: '10.47.2.118' }
+    },
     plugins: [
-   
-
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.js'],
             refresh: true,
         }),
-        vue({  // Use vuePlugin here
+        vue({
             template: {
                 transformAssetUrls: {
                     base: true,
@@ -27,17 +22,18 @@ export default defineConfig({
                 },
             },
         }),
-
     ],
-    optimizeDeps: {
-        include: ['pizzip']
-    },
-     resolve: {
+    resolve: {
         alias: {
-            // Fix pizzip dependency conflict
-            'pizzip': 'pizzip/dist/pizzip.js'
+            'pizzip': 'pizzip/dist/pizzip.js',
         },
-        dedupe: ['pizzip']
+        dedupe: ['pizzip'],
     },
-
+    optimizeDeps: {
+        include: ['pizzip'],
+    },
+    build: {
+        target: 'esnext',
+        sourcemap: false,  // Set true only if you need to debug production
+    },
 });

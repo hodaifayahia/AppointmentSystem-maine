@@ -36,6 +36,7 @@ class Organisme extends Model
         'mobile',
         'email',
         'website',
+        'abrv',
         'latitude',
         'longitude',
         'initial_invoice_number',

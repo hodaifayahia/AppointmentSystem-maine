@@ -7,7 +7,8 @@ use App\Http\Requests\B2B\StoreConventionRequest;
 use App\Http\Requests\B2B\UpdateConventionRequest;
 use App\Models\B2B\Convention;
 use App\Services\B2B\ConventionService;
-use App\Http\Resources\B2B\ConventionResource; // Import the new resource
+use App\Http\Resources\B2B\ConventionResource;
+use App\Http\Resources\B2B\PrestationPricingResource;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,12 +32,9 @@ class ConventionController extends Controller
             $status = $request->get('status');
             $organismeId = $request->get('organisme_id');
 
-            // Always eager load conventionDetail when fetching conventions for the API
-        $query = Convention::with(['conventionDetail', 'organisme']); // <-- Add 'organisme' here
+            $query = Convention::with(['conventionDetail', 'organisme']);
 
-            // Apply filters
             if ($search) {
-                // Assuming 'name' is the field for contract_name in Convention model
                 $query->where('name', 'like', '%' . $search . '%');
             }
 
@@ -50,10 +48,9 @@ class ConventionController extends Controller
 
             $conventions = $query->paginate($perPage);
 
-            // Use the ConventionResource to transform the paginated collection
             return response()->json([
                 'success' => true,
-                'data' => ConventionResource::collection($conventions)->response()->getData(true) // Get data directly from pagination
+                'data' => ConventionResource::collection($conventions)->response()->getData(true)
             ]);
 
         } catch (\Exception $e) {
@@ -72,7 +69,6 @@ class ConventionController extends Controller
     public function create(): JsonResponse
     {
         try {
-            // Return form data or configuration needed for creating a convention
             $formData = [
                 'statuses' => ['active', 'inactive', 'pending'],
                 'family_auth_options' => [
@@ -82,8 +78,7 @@ class ConventionController extends Controller
                     ['label' => 'Adherent', 'value' => 'adherent'],
                     ['label' => 'Autre', 'value' => 'autre']
                 ],
-                // You can add organismes list here
-                'organismes' => [] // Fetch from database as needed
+                'organismes' => []
             ];
 
             return response()->json([
@@ -107,14 +102,14 @@ class ConventionController extends Controller
     public function store(StoreConventionRequest $request ): JsonResponse
     {
         try {
-            $convention = $this->conventionService->createConvention( // Assuming this returns a single Convention model
+            $convention = $this->conventionService->createConvention(
                 $request->validated()
             );
 
             return response()->json([
                 'success' => true,
                 'message' => 'Convention created successfully',
-                'data' => new ConventionResource($convention) // Use 'make' or 'new' for a single model
+                'data' => new ConventionResource($convention)
             ], 201);
 
         } catch (\Exception $e) {
@@ -133,11 +128,11 @@ class ConventionController extends Controller
     public function show(Convention $convention): JsonResponse
     {
         try {
-        $convention->load(['conventionDetail', 'organisme']); // <-- Add 'organisme' here
+            $convention->load(['conventionDetail', 'organisme']);
 
             return response()->json([
                 'success' => true,
-                'data' => new ConventionResource($convention) // Use 'make' or 'new' for a single model
+                'data' => new ConventionResource($convention)
             ]);
 
         } catch (\Exception $e) {
@@ -148,7 +143,6 @@ class ConventionController extends Controller
             ], 500);
         }
     }
-
 
     /**
      * Update the specified resource in storage.
@@ -165,13 +159,115 @@ class ConventionController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Convention updated successfully',
-                'data' => new ConventionResource($updatedConvention) // Use 'make' or 'new' for a single model
+                'data' => new ConventionResource($updatedConvention)
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update convention',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function calculatePrestationPricing(Request $request): JsonResponse
+    {
+        try {
+            $pricingData = $this->conventionService->calculatePrestationPricing($request->annex_id);
+
+            return response()->json([
+                'success' => true,
+                'data' => PrestationPricingResource::collection(collect($pricingData)),
+                'message' => 'Pricing calculated successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    /**
+     * Activate the specified convention.
+     * PATCH /conventions/{conventionId}/activate
+     */
+    public function activate(Request $request, int $conventionId): JsonResponse // <--- This is line 197 (or near it)
+    {
+        try {
+            // Validate the incoming request data
+            $request->validate([
+                'activationDate' => 'nullable|date_format:Y-m-d',
+            ]);
+
+            $activationDate = $request->input('activationDate') ?? Carbon::now()->format('Y-m-d');
+            $isDelayedActivation = $request->query('activate_later') === 'yes';
+
+            // Use the ConventionService to handle the activation logic
+            $result = $this->conventionService->activateConventionById(
+                $conventionId,
+                $activationDate,
+                $isDelayedActivation
+            );
+
+            $message = $isDelayedActivation
+                ? 'Convention scheduled for activation successfully'
+                : 'Convention activated successfully';
+
+            $updatedConvention = Convention::findOrFail($conventionId);
+
+            return response()->json([
+                'message' => $message,
+                'data' => new ConventionResource($updatedConvention),
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'details' => $e->errors(),
+            ], 422);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'error' => 'Convention not found',
+                'details' => $e->getMessage(),
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to activate convention',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
+    /**
+     * Terminate the specified convention.
+     * PATCH /conventions/{conventionId}/expire
+     */
+    public function expire($conventionId): JsonResponse
+    {
+        try {
+            $convention = Convention::findOrFail($conventionId);
+            $convention->status = 'Terminated'; // Assuming 'Terminated' is the status for expired
+            $convention->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Convention terminated successfully.',
+                'data' => new ConventionResource($convention)
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Convention not found.',
+                'error' => $e->getMessage()
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to terminate convention.',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -186,10 +282,8 @@ class ConventionController extends Controller
         try {
             DB::beginTransaction();
 
-            // Delete related convention details first (if not using cascading delete)
             $convention->conventionDetail()->delete();
 
-            // Delete the convention
             $convention->delete();
 
             DB::commit();

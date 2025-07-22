@@ -33,18 +33,26 @@ const convenationRoutes = [
                 meta: { title: 'Contract' },
                 props: true,
             },
+            {
+                path: 'Annex/:id',
+                name: 'convention.annex.details',
+                component: () => import('../Components/Apps/convention/annex/pages/Annex.vue'), // Placeholder
+                meta: { title: 'Contract' },
+                props: true,
+            },
             // {
             //     path: 'convention/agreements',
             //     name: 'convention.agreements',
             //     component: () => import('../../Pages/Admin/Convention/AgreementList.vue'), // Placeholder
             //     meta: { title: 'Convention Agreements' }
             // },
-            // {
-            //     path: 'convention/avenants',
-            //     name: 'convention.avenants',
-            //     component: () => import('../../Pages/Admin/Convention/AvenantList.vue'), // Placeholder
-            //     meta: { title: 'Avenants (Amendments)' }
-            // },
+            {
+                path: 'avenants/:id',
+                name: 'convention.avenants.details',
+                component: () => import('../Components/Apps/convention/avenant/pages/Avenant.vue'), // Placeholder
+                meta: { title: 'Avenants (Amendments)' },
+                   props: true,
+            },
             // {
             //     path: 'convention/rule-definitions',
             //     name: 'convention.rule-definitions',

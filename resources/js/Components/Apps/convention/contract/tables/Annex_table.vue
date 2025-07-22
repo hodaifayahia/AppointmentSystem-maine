@@ -2,10 +2,10 @@
 import { ref, computed, defineProps, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import axios from "axios";
-import { useToastr } from '../../../../toster'; // Ensure this path is correct
+import { useToastr } from '../../../../toster';
 
-import AnnexTableListItem from './AgreementTableListItem.vue'; // Import new table row component
-import AnnexFormModal from '../models/AnnexFormModal.vue'; // Import unified form modal
+import AnnexTableListItem from './AnnexTableListItem.vue';
+import AnnexFormModal from '../models/AnnexFormModal.vue';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -19,36 +19,32 @@ const toast = useToastr();
 
 // Search and filter state
 const searchQuery = ref("");
-const selectedFilter = ref("annex_name"); // Default filter
+const selectedFilter = ref("annex_name");
 const filterOptions = [
   { label: "By ID", value: "id" },
   { label: "By Name", value: "annex_name" },
   { label: "By Creation time", value: "created_at" },
-  { label: "By Specialty", value: "specialty_name" }
+  { label: "By Service", value: "service_name" } // Changed from specialty to service
 ];
 
-const loading = ref(false); // For table loading state
-const isSaving = ref(false); // For add/edit form submission loading in the modal
-const isDeleting = ref(false); // For delete operation loading in the modal
+const loading = ref(false);
+const isSaving = ref(false);
+const isDeleting = ref(false);
 
-const items = ref([]); // Data for the table
-const services = ref([]); // Data for the specialty dropdown in form modal
+const items = ref([]);
+const services = ref([]);
 
-// --- Modal Visibility and Form State (Unified) ---
-const showFormModal = ref(false); // Controls visibility of the add/edit modal
-const showDeleteConfirmModal = ref(false); // Controls visibility of the delete modal
-const isEditingMode = ref(false); // True for edit, false for add
-const currentForm = ref({ // This object is passed to AnnexFormModal
+// Modal Visibility and Form State
+const showFormModal = ref(false);
+const showDeleteConfirmModal = ref(false);
+const isEditingMode = ref(false);
+const currentForm = ref({
   id: null,
   contract_id: '',
   annex_name: '',
-  specialty_id: null,
-  file: null,          // Holds the actual File object
-  file_path: null,     // For existing file display
-  file_url: null,      // For existing file URL display
-  remove_file: false,  // Flag for removing existing file
+  service_id: null, // Changed from specialty_id to service_id
 });
-const itemToDelete = ref(null); // Item passed to delete confirmation modal
+const itemToDelete = ref(null);
 
 // Pagination states
 const currentPage = ref(1);
@@ -70,15 +66,15 @@ const changePage = (page) => {
   }
 };
 
-// Format date to dd/mm/yy (for display)
+// Format date to dd/mm/yyyy
 const formatDateDisplay = (dateString) => {
   if (!dateString) return '';
   try {
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString; // Return original if invalid date
+    if (isNaN(date.getTime())) return dateString;
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = String(date.getFullYear()); // Get full year
+    const year = String(date.getFullYear());
     return `${day}/${month}/${year}`;
   } catch (error) {
     console.error("Error formatting date:", error);
@@ -86,7 +82,6 @@ const formatDateDisplay = (dateString) => {
   }
 };
 
-// Capitalize first letter of a string
 const capitalizeFirstLetter = (string) => {
   if (!string) return '';
   return String(string).charAt(0).toUpperCase() + String(string).slice(1);
@@ -105,20 +100,19 @@ const filteredItemsComputed = computed(() => {
       case "annex_name":
         return item.annex_name && String(item.annex_name).toLowerCase().includes(query);
       case "created_at":
-        // If searchQuery is a Date object (from Calendar), format it for comparison
         const searchDateFormatted = searchQuery.value instanceof Date
           ? formatDateDisplay(searchQuery.value)
           : query;
         return item.created_at && formatDateDisplay(item.created_at).includes(searchDateFormatted);
-      case "specialty_name":
-        return item.specialty_name && String(item.specialty_name).toLowerCase().includes(query);
+      case "service_name": // Changed from specialty_name to service_name
+        return item.service_name && String(item.service_name).toLowerCase().includes(query);
       default:
         return true;
     }
   });
 });
 
-// Fetch annexes for the contract
+// Fetch annexes for the contract - CORRECTED
 const fetchAnnexes = async () => {
   if (!props.contractId) {
     toast.error('Contract ID is missing');
@@ -127,12 +121,18 @@ const fetchAnnexes = async () => {
 
   try {
     loading.value = true;
-    const response = await axios.get(`  /api/convention/annexes/contract/${props.contractId}`);
-    items.value = response.data.map(item => ({
-        ...item,
-        file_url: item.file_path ? `  /storage/${item.file_path}` : null // Add full file_url
-    }));
-    currentPage.value = 1; // Reset pagination on new data
+    // Use the correct endpoint with contractId in the URL path
+    const response = await axios.get(`/api/annex/contract/${props.contractId}`);
+    
+    // Handle the response structure from your controller
+    if (response.data.success) {
+      items.value = response.data.data;
+    } else {
+      items.value = [];
+      toast.error('Failed to load annexes');
+    }
+    
+    currentPage.value = 1;
   } catch (error) {
     console.error("Error fetching annexes:", error);
     const errorMessage = error.response?.data?.message || 'Failed to load annexes';
@@ -142,11 +142,12 @@ const fetchAnnexes = async () => {
   }
 };
 
-// Fetch available services (for dropdowns)
-const fetchservices = async () => {
+// Fetch available services
+const fetchServices = async () => {
   try {
     const response = await axios.get(`/api/services`);
-    services.value = response.data.data;
+    // Adjust based on your services API response structure
+    services.value = response.data.data || response.data;
     if (services.value.length === 0) {
       toast.warning('No available services found.');
     }
@@ -156,50 +157,39 @@ const fetchservices = async () => {
   }
 };
 
-// --- Modal Management Functions ---
-
 // Open unified form modal for adding
 const openAddFormModal = async () => {
-  isEditingMode.value = false; // Set mode to Add
-  // Reset form to default empty state for adding new
+  isEditingMode.value = false;
   Object.assign(currentForm.value, {
     id: null,
     contract_id: props.contractId,
     annex_name: "",
-    specialty_id: null,
-    file: null,
-    file_path: null,
-    file_url: null,
-    remove_file: false,
+    service_id: null, // Changed from specialty_id
   });
-  await fetchservices(); // Fetch services for the dropdown
-  showFormModal.value = true; // Show the modal
+  await fetchServices();
+  showFormModal.value = true;
 };
 
 // Open unified form modal for editing
 const openEditFormModal = async (item) => {
-  isEditingMode.value = true; // Set mode to Edit
-  // Populate form with existing item data
+  isEditingMode.value = true;
   Object.assign(currentForm.value, {
     id: item.id,
     contract_id: item.contract_id,
     annex_name: item.annex_name,
-    specialty_id: item.specialty_id,
-    file: null, // Always reset file input on edit open
-    file_path: item.file_path, // Pass existing file path
-    file_url: item.file_url,   // Pass existing file URL
-    remove_file: false, // Reset remove file flag
+    service_id: item.service_id, // Changed from specialty_id
   });
-  await fetchservices(); // Fetch services
-  // Ensure the current specialty is in the list if not already
-  const specialtyExists = services.value.some(s => s.id === item.specialty_id);
-  if (!specialtyExists && item.specialty_id && item.specialty_name) {
-      services.value.push({
-          id: item.specialty_id,
-          specialty_name: item.specialty_name
-      });
+   fetchServices();
+  
+  // Ensure the current service is in the list
+  const serviceExists = services.value.some(s => s.id === item.service_id);
+  if (!serviceExists && item.service_id && item.service_name) {
+    services.value.push({
+      id: item.service_id,
+      name: item.service_name
+    });
   }
-  showFormModal.value = true; // Show the modal
+  showFormModal.value = true;
 };
 
 // Open delete confirmation modal
@@ -207,86 +197,98 @@ const openDeleteConfirmModal = (item) => {
   itemToDelete.value = item;
   showDeleteConfirmModal.value = true;
 };
-
 // Function to handle the 'save' event from AnnexFormModal
 const handleFormSave = async (formDataPayload) => {
   isSaving.value = true;
   try {
     const formData = new FormData();
     formData.append('annex_name', formDataPayload.annex_name);
-    formData.append('specialty_id', formDataPayload.specialty_id);
-
-    // Append file if present
-    if (formDataPayload.file) {
-      formData.append('file', formDataPayload.file);
-    }
-
-    // Handle file removal flag for edits
-    if (isEditingMode.value && formDataPayload.remove_file) {
-      formData.append('remove_file', 1); // Send as 1 for true
+    formData.append('service_id', formDataPayload.service_id); // Fixed: was specialty_id
+    formData.append('min_price', formDataPayload.min_price); // Fixed: was specialty_id
+    formData.append('prestation_prix_status', formDataPayload.prestation_prix_status); // Fixed: was specialty_id
+    
+    if (formDataPayload.description) {
+      formData.append('description', formDataPayload.description);
     }
 
     let url = '';
     let method = '';
 
     if (isEditingMode.value) {
-      url = `  /api/convention/annexes/${formDataPayload.id}`;
-      method = 'post'; // Use POST with _method spoofing for PUT
-      formData.append('_method', 'PUT'); // Spoof PUT
+      url = `/api/annex/${formDataPayload.id}`;
+      method = 'put';
+      formData.append('_method', 'PUT');
     } else {
-      url = `  /api/convention/annexes/contract/${props.contractId}`;
+      url = `/api/annex/${props.contractId}`;
       method = 'post';
     }
 
-    await axios({
+    const response = await axios({
       method: method,
       url: url,
       data: formData,
       headers: {
-        'Content-Type': 'multipart/form-data', // Crucial for files
+        'Content-Type': 'multipart/form-data',
       },
     });
 
-    toast.success(`Annex ${isEditingMode.value ? 'updated' : 'added'} successfully`);
-    await fetchAnnexes(); // Refresh data
-    showFormModal.value = false; // Close modal
+    if (response.data.success) {
+      toast.success(`Annex ${isEditingMode.value ? 'updated' : 'added'} successfully`);
+      await fetchAnnexes();
+      showFormModal.value = false;
+    } else {
+      toast.error(response.data.message || 'Operation failed');
+    }
   } catch (error) {
     console.error("Error saving annex:", error);
-    if (error.response && error.response.data && error.response.data.errors) {
+    if (error.response && error.response.data) {
+      if (error.response.data.errors) {
         // Display backend validation errors
         for (const field in error.response.data.errors) {
-            error.response.data.errors[field].forEach(message => toast.error(message));
+          error.response.data.errors[field].forEach(message => toast.error(message));
         }
+      } else {
+        toast.error(error.response.data.message || `Failed to ${isEditingMode.value ? 'update' : 'save'} annex`);
+      }
     } else {
-        toast.error(`Failed to ${isEditingMode.value ? 'update' : 'save'} annex: ${error.response?.data?.message || error.message}`);
+      toast.error(`Failed to ${isEditingMode.value ? 'update' : 'save'} annex: ${error.message}`);
     }
   } finally {
     isSaving.value = false;
   }
 };
 
-// Function to handle 'delete' confirmation from the modal
+
+
+// Handle delete confirmation
 const handleDeleteConfirm = async () => {
   isDeleting.value = true;
   try {
-    await axios.delete(` /api/convention/annexes/${itemToDelete.value.id}`);
-    toast.success('Annex deleted successfully');
-    await fetchAnnexes(); // Refresh data
-    showDeleteConfirmModal.value = false; // Close modal
+    const response = await axios.delete(`/api/annex/${itemToDelete.value.id}`);
+    
+    if (response.data.success) {
+      toast.success('Annex deleted successfully');
+      await fetchAnnexes();
+      showDeleteConfirmModal.value = false;
+    } else {
+      toast.error(response.data.message || 'Failed to delete annex');
+    }
   } catch (error) {
     console.error("Error deleting annex:", error);
     toast.error(`Failed to delete annex: ${error.response?.data?.message || error.message}`);
   } finally {
     isDeleting.value = false;
-    itemToDelete.value = null; // Clear item to delete
+    itemToDelete.value = null;
   }
 };
 
 // Function to handle navigation to details page
-const viewAnnexDetails = (item) => {
-    router.push({
-        path: `/Annex/${item.id}`,
-    });
+const viewAnnexDetails = (id) => {
+  
+  router.push({
+    name: 'convention.annex.details',
+    params: { id: id }
+  });
 };
 
 // Initial data fetch
@@ -337,11 +339,13 @@ onMounted(() => {
               <tr>
                 <th scope="col">ID</th>
                 <th scope="col">Name</th>
-                <th scope="col">Specialty</th>
+                <th scope="col">Service</th> <!-- Changed from Specialty to Service -->
                 <th scope="col">Created By</th>
                 <th scope="col">Created At</th>
-                <th v-if="props.contractState === 'Pending'" scope="col">Edit</th>
-                <th v-if="props.contractState === 'Pending'" scope="col">Delete</th>
+                <th scope="col">max price </th>
+                <th scope="col">min price</th>
+                <th v-if="props.contractState === 'pending'" scope="col">Edit</th>
+                <th v-if="props.contractState === 'pending'" scope="col">Delete</th>
                 <th scope="col">Details</th>
               </tr>
             </thead>
@@ -416,115 +420,90 @@ onMounted(() => {
       </div>
     </div>
     <div v-if="showDeleteConfirmModal" class="modal-backdrop fade" :class="{ 'show': showDeleteConfirmModal }"></div>
-
   </div>
 </template>
 
 <style scoped>
-/* Adjust container padding */
+/* Your existing styles remain the same */
 .container-fluid.py-4 {
   padding-top: 1.5rem !important;
   padding-bottom: 1.5rem !important;
 }
 
-/* Flexbox and gap for search/filter/add section */
 .d-flex.gap-2 > * {
-  margin-right: 0.5rem; /* Adjust gap as needed */
+  margin-right: 0.5rem;
 }
 .d-flex.gap-2 > *:last-child {
   margin-right: 0;
 }
 
-/* Card styling */
 .card {
-  border-radius: 0.75rem; /* Consistent border-radius */
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06); /* Mimics shadow-sm */
-  border: 1px solid #e2e8f0; /* Light gray border */
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e2e8f0;
 }
 
-/* Form controls and select */
 .form-control, .form-select {
-  border-radius: 0.5rem; /* Rounded-lg */
-  padding: 0.625rem 0.75rem; /* p-2 */
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.75rem;
 }
 
-/* Table styling */
 .annex-table {
-  min-width: 50rem; /* Matches the PrimeVue tableStyle */
+  min-width: 50rem;
 }
 
 .table th, .table td {
   vertical-align: middle;
   padding: 0.75rem;
-  white-space: nowrap; /* Prevent content from wrapping in table cells */
+  white-space: nowrap;
 }
 
-/* "No annexes found" message & loading state */
 .text-muted {
   color: #6c757d !important;
 }
-.fs-3 { /* Equivalent to text-3xl for Font Awesome icon */
+
+.fs-3 {
   font-size: calc(1.3rem + .6vw) !important;
 }
 
-/* Modal specific styles for standard Bootstrap modals, if kept */
 .modal-dialog.modal-md {
-  max-width: 500px; /* Standard Bootstrap md modal width */
-}
-.modal-dialog.modal-sm {
-  max-width: 300px; /* Standard Bootstrap sm modal width */
+  max-width: 500px;
 }
 
-/* General button styles for consistency with Bootstrap theme */
+.modal-dialog.modal-sm {
+  max-width: 300px;
+}
+
 .btn-primary {
   background-color: #007bff;
   border-color: #007bff;
 }
+
 .btn-primary:hover {
   background-color: #0056b3;
   border-color: #0056b3;
-}
-
-.btn-warning {
-  background-color: #ffc107;
-  border-color: #ffc107;
-  color: #212529; /* Dark text for warning button */
-}
-.btn-warning:hover {
-  background-color: #e0a800;
-  border-color: #d39e00;
 }
 
 .btn-danger {
   background-color: #dc3545;
   border-color: #dc3545;
 }
+
 .btn-danger:hover {
   background-color: #c82333;
   border-color: #bd2130;
 }
 
-.btn-info {
-  background-color: #17a2b8;
-  border-color: #17a2b8;
-}
-.btn-info:hover {
-  background-color: #138496;
-  border-color: #117a8b;
-}
-
-/* Spinner adjustment for small buttons */
 .spinner-border-sm {
   width: 1rem;
   height: 1rem;
   margin-right: 0.25rem;
 }
 
-/* Error text for form validation */
 .text-danger {
   color: #dc3545 !important;
-  font-size: 0.875em; /* Small text */
-  margin-top: 0.25rem; /* Space below input */
-  display: block; /* Ensure it's on its own line */
+  font-size: 0.875em;
+  margin-top: 0.25rem;
+  display: block;
 }
 </style>

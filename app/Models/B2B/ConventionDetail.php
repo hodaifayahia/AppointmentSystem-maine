@@ -12,16 +12,39 @@ class ConventionDetail extends Model
 
     protected $fillable = [
         'convention_id',
+        'head',
+        'updated_by_id',
         'start_date',
         'end_date',
         'family_auth',
         'max_price',
         'min_price',
-        'discount_percentage'
+        'discount_percentage',
+        'avenant_id'
     ];
 
     public function convention(): BelongsTo
     {
         return $this->belongsTo(Convention::class);
     }
+     public function avenant(): BelongsTo
+    {
+        return $this->belongsTo(Avenant::class, 'avenant_id');
+    }
+    /**
+     * Get the next version of these agreement details.
+     */
+    public function updatedByAgreementDetails(): BelongsTo
+    {
+        return $this->belongsTo(ConventionDetail::class, 'updated_by_id');
+    }
+
+    /**
+     * Get the previous version that these agreement details updated.
+     */
+    public function updatesAgreementDetails(): HasOne
+    {
+        return $this->hasOne(ConventionDetail::class, 'updated_by_id');
+    }
+
 }

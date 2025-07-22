@@ -2,21 +2,19 @@
   <tr>
     <td>{{ annex.id }}</td>
     <td>{{ annex.annex_name }}</td>
-    <td>{{ annex.specialty_name }}</td>
-    <td>{{ capitalizeFirstLetter(annex.created_by) }}</td>
-    <td>{{ formatDateDisplay(annex.created_at) }}</td>
-    <td v-if="contractState === 'Pending'">
+    <td>{{ annex.service_name }}</td> <td>{{ capitalizeFirstLetter(annex.created_by) }}</td> <td>{{ formatDateDisplay(annex.created_at) }}</td>
+    <td>{{ annex.min_price }}</td> <td>{{ annex.max_price }}</td> <td v-if="contractState === 'pending'">
       <button class="btn btn-sm btn-warning" @click="emit('edit', annex)" title="Edit">
         <i class="fas fa-pencil-alt"></i>
       </button>
     </td>
-    <td v-if="contractState === 'Pending'">
+    <td v-if="contractState === 'pending'">
       <button class="btn btn-sm btn-danger" @click="emit('delete', annex)" title="Delete">
         <i class="fas fa-trash-alt"></i>
       </button>
     </td>
     <td>
-      <button class="btn btn-sm btn-info" @click="emit('view-details', annex)" title="Details">
+      <button class="btn btn-sm btn-info" @click="emit('view-details', annex.id)" title="Details">
         <i class="fas fa-eye me-1"></i> Details
       </button>
     </td>

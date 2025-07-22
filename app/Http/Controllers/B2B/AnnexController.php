@@ -3,49 +3,49 @@
 namespace App\Http\Controllers\B2B;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\B2B\AnnexRequest;
+use App\Http\Resources\B2B\AnnexResource;
+use App\Models\B2B\Annex;
+use App\Services\B2B\AnnexCreationService; // Import the new service
 use Illuminate\Http\Request;
-use App\Models\B2B\Annex; // Import your Annex model
-use Illuminate\Validation\ValidationException; // For specific validation error handling
-use Illuminate\Support\Facades\Auth; // For authenticated user ID
+use Illuminate\Support\Facades\Auth;
+// Removed direct DB import as transactions are now handled within the service
 
 class AnnexController extends Controller
 {
+    protected $annexCreationService;
+
     /**
-     * Display a listing of the annexes for a specific contract.
+     * Constructor to inject the AnnexCreationService.
      *
-     * @param string $contractId The ID of the convention/contract.
+     * @param AnnexCreationService $annexCreationService
+     */
+    public function __construct(AnnexCreationService $annexCreationService)
+    {
+        $this->annexCreationService = $annexCreationService;
+    }
+
+    /**
+     * Get annexes for a specific contract.
+     *
+     * @param string $contractId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function index(string $contractId)
+    public function getByContract(string $contractId)
     {
         try {
-            // Fetch annexes belonging to the given convention_id (contractId)
-            // You might want to eager load related models like 'service' if you display service details
-            $annexes = Annex::where('convention_id', $contractId)
-                            ->orderBy('created_at', 'desc') // Order as per your frontend's display
-                            ->get();
+            $annexes = Annex::with(['service:id,name', 'creator:id,name'])
+                ->where('convention_id', $contractId)
+                ->orderBy('created_at', 'desc')
+                ->get();
 
-            // Optionally, append specialty_name if it comes from a related service
-            // This assumes a 'service' relationship on the Annex model and a 'specialty_name' on the Service model
-            // If specialty_name is directly on Annex, you don't need this.
-            $annexes->each(function ($annex) {
-                // Example: If 'service_id' links to a 'Service' model with a 'specialty_name'
-                // You'd need to define a 'service' relationship in your Annex model:
-                // public function service() { return $this->belongsTo(Service::class); }
-                // And then eager load it in the query above: ->with('service')
-                // For now, assuming specialty_name is directly available or fetched differently.
-                // If it's from a relationship, uncomment and adjust:
-                // $annex->specialty_name = $annex->service ? $annex->service->specialty_name : 'N/A';
-
-                // For 'created_by', if it's an ID and you want the name:
-                // $user = \App\Models\User::find($annex->created_by);
-                // $annex->created_by_name = $user ? $user->name : 'Unknown';
-            });
-
-
-            return response()->json($annexes);
+            return response()->json([
+                'success' => true,
+                'data' => AnnexResource::collection($annexes)
+            ]);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Failed to fetch annexes',
                 'error' => $e->getMessage()
             ], 500);
@@ -53,68 +53,120 @@ class AnnexController extends Controller
     }
 
     /**
-     * Store a newly created annex in storage.
+     * Store a newly created annex with contractId from route.
+     * This method is used when creating an annex directly linked to a contract ID in the URL.
      *
-     * @param \Illuminate\Http\Request $request
-     * @param string $contractId The ID of the convention/contract.
+     * @param AnnexRequest $request
+     * @param string $contractId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function store(Request $request, string $contractId)
+    public function storeWithContract(AnnexRequest $request, string $contractId)
     {
         try {
-            $validatedData = $request->validate([
-                'annex_name' => 'required|string|max:255',
-                'specialty_id' => 'required|integer|exists:specialties,id', // Assuming 'specialties' table
-                'description' => 'nullable|string',
-                'is_active' => 'boolean', // Optional, defaults to true if not provided
-                // 'created_by' is set automatically
-            ]);
+            $validatedData = $request->validated();
+            // Delegate the creation and initialization logic to the service
+            $annex = $this->annexCreationService->createAnnexAndInitializePrestations($validatedData, $contractId);
 
-            $annex = Annex::create([
-                'annex_name' => $validatedData['annex_name'],
-                'convention_id' => $contractId, // Set from route parameter
-                'service_id' => $validatedData['specialty_id'], // Assuming specialty_id maps to service_id
-                'description' => $validatedData['description'] ?? null,
-                'is_active' => $validatedData['is_active'] ?? true, // Default to true
-                'created_by' => Auth::id(), // Set current authenticated user's ID
-                'updated_by' => Auth::id(), // Also set updated_by on creation
-            ]);
+            // Load necessary relationships for the response
+            $annex->load('service:id,name', 'convention:status');
 
-            return response()->json($annex, 201); // 201 Created
-        } catch (ValidationException $e) {
             return response()->json([
-                'message' => 'Validation Error',
-                'errors' => $e->errors()
-            ], 422); // 422 Unprocessable Entity
+                'success' => true,
+                'data' => new AnnexResource($annex),
+                'message' => 'Annex created successfully and prestations initialized'
+            ], 201);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Error creating annex',
+                'success' => false,
+                'message' => 'Error creating annex or initializing prestations',
                 'error' => $e->getMessage()
-            ], 500); // 500 Internal Server Error
+            ], 500);
         }
     }
 
     /**
-     * Display the specified annex.
+     * Display a listing of the resource.
      *
-     * @param string $id The ID of the annex.
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function index()
+    {
+        try {
+            $annexes = Annex::with(['service:id,name', 'creator:id,name', 'convention:status'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => AnnexResource::collection($annexes)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch annexes',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     * This method is used when creating an annex without a contract ID in the URL (e.g., from a general annex creation form).
+     *
+     * @param AnnexRequest $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function store(AnnexRequest $request)
+    {
+        try {
+            $validatedData = $request->validated();
+            // Delegate the creation and initialization logic to the service
+            // The 'convention_id' is expected to be present in $validatedData in this case.
+            $annex = $this->annexCreationService->createAnnexAndInitializePrestations($validatedData);
+
+            // Load necessary relationships for the response
+            $annex->load('service:id,name', 'creator:id,name', 'convention:status');
+
+            return response()->json([
+                'success' => true,
+                'data' => new AnnexResource($annex),
+                'message' => 'Annex created successfully and prestations initialized'
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error creating annex or initializing prestations',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Display the specified resource.
+     *
+     * @param string $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function show(string $id)
     {
         try {
-            $annex = Annex::find($id);
+            $annex = Annex::with(['service:id,name', 'creator:id,name', 'convention.conventionDetail'])
+                ->find($id);
 
             if (!$annex) {
-                return response()->json(['message' => 'Annex not found'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Annex not found'
+                ], 404);
             }
 
-            // Optionally eager load relationships if needed for display
-            // $annex->load('service'); // Example
-
-            return response()->json($annex);
+            return response()->json([
+                'success' => true,
+                'data' => new AnnexResource($annex)
+            ]);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Failed to retrieve annex',
                 'error' => $e->getMessage()
             ], 500);
@@ -122,45 +174,46 @@ class AnnexController extends Controller
     }
 
     /**
-     * Update the specified annex in storage.
+     * Update the specified resource in storage.
      *
-     * @param \Illuminate\Http\Request $request
-     * @param string $id The ID of the annex.
+     * @param AnnexRequest $request
+     * @param string $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function update(Request $request, string $id)
+    public function update(AnnexRequest $request, string $id)
     {
         try {
             $annex = Annex::find($id);
 
             if (!$annex) {
-                return response()->json(['message' => 'Annex not found'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Annex not found'
+                ], 404);
             }
 
-            $validatedData = $request->validate([
-                'annex_name' => 'required|string|max:255',
-                'specialty_id' => 'required|integer|exists:specialties,id', // Assuming 'specialties' table
-                'description' => 'nullable|string',
-                'is_active' => 'boolean',
-                // 'updated_by' is set automatically
-            ]);
+            $validatedData = $request->validated();
 
             $annex->update([
                 'annex_name' => $validatedData['annex_name'],
-                'service_id' => $validatedData['specialty_id'], // Assuming specialty_id maps to service_id
-                'description' => $validatedData['description'] ?? $annex->description, // Keep existing if not provided
-                'is_active' => $validatedData['is_active'] ?? $annex->is_active, // Keep existing if not provided
-                'updated_by' => Auth::id(), // Set current authenticated user's ID
+                'service_id' => $validatedData['service_id'],
+                'description' => $validatedData['description'] ?? $annex->description,
+                'is_active' => $validatedData['is_active'] ?? $annex->is_active,
+                'min_price' => $validatedData['min_price'] ?? $annex->min_price,
+                'prestation_prix_status' => $validatedData['prestation_prix_status'],
+                'updated_by' => Auth::id(),
             ]);
 
-            return response()->json($annex);
-        } catch (ValidationException $e) {
+            $annex->load('service:id,name', 'creator:id,name', 'convention:status');
+
             return response()->json([
-                'message' => 'Validation Error',
-                'errors' => $e->errors()
-            ], 422);
+                'success' => true,
+                'data' => new AnnexResource($annex),
+                'message' => 'Annex updated successfully'
+            ]);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Error updating annex',
                 'error' => $e->getMessage()
             ], 500);
@@ -168,9 +221,9 @@ class AnnexController extends Controller
     }
 
     /**
-     * Remove the specified annex from storage.
+     * Remove the specified resource from storage.
      *
-     * @param string $id The ID of the annex.
+     * @param string $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function destroy(string $id)
@@ -179,14 +232,23 @@ class AnnexController extends Controller
             $annex = Annex::find($id);
 
             if (!$annex) {
-                return response()->json(['message' => 'Annex not found'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Annex not found'
+                ], 404);
             }
 
+            // Note: If you have a cascading delete on 'annex_id' in 'prestation_pricing' migration,
+            // the related pricing entries will be automatically deleted.
             $annex->delete();
 
-            return response()->json(['message' => 'Annex deleted successfully'], 204); // 204 No Content
+            return response()->json([
+                'success' => true,
+                'message' => 'Annex deleted successfully'
+            ], 200);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Error deleting annex',
                 'error' => $e->getMessage()
             ], 500);
