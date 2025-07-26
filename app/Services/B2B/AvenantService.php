@@ -214,7 +214,7 @@ class AvenantService
                 // Only set the activation_at date without changing status
                 $avenant->update([
                     'activation_at' => $activationCarbon,
-                    'status' => 'pending-approval', // Or 'scheduled' if you have that status
+                    'status' => 'scheduled', // Or 'scheduled' if you have that status
                     'approver_id' => $approverId,
                 ]);
 

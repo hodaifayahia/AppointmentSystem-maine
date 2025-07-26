@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use App\Models\B2B\Convention; // Assuming your Convention model is in App\Models
 use App\Models\CONFIGURATION\Service;  // Assuming your Specialty model is in App\Models
 use App\Models\User;      // Assuming your User model is in App\Models
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\B2B\PrestationPricing; // Assuming your PrestationPricing model
 
 class Annex extends Model
 {
@@ -45,9 +47,9 @@ class Annex extends Model
         return $this->belongsTo(User::class, 'updated_by');
     }
  public function prestationPrices(): HasMany
-    {
-        return $this->hasMany(PrestationPricing::class, 'annex_id');
-    }
+{
+    return $this->hasMany(PrestationPricing::class, 'annex_id');
+}
     // You might also want to add accessors for displaying names directly
     // public function getCreatedByNameAttribute()
     // {

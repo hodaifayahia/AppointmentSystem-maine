@@ -7,7 +7,11 @@ import Contract_table from '../tables/Contract_table.vue';
 import Contacts_table from '../tables/Contacts_table.vue';
 
 const props = defineProps({
-  companyId: String,
+  company: {
+    type: Object,
+    required: true,
+    validator: (obj) => obj.id !== undefined
+  }
 });
 
 // PrimeVue TabView uses an 'activeIndex' (0-based index)
@@ -34,11 +38,12 @@ const activeIndex = ref(0); // 0 for Contracts, 1 for Contacts
     <div class="p-card p-shadow-24 custom-tab-card">
       <TabView v-model:activeIndex="activeIndex" class="custom-tabview">
         <TabPanel header="Contracts">
-          <Contract_table :companyId="props.companyId" />
+          <!-- Explicitly convert id to string if needed -->
+          <Contract_table :companyId="String(company.id)" />
         </TabPanel>
 
         <TabPanel header="Contacts">
-          <Contacts_table :companyId="props.companyId" />
+          <Contacts_table :companyId="String(company.id)" />
         </TabPanel>
       </TabView>
     </div>

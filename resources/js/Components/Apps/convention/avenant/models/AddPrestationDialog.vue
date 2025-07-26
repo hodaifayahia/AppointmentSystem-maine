@@ -175,7 +175,7 @@ const savePrestationPricing = async () => {
     v-model:visible="dialogVisible"
     header="Add New Prestation Pricing"
     modal
-    :style="{ width: '30rem' }"
+    :style="{ width: '45rem',height: 'auto' }"
   >
     <div class="p-fluid flex flex-col gap-3">
       <div>

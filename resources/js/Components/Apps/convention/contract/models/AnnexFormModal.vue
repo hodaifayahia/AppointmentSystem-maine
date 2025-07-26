@@ -1,5 +1,5 @@
 <script setup>
-import { defineProps, defineEmits, ref, watch, reactive } from 'vue';
+import { defineProps, defineEmits, ref, watch, reactive, computed } from 'vue'; // Import computed
 
 // PrimeVue Components
 import Dialog from 'primevue/dialog';
@@ -9,7 +9,7 @@ import Button from 'primevue/button';
 
 // Utility function to format number as DZD currency
 const formatDZD = (value) => {
-    if (value === null || value === '' || isNaN(value)) return '';
+    if (value === null || value === '' || isNaN(value) || value === 0) return '';
     // Corrected locale to 'ar-DZ' for Algerian Dinar formatting
     return new Intl.NumberFormat('fr-FR', {
         style: 'currency',
@@ -21,11 +21,16 @@ const formatDZD = (value) => {
 
 // Utility function to parse DZD input to number
 const parseDZD = (value) => {
-    if (!value) return null;
-    // This parsing logic is generally robust for removing non-numeric characters
-    // It handles decimal points and should work regardless of locale-specific symbols
-    const cleaned = value.replace(/[^0-9.]/g, '');
-    return isNaN(cleaned) ? null : parseFloat(cleaned);
+    if (!value || value.trim() === '') return null;
+
+    // Remove all non-numeric characters except decimal point
+    const cleaned = value.replace(/[^\d.]/g, '');
+
+    // If the cleaned string is empty, return null
+    if (cleaned === '' || cleaned === '.') return null;
+
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? null : parsed;
 };
 
 const props = defineProps({
@@ -42,6 +47,10 @@ const props = defineProps({
         required: true
     },
     services: {
+        type: Array,
+        default: () => []
+    },
+    usedServiceIds: { // NEW PROP
         type: Array,
         default: () => []
     },
@@ -64,7 +73,9 @@ const internalForm = reactive({
 });
 
 // Ref for formatted input display
-const formattedMinPrice = ref('');
+const displayMinPrice = ref(''); // Renamed to clearly indicate it's for display
+// Track if user is currently editing the price field
+const isEditingPrice = ref(false);
 
 // Internal errors
 const internalFormErrors = reactive({});
@@ -76,18 +87,50 @@ const prestationPrixStatusOptions = ref([
     { label: 'Public Price', value: 'public_prix' }
 ]);
 
-// Watch for changes in internalForm prices to update formatted values
-watch(() => internalForm.min_price, (newVal) => {
-    formattedMinPrice.value = formatDZD(newVal);
+// Computed property to filter services for the dropdown
+const availableServices = computed(() => {
+    if (props.isEditing) {
+        // When editing, the currently selected service should always be available.
+        // Other services should only be available if they are not used by other annexes.
+        const currentServiceId = internalForm.service_id;
+        return props.services.filter(service =>
+            !props.usedServiceIds.includes(service.id) || service.id === currentServiceId
+        );
+    } else {
+        // When adding, only services not already used by any annex are available.
+        return props.services.filter(service => !props.usedServiceIds.includes(service.id));
+    }
 });
 
+// Watch for changes in props.formData to populate internalForm
+watch(() => props.formData, (newVal) => {
+    if (newVal) {
+        Object.assign(internalForm, newVal);
+        // Only update formatted display if not currently editing
+        if (!isEditingPrice.value) {
+            displayMinPrice.value = formatDZD(newVal.min_price);
+        }
+    }
+}, { immediate: true, deep: true });
+
+// Watch for changes in internalForm.min_price to update formatted values for display
+watch(() => internalForm.min_price, (newVal) => {
+    // Only update formatted display if not currently editing the field
+    if (!isEditingPrice.value) {
+        displayMinPrice.value = formatDZD(newVal);
+    }
+});
 
 
 // Watch for showModal to clear form and errors
 watch(() => props.showModal, (newVal) => {
     if (!newVal) {
         Object.keys(internalFormErrors).forEach(key => delete internalFormErrors[key]);
-        formattedMinPrice.value = '';
+        displayMinPrice.value = ''; // Clear display value on modal close
+        isEditingPrice.value = false;
+    } else {
+        // When modal opens, initialize displayMinPrice based on internalForm.min_price
+        displayMinPrice.value = formatDZD(internalForm.min_price);
     }
 });
 
@@ -106,11 +149,16 @@ const validateInternalForm = () => {
         isValid = false;
     }
 
-
     if (!internalForm.prestation_prix_status || !['convenience_prix', 'empty', 'public_prix'].includes(internalForm.prestation_prix_status)) {
         internalFormErrors.prestation_prix_status = "Price status is required and must be a valid option.";
         isValid = false;
     }
+
+    // Optional: Add validation for min_price if needed
+    // if (internalForm.min_price === null || isNaN(internalForm.min_price) || internalForm.min_price < 0) {
+    //     internalFormErrors.min_price = "Minimum price must be a non-negative number.";
+    //     isValid = false;
+    // }
 
     return isValid;
 };
@@ -123,8 +171,54 @@ const saveAnnex = () => {
 
 const handleCloseModal = () => {
     Object.keys(internalFormErrors).forEach(key => delete internalFormErrors[key]);
-    formattedMinPrice.value = '';
+    displayMinPrice.value = ''; // Clear display value on modal close
+    isEditingPrice.value = false;
     emit('close-modal');
+};
+
+// Handle price input events
+const handlePriceInput = (event) => {
+    const value = event.target.value;
+    // Update the display value directly from the input
+    displayMinPrice.value = value;
+    // Parse the value and update the actual numeric model
+    internalForm.min_price = parseDZD(value);
+};
+
+const handlePriceFocus = () => {
+    isEditingPrice.value = true;
+    // Show raw numeric value when focused for easier editing
+    if (internalForm.min_price !== null && internalForm.min_price !== '') {
+        displayMinPrice.value = internalForm.min_price.toString();
+    } else {
+        displayMinPrice.value = ''; // Clear if null/empty
+    }
+};
+
+const handlePriceBlur = () => {
+    isEditingPrice.value = false;
+    // Format the value when focus is lost
+    displayMinPrice.value = formatDZD(internalForm.min_price);
+};
+
+const handlePriceKeydown = (event) => {
+    // Allow special keys: backspace, delete, tab, escape, enter
+    if ([8, 9, 27, 13, 46].indexOf(event.keyCode) !== -1 ||
+        // Allow Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
+        (event.keyCode === 65 && event.ctrlKey === true) ||
+        (event.keyCode === 67 && event.ctrlKey === true) ||
+        (event.keyCode === 86 && event.ctrlKey === true) ||
+        (event.keyCode === 88 && event.ctrlKey === true) ||
+        // Allow home, end, left, right
+        (event.keyCode >= 35 && event.keyCode <= 39)) {
+        return;
+    }
+    // Ensure that it is a number or decimal point and stop the keypress
+    if ((event.shiftKey || (event.keyCode < 48 || event.keyCode > 57)) &&
+        (event.keyCode < 96 || event.keyCode > 105) &&
+        event.keyCode !== 190 && event.keyCode !== 110) { // 190 for '.', 110 for numpad '.'
+        event.preventDefault();
+    }
 };
 </script>
 
@@ -157,8 +251,7 @@ const handleCloseModal = () => {
                 <Dropdown
                     id="service"
                     v-model="internalForm.service_id"
-                    :options="services"
-                    optionLabel="name"
+                    :options="availableServices" optionLabel="name"
                     optionValue="id"
                     placeholder="Select Service"
                     :class="{ 'p-invalid': internalFormErrors.service_id }"
@@ -186,16 +279,18 @@ const handleCloseModal = () => {
                 </small>
             </div>
 
-            <div class="field mb-3" >
-                <label for="minPrice">Minimum Price (DZD):</label>
+            <div class="field mb-3">
+                <label for="minPrice">Minimum Price:</label>
                 <InputText
                     id="minPrice"
-                    v-model="formattedMinPrice"
-                    @input="internalForm.min_price = parseDZD($event.target.value)"
+                    v-model="displayMinPrice"
+                    @input="handlePriceInput"
+                    @focus="handlePriceFocus"
+                    @blur="handlePriceBlur"
+                    @keydown="handlePriceKeydown"
                     :class="{ 'p-invalid': internalFormErrors.min_price }"
                     :disabled="isLoading"
-                    placeholder="د.ج 0.00"
-                    style="direction: rtl; text-align: left;"
+                    placeholder="0 DZD" style="direction: ltr; text-align: left;"
                 />
                 <small class="p-error" v-if="internalFormErrors.min_price">
                     {{ internalFormErrors.min_price }}
@@ -229,7 +324,7 @@ const handleCloseModal = () => {
 /* Custom style to ensure right-to-left text alignment for currency inputs */
 /* This might be needed if PrimeVue's InputText doesn't handle it by default based on locale */
 #minPrice {
-    direction: rtl;
+    direction: ltr;
     text-align: right;
 }
 

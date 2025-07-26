@@ -478,7 +478,7 @@ if ($request->is_afternoon_active) {
                 // Get appointments for this date, ordered by their creation date (oldest first)
                 $dateAppointments = $query->clone()
                     ->whereDate('appointment_date', $date)
-                    ->orderBy('created_at', 'asc')
+                    ->orderBy('appointment_date', 'asc')
                     ->get();
                 
                 if ($dateAppointments->isEmpty()) {

@@ -1,167 +1,155 @@
 <script setup>
-import { useToastr } from '../../Components/toster';
-import { ref, onMounted, watch, computed } from 'vue'; // Import computed
-import { useRoute, useRouter } from 'vue-router';
-import axios from 'axios'; // Import axios
+import { onMounted, watch ,ref ,computed } from 'vue'; // Removed 'ref' for `loading`
+import { useRouter } from 'vue-router';
+import { useToastr } from '../../Components/toster'; // Assuming this is your toastr utility
+import axios from 'axios'; // Keep axios here as fetchCurrentDoctorInfo is local
+
+// Import YOUR existing Appointment Store
+import { useAppointmentStore } from '@/stores/appointments'; // Make sure this path is correct!
+import { storeToRefs } from 'pinia'; // Helper to destructure reactive state from store
 
 const router = useRouter();
-const doctor = ref({});
 const toaster = useToastr();
-const loading = ref(true); // Loading state
-const loadingAppointments = ref(true); // Loading state for appointments
 
-
-// Change the prop type to [String, Number] to handle both string and number IDs
+// Define props for the component
 const props = defineProps({
-    doctorId: {
-        type: [String, Number],
-        required: true
-    },
-    isDcotro: {
-        type: Boolean,
-        default: true
-    },
+  doctorId: {
+    type: [String, Number],
+    required: true
+  },
+  isDcotro: { // Renamed from isDcotro to match your template usage
+    type: Boolean,
+    default: true
+  },
 });
 
-const availableAppointments = ref({
-    canceled_appointments: null,
-    normal_appointments: null
-});
+// Initialize the Pinia store
+const appointmentStore = useAppointmentStore();
 
-const getDoctorsInfo = async (page = 1) => {
-    try {
-        loading.value = true; // Start loading
-        // Ensure doctorId is being passed correctly in the URL
-        if (!props.doctorId) {
-            console.error('Doctor ID is missing');
-            return;
-        }
+// Destructure reactive state properties and getters from the store using storeToRefs
+// These are from the store and will reflect the loading state of appointments within the store
+const {
+  availableAppointments,      // This is the object containing all doctors' available appointments
+  loadingAppointments,        // This is the object containing loading status for each doctor's appointments
+} = storeToRefs(appointmentStore);
 
-        const response = await axios.get(`/api/doctors/${props.doctorId}?page=${page}`);
-        doctor.value = response.data.data;
-    } catch (error) {
-        console.error('Error fetching doctor info:', error);
-        toaster.error('Failed to fetch doctor information');
-    } finally {
-        loading.value = false; // Stop loading
-    }
-};
+// Destructure actions and the specific getter from the store
+const {
+  fetchAvailableAppointments, // Action to fetch specific doctor's appointments
+  formatClosestCanceledAppointment, // Getter from the store for formatting
+} = appointmentStore;
 
-const fetchAvailableAppointments = async () => {
-    try {
-        loadingAppointments.value = true; // Start loading appointments
-        // Ensure doctorId is being passed correctly in the params
-        if (!props.doctorId) {
-            console.error('Doctor ID is missing');
-            return;
-        }
+// Local ref for the current doctor's info (fetched separately as a single item)
+const currentDoctor = ref(null);
+const isLoadingDoctorInfo = ref(false); // This local loading ref is for the *currentDoctor* data fetch
 
-        const response = await axios.get('/api/appointments/available', {
-            params: { doctor_id: props.doctorId }
-        });
-        console.log('Available appointments:', response.data);
+// --- Component Methods ---
 
-
-        availableAppointments.value = {
-            canceled_appointments: response.data.canceled_appointments,
-            normal_appointments: response.data.normal_appointments
-        };
-    } catch (error) {
-        console.error('Error fetching available appointments:', error);
-        toaster.error('Failed to fetch available appointments');
-    } finally {
-        loadingAppointments.value = false; // Stop loading appointments
-    }
-};
-
-const formatClosestCanceledAppointment = (appointments) => {
-    if (!appointments || appointments.length === 0) return 'No upcoming canceled appointments';
-    
-    const sortedAppointments = appointments.sort((a, b) => {
-        const dateA = new Date(a.date + 'T' + a.available_times[0] + ':00');
-        const dateB = new Date(b.date + 'T' + b.available_times[0] + ':00');
-        return dateA - dateB;
-    });
-
-    const closest = sortedAppointments[0];
-    return `${closest.date} at ${closest.available_times[0]}`;
-};
-
-// Use a watcher to refetch data when doctorId changes
-watch(() => props.doctorId, (newDoctorId) => {
-  if (newDoctorId) {
-    getDoctorsInfo();
-    fetchAvailableAppointments();
+// Fetch the specific doctor's main information
+const fetchCurrentDoctorInfo = async (doctorId) => {
+  if (!doctorId) {
+    console.warn('Doctor ID is missing for fetchCurrentDoctorInfo.');
+    return;
   }
+  isLoadingDoctorInfo.value = true; // Set local loading for doctor info
+  try {
+    const response = await axios.get(`/api/doctors/${doctorId}`);
+    currentDoctor.value = response.data.data;
+  } catch (error) {
+    console.error('Error fetching current doctor info:', error);
+    toaster.error('Failed to fetch doctor information.');
+  } finally {
+    isLoadingDoctorInfo.value = false; // Stop local loading
+  }
+};
+
+// --- Component Lifecycle & Watchers ---
+
+// Watch for changes in the doctorId prop to refetch all relevant data
+watch(() => props.doctorId, async (newDoctorId) => {
+  if (newDoctorId) {
+    // Fetch the specific doctor's main info
+    await fetchCurrentDoctorInfo(newDoctorId);
+
+    // Fetch the available appointments for this specific doctor using the store action
+    await fetchAvailableAppointments(newDoctorId);
+
+    // No need to check for errors from the store action here if you don't have a specific
+    // error state for individual doctor's appointments in the store's `loadingAppointments` object.
+    // Your store's `fetchAvailableAppointments` currently only logs errors.
+  }
+}, { immediate: true }); // `immediate: true` runs the watcher on component mount
+
+// A computed property to get the appointments specific to the current doctor
+const currentDoctorAppointments = computed(() => {
+  // Use .value on availableAppointments because it's a ref from storeToRefs
+  return availableAppointments.value[props.doctorId] || { canceled_appointments: [], normal_appointments: {} };
 });
 
-onMounted(() => {
-    // Ensure both functions are called with the current doctorId
-    getDoctorsInfo();
-    fetchAvailableAppointments();
+// A computed property to get the loading status specific to the current doctor's appointments
+const currentDoctorAppointmentsLoading = computed(() => {
+  // Use .value on loadingAppointments because it's a ref from storeToRefs
+  return loadingAppointments.value[props.doctorId] || false;
+});
+
+// A computed property for the formatted closest canceled appointment for the *current* doctor
+const formattedCanceledAppointments = computed(() => {
+  return formatClosestCanceledAppointment(currentDoctorAppointments.value.canceled_appointments);
 });
 </script>
 
 <template>
-    <!-- Doctor Details Section -->
-    <div class="header p-4 rounded-lg d-flex flex-column position-relative bg-primary">
-        <!-- Back Button at the top of the card -->
-        <button v-if="!isDcotro" class="btn btn-light bg-primary rounded-pill shadow-sm position-absolute"
-            style="top: 20px; left: 20px;" @click="router.go(-1)">
-            <i class="fas fa-arrow-left"></i> Back
-        </button>
+  <div class="header p-4 rounded-lg d-flex flex-column position-relative bg-primary">
+    <button v-if="!isDcotro" class="btn btn-light bg-primary rounded-pill shadow-sm position-absolute"
+      style="top: 20px; left: 20px;" @click="router.go(-1)">
+      <i class="fas fa-arrow-left"></i> Back
+    </button>
 
-        <!-- Main Content -->
-        <div class="d-flex align-items-center justify-content-between mt-5">
-            <!-- Left Section: Photo and Doctor Details -->
-            <div class="d-flex align-items-center">
-                <!-- Doctor Photo -->
-                <div class="mx-auto rounded-circle overflow-hidden border " style="width: 150px; height: 150px;">
-                    <img v-if="!loading && doctor.avatar" :src="doctor.avatar" alt="Doctor image" class="w-100 h-100"
-                        style="object-fit: contain; border-radius: 50%;" />
-                    <div v-else class="w-100 h-100 bg-gray-300 animate-pulse rounded-circle"></div>
-                </div>
-                <!-- Doctor Info -->
-                <div class="ml-4">
-                  <h2 v-if="!loading" class="h4 font-weight-bold text-white mb-2">{{ doctor.name }}</h2>
-                  <p v-if="!loading" class="mb-1 text-white font-weight-bold">{{ doctor.specialization }}
-                    <span class="font-weight-bold">{{ doctor.credentials }}</span>
-                  </p>
-                  <p v-if="!loading" class="mb-0 text-white-50">
-                    <span class="font-weight-bold"><i class="fas fa-phone"></i> {{ doctor.phone }}</span>
-                  </p>
-                  <!-- Loading Skeletons -->
-                    <div v-if="loading">
-                        <div class="h4 bg-gray-300 animate-pulse rounded mb-2" style="width: 150px; height: 24px;"></div>
-                        <div class="bg-gray-300 animate-pulse rounded mb-1" style="width: 200px; height: 16px;"></div>
-                        <div class="bg-gray-300 animate-pulse rounded" style="width: 100px; height: 16px;"></div>
-                    </div>
-                </div>
-            </div>
+    <div class="d-flex align-items-center justify-content-between mt-5">
+      <div class="d-flex align-items-center">
+        <div class="mx-auto rounded-circle overflow-hidden border" style="width: 150px; height: 150px;">
+          <img v-if="!isLoadingDoctorInfo && currentDoctor && currentDoctor.avatar" :src="currentDoctor.avatar" alt="Doctor image" class="w-100 h-100"
+            style="object-fit: contain; border-radius: 50%;" />
+          <div v-else class="w-100 h-100 bg-gray-300 animate-pulse rounded-circle"></div>
+        </div>
+        <div class="ml-4">
+          <h2 v-if="!isLoadingDoctorInfo && currentDoctor" class="h4 font-weight-bold text-white mb-2">{{ currentDoctor.name }}</h2>
+          <p v-if="!isLoadingDoctorInfo && currentDoctor" class="mb-1 text-white font-weight-bold">{{ currentDoctor.specialization }}
+            <span class="font-weight-bold">{{ currentDoctor.credentials }}</span>
+          </p>
+          <p v-if="!isLoadingDoctorInfo && currentDoctor" class="mb-0 text-white-50">
+            <span class="font-weight-bold"><i class="fas fa-phone"></i> {{ currentDoctor.phone }}</span>
+          </p>
+          <div v-if="isLoadingDoctorInfo">
+            <div class="h4 bg-gray-300 animate-pulse rounded mb-2" style="width: 150px; height: 24px;"></div>
+            <div class="bg-gray-300 animate-pulse rounded mb-1" style="width: 200px; height: 16px;"></div>
+            <div class="bg-gray-300 animate-pulse rounded" style="width: 100px; height: 16px;"></div>
+          </div>
+        </div>
+      </div>
 
-            <!-- Right Section: Appointments -->
-           <div class="text-right">
-        <!-- Next Appointment -->
+      <div class="text-right">
         <div class="mb-4">
           <p class="mb-1 small text-white-50">Next Appointment:</p>
-          <p v-if="!loadingAppointments" class="h5 font-weight-bold text-white mb-2">
-            {{ availableAppointments.normal_appointments ? availableAppointments.normal_appointments.date + ' at ' +
-              availableAppointments.normal_appointments.available_times
-              [0] : 'No upcoming appointments' }}
+          <p v-if="!currentDoctorAppointmentsLoading && currentDoctorAppointments.normal_appointments" class="h5 font-weight-bold text-white mb-2">
+            {{ currentDoctorAppointments.normal_appointments.date + ' at ' +
+               currentDoctorAppointments.normal_appointments.available_times[0] }}
+          </p>
+          <p v-else-if="!currentDoctorAppointmentsLoading && !currentDoctorAppointments.normal_appointments" class="h5 font-weight-bold text-white mb-2">
+            No upcoming appointments
           </p>
           <div v-else class="h5 bg-gray-300 animate-pulse rounded mb-2" style="width: 200px; height: 24px;"></div>
         </div>
-        <!-- Last Appointment -->
         <div>
           <p class="mb-1 small text-white-50">Closest Appointments:</p>
-          <p v-if="!loadingAppointments" class="h5 font-weight-bold text-white mb-2">
-            {{ formatClosestCanceledAppointment(availableAppointments.canceled_appointments) }}
+          <p v-if="!currentDoctorAppointmentsLoading" class="h5 font-weight-bold text-white mb-2">
+            {{ formattedCanceledAppointments }}
           </p>
-            <div v-else class="h5 bg-gray-300 animate-pulse rounded mb-2" style="width: 250px; height: 24px;"></div>
+          <div v-else class="h5 bg-gray-300 animate-pulse rounded mb-2" style="width: 250px; height: 24px;"></div>
         </div>
       </div>
-        </div>
     </div>
+  </div>
 </template>
 
 <style scoped>

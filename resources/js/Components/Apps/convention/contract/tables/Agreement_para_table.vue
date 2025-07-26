@@ -282,7 +282,7 @@ const formatDateForAPI = (date) => {
                 <th scope="col">Family Auth</th>
                 <th scope="col">Max Price</th>
                 <th scope="col">Min Price</th>
-                <th scope="col">Discount (%)</th>
+                <th scope="col">Compay Discount (%)</th>
                 <th scope="col">Actions</th>
               </tr>
             </thead>

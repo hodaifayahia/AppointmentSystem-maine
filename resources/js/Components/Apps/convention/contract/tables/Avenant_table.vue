@@ -1,12 +1,18 @@
 <script setup>
-import { ref, computed, defineProps, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import axios from "axios";
-// Ensure this path is correct for your toastr setup
-import { useToastr } from '../../../../toster';
+import { useToastr } from '../../../../toster'; // Assuming toastr is still desired for notifications
 
-// Use import.meta.env.VITE_API_BASE_URL if it's a Vite project
-// Otherwise, define it directly or get it from a global config
+// PrimeVue Components
+import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
+import Button from 'primevue/button';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import Paginator from 'primevue/paginator'; // PrimeVue's Paginator for custom pagination if needed
+import ProgressSpinner from 'primevue/progressspinner'; // For loading state
+import Calendar from 'primevue/calendar'; // For date filtering
 
 const props = defineProps({
     contractState: String, // This prop still refers to the contract's overall state
@@ -14,57 +20,72 @@ const props = defineProps({
 });
 
 const router = useRouter();
-const toast = useToastr(); // Using toastr for notifications
+const toast = useToastr(); // Using toastr for notifications (you might want to switch to PrimeVue's Toast service if available in your setup)
 
 const searchQuery = ref("");
-const selectedFilter = ref("id"); // Default filter
+const selectedFilter = ref({ label: "By ID", value: "id" }); // PrimeVue Dropdown expects an object
 const hasPendingAvenant = ref(false); // Controls 'Add Avenant' button
 const items = ref([]); // Data for the table
+const loading = ref(false); // Loading state for data fetching
 
-// Pagination states
-const currentPage = ref(1);
-const itemsPerPage = ref(8); // Corresponds to PrimeVue's :rows="8"
+// Pagination states for DataTable (PrimeVue DataTable handles most of this internally)
+const first = ref(0); // Index of the first record
+const rows = ref(8); // Number of rows to display per page (default for DataTable)
+const totalRecords = computed(() => filteredItemsComputed.value.length); // Total records after filtering
 
 const filterOptions = [
     { label: "By ID", value: "id" },
-    { label: "By Convention ID", value: "convention_id" }, // Changed label and value
+    { label: "By Convention ID", value: "convention_id" },
     { label: "By Status", value: "status" },
     { label: "By Creation Date", value: "created_at" },
 ];
 
-const paginatedFilteredItems = computed(() => {
-    const start = (currentPage.value - 1) * itemsPerPage.value;
-    const end = start + itemsPerPage.value;
-    return filteredItemsComputed.value.slice(start, end);
-});
+// Computed property for filtered items (DataTable can also handle filtering, but this remains for custom logic)
+const filteredItemsComputed = computed(() => {
+    if (!searchQuery.value) return items.value;
 
-const totalPages = computed(() => {
-    return Math.ceil(filteredItemsComputed.value.length / itemsPerPage.value);
-});
+    const query = String(searchQuery.value).toLowerCase();
+    const filterValue = selectedFilter.value.value; // Access the value from the selected object
 
-const changePage = (page) => {
-    if (page > 0 && page <= totalPages.value) {
-        currentPage.value = page;
-    }
-};
+    return items.value.filter(item => {
+        switch (filterValue) {
+            case "id":
+                return item.id && String(item.id).includes(query);
+            case "convention_id":
+                return item.convention_id && String(item.convention_id).includes(query);
+            case "status":
+                return item.status && String(item.status).toLowerCase().includes(query);
+            case "created_at":
+                // If searchQuery is a Date object (from Calendar), format it for comparison
+                const searchDateFormatted = searchQuery.value instanceof Date
+                    ? formatDateForDisplay(searchQuery.value)
+                    : query;
+                return item.created_at && formatDateForDisplay(item.created_at).includes(searchDateFormatted);
+            default:
+                return true;
+        }
+    });
+});
 
 const fetchAvenants = async () => {
+    loading.value = true;
     try {
-     
         // Corrected API endpoint for fetching all avenants for a convention
         const response = await axios.get(`/api/avenants/convention/${props.conventionId}`);
         console.log("Response data:", response.data);
-        
-        items.value = response.data; // Assuming your AvenantResource returns data in a 'data' key
-        currentPage.value = 1; // Reset pagination on new data
+
+        // Assuming your API returns an array directly, if it's nested (e.g., {data: [...]}) adjust accordingly
+        items.value = response.data;
+        first.value = 0; // Reset DataTable pagination on new data
 
         // Check for pending avenants
-        // Corrected API endpoint for checking pending avenants
         const pendingResponse = await axios.get(`/api/avenants/convention/${props.conventionId}/pending`);
         hasPendingAvenant.value = pendingResponse.data.hasPending;
     } catch (error) {
         console.error("Failed to fetch avenants data:", error);
         toast.error('Failed to load avenants');
+    } finally {
+        loading.value = false;
     }
 };
 
@@ -92,51 +113,26 @@ onMounted(() => {
 
 const getBadgeClass = (status) => {
     switch (String(status).toLowerCase()) { // Ensure case-insensitivity
-        case "Active":
-            return "bg-success";
+        case "active":
+            return "bg-green-500 text-white font-medium"; // PrimeVue color classes
         case "pending":
-        case "pending-approval": // Added pending-approval status from your migration comment
-            return "bg-warning text-dark";
+        case "pending":
+            return "bg-orange-500 text-white font-medium";
         case "expired":
         case "inactive":
-        case "archived": // Added archived status from your service logic
-            return "bg-danger";
-        case "draft": // Added draft status from your migration comment
-            return "bg-secondary";
+        case "archived":
+            return "bg-red-500 text-white font-medium";
+        case "draft":
+            return "bg-gray-500 text-white font-medium";
         default:
-            return "bg-info";
+            return "bg-blue-500 text-white font-medium"; // Default info badge
     }
 };
 
-const filteredItemsComputed = computed(() => {
-    if (!searchQuery.value) return items.value;
-
-    const query = String(searchQuery.value).toLowerCase();
-
-    return items.value.filter(item => {
-        switch (selectedFilter.value) {
-            case "id":
-                return item.id && String(item.id).includes(query);
-            case "convention_id":
-                return item.convention_id && String(item.convention_id).includes(query);
-            case "status":
-                return item.status && String(item.status).toLowerCase().includes(query);
-            case "created_at":
-                const searchDateFormatted = searchQuery.value instanceof Date
-                    ? formatDateForDisplay(searchQuery.value)
-                    : query;
-                return item.created_at && formatDateForDisplay(item.created_at).includes(searchDateFormatted);
-            default:
-                return true;
-        }
-    });
-});
-
 const moreInfo = (id) => {
-    
     router.push({
-       name:'convention.avenants.details',
-       query: { id:id }
+        name: 'convention.avenants.details',
+        query: { id: id }
     });
 };
 
@@ -144,15 +140,12 @@ const moreInfo = (id) => {
 const formatDateForDisplay = (dateString) => {
     if (!dateString) return 'N/A';
     try {
-        // Attempt to parse 'DD/MM/YYYY HH:mm:ss' or 'YYYY-MM-DD HH:mm:ss'
-        // For 'DD/MM/YYYY HH:mm:ss', reorder to 'YYYY-MM-DD HH:mm:ss' for robust Date parsing
-        const parts = dateString.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/);
+        // Handle various date string formats for robust parsing
         let date;
+        const parts = dateString.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/);
         if (parts) {
-            // Reconstruct as YYYY-MM-DD HH:mm:ss for reliable Date object creation
             date = new Date(`${parts[3]}-${parts[2]}-${parts[1]}T${parts[4]}:${parts[5]}:${parts[6]}`);
         } else {
-            // Try direct parsing for other formats (like YYYY-MM-DD HH:mm:ss)
             date = new Date(dateString);
         }
 
@@ -166,174 +159,232 @@ const formatDateForDisplay = (dateString) => {
         return dateString;
     }
 };
+
+// DataTable pagination handler
+const onPage = (event) => {
+    first.value = event.first;
+    rows.value = event.rows;
+};
 </script>
 
 <template>
-    <div class="container-fluid py-4">
-        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-center mb-4 gap-2">
-            <div class="d-flex flex-grow-1 gap-2 w-100">
-                <select v-model="selectedFilter" class="form-select border rounded-3 w-auto">
-                    <option v-for="option in filterOptions" :key="option.value" :value="option.value">
-                        {{ option.label }}
-                    </option>
-                </select>
-                <input v-if="selectedFilter !== 'created_at'" type="text" v-model="searchQuery" placeholder="Search..."
-                    class="form-control flex-grow-1" />
-                <input v-if="selectedFilter === 'created_at'" type="date" v-model="searchQuery"
-                    placeholder="Select Date" class="form-control flex-grow-1" />
+    <div class="surface-card border-round-lg shadow-2 p-4">
+        <div class="d-flex sm:flex-row justify-content-between align-items-start sm:align-items-center mb-4 gap-3">
+            <div class="flex flex-column sm:flex-row gap-2 w-full">
+                <Dropdown
+                    v-model="selectedFilter"
+                    :options="filterOptions"
+                    optionLabel="label"
+                    placeholder="Select a Filter"
+                    class="p-inputtext-sm w-full sm:w-auto"
+                />
+
+                <InputText
+                    v-if="selectedFilter.value !== 'created_at'"
+                    type="text"
+                    v-model="searchQuery"
+                    placeholder="Search..."
+                    class="flex-grow-1 p-inputtext-sm"
+                />
+                <Calendar
+                    v-else
+                    v-model="searchQuery"
+                    dateFormat="dd/mm/yy"
+                    placeholder="Select Date"
+                    class="flex-grow-1 p-inputtext-sm"
+                    showIcon
+                />
             </div>
-            <button v-if="!hasPendingAvenant && (props.contractState ==='pending'||props.contractState ==='active')"
-                class="btn btn-primary d-flex align-items-center" @click="createAvenant">
-                <i class="fas fa-plus me-1"></i> Add Avenant
-            </button>
+
+            <Button
+                v-if="!hasPendingAvenant && (props.contractState === 'pending' || props.contractState === 'active')"
+                label="Add Avenant"
+                icon="pi pi-plus"
+                class="p-button-primary border-round-md white-space-nowrap w-full sm:w-auto"
+                @click="createAvenant"
+            />
         </div>
 
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <div v-if="items.length === 0"
-                    class="text-center text-muted py-5 d-flex flex-column align-items-center">
-                    <i class="fas fa-file-excel fs-3 mb-2"></i>
-                    <span>No avenants found.</span>
-                </div>
-                <div v-else class="table-responsive">
-                    <table class="table table-striped table-hover avenant-table">
-                        <thead>
-                            <tr>
-                                <th scope="col">ID</th>
-                                <th scope="col">Convention </th> <!-- Changed header -->
-                                <th scope="col">Status</th>
-                                <th scope="col">Created At</th>
-                                <th scope="col">Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="item in paginatedFilteredItems" :key="item.id">
-                                <td>{{ item.id }}</td>
-                                <td>{{ item.convention_id }}</td> <!-- Changed to convention_id -->
-                                <td>
-                                    <span :class="['badge', getBadgeClass(item.status)]">
-                                        {{ item.status }}
-                                    </span>
-                                </td>
-                                <td>{{ formatDateForDisplay(item.created_at) }}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-info" @click="moreInfo(item.id)">
-                                        <i class="fas fa-eye me-1"></i> Details
-                                    </button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+        <div class="surface-border surface-card border-round-lg border-1 overflow-hidden">
+            <div v-if="loading" class="flex flex-column align-items-center justify-content-center py-6 px-4">
+                <ProgressSpinner
+                    style="width: 50px; height: 50px"
+                    strokeWidth="6"
+                    fill="var(--surface-card)"
+                    animationDuration=".8s"
+                    aria-label="Loading"
+                />
+                <p class="mt-3 text-600 font-medium">Loading avenants...</p>
+            </div>
 
-                <nav v-if="totalPages > 1" aria-label="Page navigation">
-                    <ul class="pagination justify-content-center">
-                        <li class="page-item" :class="{ 'disabled': currentPage === 1 }">
-                            <button class="page-link" @click="changePage(currentPage - 1)" aria-label="Previous">
-                                <span aria-hidden="true">&laquo;</span>
-                            </button>
-                        </li>
-                        <li class="page-item" v-for="page in totalPages" :key="page"
-                            :class="{ 'active': currentPage === page }">
-                            <button class="page-link" @click="changePage(page)">{{ page }}</button>
-                        </li>
-                        <li class="page-item" :class="{ 'disabled': currentPage === totalPages }">
-                            <button class="page-link" @click="changePage(currentPage + 1)" aria-label="Next">
-                                <span aria-hidden="true">&raquo;</span>
-                            </button>
-                        </li>
-                    </ul>
-                </nav>
+            <div
+                v-else-if="filteredItemsComputed.length === 0"
+                class="flex flex-column justify-content-center align-items-center py-8 px-4 text-center"
+            >
+                <div class="bg-blue-50 border-circle w-5rem h-5rem flex align-items-center justify-content-center mb-3">
+                    <i class="pi pi-file text-3xl text-blue-400"></i>
+                </div>
+                <h6 class="text-900 font-semibold mb-2">No avenants found</h6>
+                <p class="text-600 mb-0">Try adjusting your search criteria or add a new avenant.</p>
+            </div>
+
+            <div v-else class="overflow-x-auto">
+                <DataTable
+                    :value="filteredItemsComputed"
+                    :paginator="true"
+                    :rows="rows"
+                    :first="first"
+                    @page="onPage"
+                    responsiveLayout="scroll"
+                    class="p-datatable-sm"
+                    :class="{ 'p-datatable-striped': true }"
+                    paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                    currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+                    :rowsPerPageOptions="[8, 15, 25, 50]"
+                >
+                    <Column field="id" header="ID" sortable class="white-space-nowrap">
+                        <template #body="slotProps">
+                            <span class="font-mono text-sm">#{{ slotProps.data.id }}</span>
+                        </template>
+                    </Column>
+                    <Column field="convention_id" header="Convention ID" sortable class="white-space-nowrap">
+                        <template #body="slotProps">
+                            <span class="text-sm">{{ slotProps.data.convention_id }}</span>
+                        </template>
+                    </Column>
+                    <Column field="status" header="Status" sortable>
+                        <template #body="slotProps">
+                            <span :class="['badge', getBadgeClass(slotProps.data.status)]">
+                                {{ slotProps.data.status }}
+                            </span>
+                        </template>
+                    </Column>
+                    <Column field="created_at" header="Created At" sortable class="white-space-nowrap">
+                        <template #body="slotProps">
+                            <span class="text-sm text-600">{{ formatDateForDisplay(slotProps.data.created_at) }}</span>
+                        </template>
+                    </Column>
+                    <Column header="Actions" class="white-space-nowrap">
+                        <template #body="slotProps">
+                            <Button
+                                icon="pi pi-info-circle"
+                                class="p-button-sm p-button-text p-button-info border-round-md"
+                                @click="moreInfo(slotProps.data.id)"
+                                v-tooltip.top="'View Details'"
+                            />
+                        </template>
+                    </Column>
+                </DataTable>
             </div>
         </div>
     </div>
 </template>
 
 <style scoped>
-/* Adjust container padding */
-.container-fluid.py-4 {
-    padding-top: 1.5rem !important;
-    padding-bottom: 1.5rem !important;
+/* Base container and card styling */
+.surface-card {
+    background: var(--surface-card);
+    transition: all 0.2s ease-in-out;
 }
 
-/* Flexbox and gap for search/filter/add section */
-.d-flex.gap-2 > * {
-    margin-right: 0.5rem; /* Adjust gap as needed */
-}
-.d-flex.gap-2 > *:last-child {
-    margin-right: 0;
+/* Header section flexbox adjustments */
+.flex-column.sm\:flex-row {
+    flex-direction: column;
 }
 
-/* Card styling */
-.card {
-    border-radius: 0.75rem; /* Consistent border-radius */
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06); /* Mimics shadow-sm */
-    border: 1px solid #e2e8f0; /* Light gray border */
+@media (min-width: 576px) {
+    .flex-column.sm\:flex-row {
+        flex-direction: row;
+    }
+    .w-full.sm\:w-auto {
+        width: auto;
+    }
 }
 
-/* Form controls and select */
-.form-control, .form-select {
-    border-radius: 0.5rem; /* Rounded-lg */
-    padding: 0.625rem 0.75rem; /* p-2 */
+/* PrimeVue specific overrides and enhancements */
+.p-inputtext-sm .p-inputtext { /* Adjust size for input fields */
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
 }
 
-/* Table styling */
-.avenant-table {
-    min-width: 50rem; /* Matches the PrimeVue tableStyle */
+.p-dropdown { /* Adjust size for dropdown */
+    height: auto; /* Allow content to dictate height */
 }
 
-.table th, .table td {
-    vertical-align: middle;
-    padding: 0.75rem;
-    white-space: nowrap; /* Prevent content from wrapping in table cells */
+.p-button-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: var(--primary-color-text);
 }
 
-/* "No avenants found" message */
-.text-muted {
-    color: #6c757d !important;
-}
-.fs-3 { /* Equivalent to text-3xl for Font Awesome icon */
-    font-size: calc(1.3rem + .6vw) !important;
+.p-button-primary:hover {
+    background-color: var(--primary-dark-color);
+    border-color: var(--primary-dark-color);
 }
 
-/* Badge specific styles */
+.p-button-info {
+    color: var(--blue-500);
+}
+
+.p-button-info:hover {
+    background-color: var(--blue-50);
+}
+
+/* DataTable specific styling */
+:deep(.p-datatable .p-datatable-header) {
+    background: var(--surface-50);
+    border-bottom: 1px solid var(--surface-200);
+}
+
+:deep(.p-datatable .p-datatable-thead > tr > th) {
+    background: var(--surface-50);
+    border-bottom: 1px solid var(--surface-200);
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--text-color-secondary);
+    padding: 1rem 0.75rem;
+}
+
+:deep(.p-datatable .p-datatable-tbody > tr > td) {
+    padding: 0.875rem 0.75rem;
+    border-bottom: 1px solid var(--surface-100);
+}
+
+:deep(.p-datatable .p-datatable-tbody > tr:hover) {
+    background: var(--surface-50);
+}
+
+/* Badge styles - mapping to PrimeVue/Tailwind-like classes */
 .badge {
-    padding: 0.35em 0.65em;
-    font-size: 0.75em;
-    font-weight: 700;
+    padding: 0.3em 0.6em; /* Smaller padding for a more compact badge */
+    border-radius: 9999px; /* Fully rounded */
+    font-size: 0.75rem; /* Smaller font size */
     line-height: 1;
-    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 3.5rem; /* Ensure consistent width */
     text-align: center;
-    white-space: nowrap;
-    vertical-align: baseline;
-    border-radius: 0.25rem;
 }
 
-/* Bootstrap badge colors (example, ensure consistency with your theme) */
-.badge.bg-success { background-color: #28a745 !important; }
-.badge.bg-warning { background-color: #ffc107 !important; }
-.badge.bg-warning.text-dark { color: #212529 !important; } /* For better contrast on warning */
-.badge.bg-danger { background-color: #dc3545 !important; }
-.badge.bg-info { background-color: #17a2b8 !important; }
-.badge.bg-secondary { background-color: #6c757d !important; } /* Added for 'draft' status */
+/* PrimeVue color utilities (or define if not using PrimeFlex) */
+.bg-green-500 { background-color: var(--green-500); }
+.bg-orange-500 { background-color: var(--orange-500); }
+.bg-red-500 { background-color: var(--red-500); }
+.bg-gray-500 { background-color: var(--gray-500); }
+.bg-blue-500 { background-color: var(--blue-500); }
+.text-white { color: white; }
+.font-medium { font-weight: 500; }
 
-
-/* General button styles for consistency with Bootstrap theme */
-.btn-primary {
-    background-color: #007bff;
-    border-color: #007bff;
-}
-.btn-primary:hover {
-    background-color: #0056b3;
-    border-color: #0056b3;
+/* Empty state styling */
+.border-circle {
+    border-radius: 50%;
 }
 
-.btn-info {
-    background-color: #17a2b8;
-    border-color: #17a2b8;
-}
-.btn-info:hover {
-    background-color: #138496;
-    border-color: #117a8b;
+/* General button hover effects */
+.p-button:not(.p-button-text):not(.p-button-link):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+    transition: all 0.2s ease-in-out;
 }
 </style>

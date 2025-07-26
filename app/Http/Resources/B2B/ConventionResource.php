@@ -19,6 +19,15 @@ class ConventionResource extends JsonResource
             'organisme_id' => $this->organisme_id,
             'contract_name' => $this->name, // Mapping 'name' to 'contract_name' for consistency with frontend
             'status' => $this->status,
+            'annexes' => $this->whenLoaded('annexes', function () {
+                return $this->annexes->map(function ($annexe) {
+                    return [
+                        'id' => $annexe->id,
+                        'annex_name' => $annexe->name,
+                        ''
+                    ];
+                });
+            }, []), // Default to empty array if no annexes are loaded
             'created_at' => $this->created_at ? $this->created_at->format('Y-m-d H:i:s') : null, // Check for null dates
             'updated_at' => $this->updated_at ? $this->updated_at->format('Y-m-d H:i:s') : null, // Check for null dates
         ];

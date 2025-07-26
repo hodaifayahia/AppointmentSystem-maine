@@ -18,14 +18,14 @@ class UpdateConventionRequest extends FormRequest
         $conventionId = $this->route('convention')->id;
 
         return [
-            'organisme_id' => 'required|exists:organismes,id',
+            'organisme_id' => 'nullable|exists:organismes,id',
             'name' => [
                 'required',
                 'string',
                 'max:255',
                 Rule::unique('conventions')->ignore($conventionId)
             ],
-            'is_general' => 'required|boolean',
+            'is_general' => 'nullable|boolean',
             'status' => 'required|string|in:active,inactive,pending',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after:start_date',

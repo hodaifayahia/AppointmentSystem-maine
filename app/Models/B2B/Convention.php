@@ -5,6 +5,7 @@ namespace App\Models\B2B;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\B2B\ConventionDetail;
 use App\Models\CRM\Organisme;
 

@@ -58,6 +58,7 @@ class PrestationController extends Controller
             ], 500);
         }
     }
+  
 
     /**
      * Display the specified prestation

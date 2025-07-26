@@ -253,33 +253,20 @@ onMounted(() => {
             {{ option.label }}
           </option>
         </select>
-        <input
-          v-if="filterType === 'id'"
-          type="text"
-          v-model="searchQuery"
-          placeholder="Search by ID..."
-          class="form-control flex-grow-1"
-        />
-        <input
-          v-else
-          type="date"
-          v-model="searchDate"
-          placeholder="Select Date"
-          class="form-control flex-grow-1"
-        />
+        <input v-if="filterType === 'id'" type="text" v-model="searchQuery" placeholder="Search by ID..."
+          class="form-control flex-grow-1" />
+        <input v-else type="date" v-model="searchDate" placeholder="Select Date" class="form-control flex-grow-1" />
       </div>
-      <button
-        v-if="contractState === 'pending'"
-        class="btn btn-primary d-flex align-items-center"
-        @click="openAddModal"
-      >
+      <button v-if="contractState === 'pending'" class="btn btn-primary d-flex align-items-center"
+        @click="openAddModal">
         <i class="fas fa-plus me-1"></i> Add
       </button>
     </div>
 
     <div class="card shadow-sm">
       <div class="card-body">
-        <div v-if="paginatedFilteredItems.length === 0" class="text-center text-muted py-5 d-flex flex-column align-items-center">
+        <div v-if="paginatedFilteredItems.length === 0"
+          class="text-center text-muted py-5 d-flex flex-column align-items-center">
           <i class="fas fa-file fs-3 mb-2"></i>
           <span>No agreements found.</span>
         </div>
@@ -297,15 +284,9 @@ onMounted(() => {
               </tr>
             </thead>
             <tbody>
-              <AgreementTableListItem
-                v-for="item in paginatedFilteredItems"
-                :key="item.id"
-                :agreement="item"
-                :contract-state="contractState"
-                @edit="openEditModal"
-                @delete="openDeleteModal"
-                @show-info="openInfoModal"
-                />
+              <AgreementTableListItem v-for="item in paginatedFilteredItems" :key="item.id" :agreement="item"
+                :contract-state="contractState" @edit="openEditModal" @delete="openDeleteModal"
+                @show-info="openInfoModal" />
             </tbody>
           </table>
         </div>
@@ -330,16 +311,9 @@ onMounted(() => {
       </div>
     </div>
 
-    <AgreementModal
-      :show-modal="showModalFlag"
-      :modal-type="currentModalType"
-      :form="currentForm"
-      :selected-item="selectedItem"
-      :is-loading="isLoading"
-      @save="handleModalSave"
-      @delete="handleModalDelete"
-      @close-modal="handleCloseModal"
-    />
+    <AgreementModal :show-modal="showModalFlag" :modal-type="currentModalType" :form="currentForm"
+      :selected-item="selectedItem" :is-loading="isLoading" @save="handleModalSave" @delete="handleModalDelete"
+      @close-modal="handleCloseModal" />
   </div>
 </template>
 
@@ -351,11 +325,11 @@ onMounted(() => {
 }
 
 /* Gap utility for flexbox */
-.d-flex.gap-2 > * {
+.d-flex.gap-2>* {
   margin-right: 0.5rem;
 }
 
-.d-flex.gap-2 > *:last-child {
+.d-flex.gap-2>*:last-child {
   margin-right: 0;
 }
 

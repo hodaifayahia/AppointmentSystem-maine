@@ -47,6 +47,7 @@ const router = createRouter({
     routes: AppRoutes,
 });
 
+
 app.use(router);
 
 // ✅ Mount apps

@@ -165,6 +165,7 @@ const playNotificationSound = () => {
 
 <template>
     <aside class="main-sidebar sidebar-dark-primary elevation-4 fixed">
+        
         <a href="#" class="brand-link d-flex align-items-center">
             <img :src="'/storage/doctor.png'" class="img-circle elevation-2 me-2 mr-3"
                 style="width: 40px; height: 40px;" alt="User Image">
@@ -197,7 +198,6 @@ const playNotificationSound = () => {
                             <p>Calendar</p>
                         </router-link>
                     </li>
-
                     <template v-if="user.role === 'admin' || user.role === 'SuperAdmin'">
                         <li class="nav-item">
                             <router-link to="/admin/appointments/users" active-class="active" class="nav-link">

@@ -24,18 +24,18 @@ class ConventionController extends Controller
      * Display a listing of the resource.
      * GET /conventions
      */
-    public function index(Request $request): JsonResponse
+     public function index(Request $request): JsonResponse
     {
         try {
             $perPage = $request->get('per_page', 15);
             $search = $request->get('search');
             $status = $request->get('status');
-            $organismeId = $request->get('organisme_id');
-
-            $query = Convention::with(['conventionDetail', 'organisme']);
+            $organismeId = $request->get('organisme_id'); // Correctly get the organisme_id from query parameters
+            // dd($organismeId);
+            $query = Convention::with(['conventionDetail', 'organisme', 'annexes']);
 
             if ($search) {
-                $query->where('name', 'like', '%' . $search . '%');
+                $query->where('contract_name', 'like', '%' . $search . '%'); // Assuming 'contract_name' for search
             }
 
             if ($status) {

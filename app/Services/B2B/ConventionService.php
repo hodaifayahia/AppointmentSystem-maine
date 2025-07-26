@@ -38,11 +38,10 @@ class ConventionService
     public function updateConvention(Convention $convention, array $data): Convention
     {
         return DB::transaction(function () use ($convention, $data) {
+            // dd($data);
             // Update the convention
             $convention->update([
-                'organisme_id' => $data['organisme_id'],
                 'name' => $data['name'],
-                'is_general' => $data['is_general'],
                 'status' => $data['status'],
             ]);
 

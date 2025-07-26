@@ -1,37 +1,89 @@
+// stores/auth.js
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
 import axios from 'axios';
 
-export const useAuthStore = defineStore('auth', () => {
-    const user = ref({
-        name: '',
-        role: '',
-        email: '',
-        avatar: '',
-        phone: '',
-    });
-    const isLoading = ref(true);
+export const useAuthStore = defineStore('auth', {
+  state: () => ({
+    user: null,
+    isLoading: false,
+    isAuthenticated: false,
+    loginError: null,
+  }),
 
-    const getUser = async () => {
-        try {
-            const response = await axios.get('/api/setting/user');
-            user.value = response.data.data;
-            isLoading.value = false;
-        } catch (error) {
-            // If 401 (unauthenticated), clear user and set loading to false
-            if (error.response && error.response.status === 401) {
-                user.value = { name: '', role: '', email: '', avatar: '', phone: '' };
-                isLoading.value = false;
-                throw error; // Throw the error to be handled by the router.beforeEach guard
-            }
-            isLoading.value = false;
-            throw error; // Re-throw to allow router.beforeEach to catch it for redirects
-        }
-    };
+  actions: {
+    async login(credentials) {
+      this.isLoading = true;
+      this.loginError = null;
+      
+      try {
+        // First, get CSRF token (required by Fortify)
+        await axios.get('/sanctum/csrf-cookie');
+        
+        // Attempt login via Fortify
+        const response = await axios.post('/login', credentials);
+        
+        // After successful login, get the authenticated user
+        await this.getUser();
+        
+        return { success: true };
+      } catch (error) {
+        this.loginError = error.response?.data?.message || 
+                          error.response?.data?.errors?.email?.[0] || 
+                          'Login failed';
+        this.isAuthenticated = false;
+        this.user = null;
+        return { success: false, error: this.loginError };
+      } finally {
+        this.isLoading = false;
+      }
+    },
 
-    const clearUser = () => {
-        user.value = { name: '', role: '', email: '', avatar: '', phone: '' };
-    };
+    async logout() {
+      this.isLoading = true;
+      
+      try {
+        // Logout via Fortify
+        await axios.post('/logout');
+        this.user = null;
+        this.isAuthenticated = false;
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Logout error:', error);
+        // Force logout even if API call fails
+        this.user = null;
+        this.isAuthenticated = false;
+        return { success: false };
+      } finally {
+        this.isLoading = false;
+      }
+    },
 
-    return { user, isLoading, getUser };
+    async getUser() {
+      this.isLoading = true;
+      
+      try {
+        // Get authenticated user (adjust endpoint based on your setup)
+        const response = await axios.get('/api/setting/user');
+        this.user = response.data;
+        this.isAuthenticated = true;
+      } catch (error) {
+        this.user = null;
+        this.isAuthenticated = false;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // Initialize auth state on app load
+    async initializeAuth() {
+      try {
+        await this.getUser();
+      } catch (error) {
+        // User not authenticated
+        this.user = null;
+        this.isAuthenticated = false;
+      }
+    }
+  }
 });

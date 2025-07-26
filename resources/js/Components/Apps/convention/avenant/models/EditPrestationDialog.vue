@@ -214,7 +214,7 @@ const performUpdate = async () => {
     v-model:visible="dialogVisible"
     header="Edit Prestation Pricing"
     modal
-    :style="{ width: '35rem' }" >
+    :style="{ width: '45rem' }" >
     <div class="p-fluid flex flex-col gap-3">
       <div
         v-if="priceValidation.companyExceedsMax"

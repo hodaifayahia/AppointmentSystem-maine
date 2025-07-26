@@ -509,7 +509,7 @@ private function updateFutureAppointmentsForEntireDate(
             ->where('status', '!=', AppointmentSatatusEnum::CANCELED->value);
         
         // Get appointments for this date, ordered by their creation date (oldest first)
-        $dateAppointments = $query->orderBy('created_at', 'asc')->get();
+        $dateAppointments = $query->orderBy('appointment_time', 'asc')->get();
         
         if ($dateAppointments->isEmpty()) {
             DB::commit();

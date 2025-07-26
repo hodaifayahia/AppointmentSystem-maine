@@ -4,7 +4,7 @@ import DataTable from "primevue/datatable";
 import Column from "primevue/column";
 import InputText from "primevue/inputtext";
 import Button from "primevue/button";
-import Dialog from "primevue/dialog"; // Only for the delete confirmation now
+import Dialog from "primevue/dialog";
 import Dropdown from "primevue/dropdown";
 import Toast from "primevue/toast";
 import { useToast } from "primevue/usetoast";
@@ -19,7 +19,7 @@ const props = defineProps({
   contractState: String,
   contractdata: Object,
   avenantpage: String,
-  avenantState: String, // Keep if needed for conditional rendering, though not directly used in logic here
+  avenantState: String,
   annexId: String,
 });
 
@@ -31,6 +31,7 @@ const searchQuery = ref("");
 const searchFilter = ref("prestation_name");
 
 const prestations = ref([]); // This will hold the fetched PrestationPricing records
+const selectedPrestations = ref([]); // New: Holds selected prestations for bulk actions
 
 const filterOptions = ref([
   { label: "By ID", value: "prestation_id" },
@@ -42,9 +43,9 @@ const filterOptions = ref([
 // Dialog visibility states for child components
 const addDialogVisible = ref(false);
 const editDialogVisible = ref(false);
-const deleteDialogVisible = ref(false); // For PrimeVue's simple dialog for now
-const itemToDelete = ref(null); // Holds the item to be deleted
-const selectedPrestationForEdit = ref(null); // Holds the item to be edited
+const deleteDialogVisible = ref(false);
+const itemToDelete = ref(null);
+const selectedPrestationForEdit = ref(null);
 
 // Fetch data on component mount
 onMounted(async () => {
@@ -60,7 +61,6 @@ const fetchPrestations = async () => {
     const rawPrestations = response.data.data || response.data;
 
     prestations.value = rawPrestations.map((item) => {
-      // Ensure patientPercentage is calculated for display in the table
       if (item.pricing && item.pricing.prix > 0) {
         item.patientPercentage = (item.pricing.patient_price / item.pricing.prix) * 100;
       } else {
@@ -81,9 +81,6 @@ const fetchPrestations = async () => {
 
 // Handlers for AddAnnexPrestationDialog
 const openAddDialog = () => {
-  // As per your original component, this currently shows a toast.
-  // If you later enable actual adding, change addDialogVisible to true.
-  // For now, it keeps the original functionality of the provided component.
   toast.add({
     severity: "info",
     summary: "Info",
@@ -111,24 +108,26 @@ const handlePrestationUpdated = async () => {
   await fetchPrestations(); // Refresh list after updating
 };
 
-// Delete prestation handlers (using SweetAlert)
+// Single delete prestation handlers (using SweetAlert)
 const confirmDelete = async (item) => {
   const result = await swil.fire(
     "Confirm Deletion",
-    `Are you sure you want to delete prestation: ${item.prestation_name} (${item.formatted_id})?`
+    `Are you sure you want to delete prestation: ${item.prestation_name} (${item.formatted_id})?`,
+    "warning",
+    true,
+    true
   );
 
   if (result.isConfirmed) {
     try {
-      // Send delete request to the backend
       await axios.delete(`/api/prestation-pricings/${item.id}`);
-
-      // If the backend call is successful, remove the item from the local array
       prestations.value = prestations.value.filter(
         (prestation) => prestation.id !== item.id
       );
-
-      // Show a success message
+      // Remove from selected if it was selected
+      selectedPrestations.value = selectedPrestations.value.filter(
+        (prestation) => prestation.id !== item.id
+      );
       swil.fire("Deleted!", "Prestation has been deleted successfully.", "success");
     } catch (error) {
       console.error("Error deleting prestation:", error);
@@ -143,6 +142,66 @@ const confirmDelete = async (item) => {
       severity: "info",
       summary: "Cancelled",
       detail: "Deletion cancelled.",
+      life: 3000,
+    });
+  }
+};
+
+// New: Bulk delete handler
+const confirmBulkDelete = async () => {
+  if (selectedPrestations.value.length === 0) {
+    toast.add({
+      severity: "warn",
+      summary: "No Selection",
+      detail: "Please select prestations to delete.",
+      life: 3000,
+    });
+    return;
+  }
+
+  const prestationNames = selectedPrestations.value
+    .map((p) => p.prestation_name)
+    .join(", ");
+
+  const result = await swil.fire(
+    "Confirm Bulk Deletion",
+    `Are you sure you want to delete the following ${selectedPrestations.value.length} prestations: ${prestationNames}?`,
+    "warning",
+    true,
+    true
+  );
+
+  if (result.isConfirmed) {
+    try {
+      const idsToDelete = selectedPrestations.value.map((p) => p.id);
+      await axios.post("/api/prestation-pricings/bulk-delete", {
+        ids: idsToDelete,
+      });
+
+      // Update the local list
+      prestations.value = prestations.value.filter(
+        (prestation) => !idsToDelete.includes(prestation.id)
+      );
+      selectedPrestations.value = []; // Clear selection after deletion
+
+      swil.fire(
+        "Deleted!",
+        "Selected prestations have been deleted successfully.",
+        "success"
+      );
+    } catch (error) {
+      console.error("Error performing bulk delete:", error);
+      swil.fire(
+        "Bulk Deletion Failed",
+        error.response?.data?.message || "Failed to delete selected prestations.",
+        "error"
+      );
+    }
+  } else if (result.isDenied) {
+    toast.add({
+      severity: "info",
+      summary: "Cancelled",
+      detail: "Bulk deletion cancelled.",
       life: 3000,
     });
   }
@@ -172,6 +231,15 @@ const filteredItems = computed(() => {
     return String(fieldValue || "").toLowerCase().includes(searchVal);
   });
 });
+
+// Computed property to check if the bulk delete button should be visible
+const showBulkDeleteButton = computed(() => {
+  return (
+    selectedPrestations.value.length > 0 &&
+    (props.contractState === "pending" ||
+      (props.avenantpage === "yes" && props.avenantState === "pending"))
+  );
+});
 </script>
 
 <template>
@@ -192,21 +260,39 @@ const filteredItems = computed(() => {
           class="w-full p-2 border rounded-lg"
         />
       </div>
-      <Button
-        v-if="
-          props.contractState === 'pending' ||
-          (props.avenantpage === 'yes' && props.avenantState === 'pending')
-        "
-        label="Add Prestation"
-        icon="pi pi-plus"
-        @click="openAddDialog"
-      />
+      <div class="flex gap-2">
+        <Button
+          v-if="showBulkDeleteButton"
+          label="Delete Selected"
+          icon="pi pi-trash"
+          severity="danger"
+          @click="confirmBulkDelete"
+        />
+        <!-- <Button
+          v-if="
+            props.contractState === 'pending' ||
+            (props.avenantpage === 'yes' && props.avenantState === 'pending')
+          "
+          label="Add Prestation"
+          icon="pi pi-plus"
+          @click="openAddDialog"
+        /> -->
+      </div>
     </div>
-    <DataTable :value="filteredItems" stripedRows paginator :rows="8" tableStyle="min-width: 50rem">
+    <DataTable
+      :value="filteredItems"
+      v-model:selection="selectedPrestations"
+      dataKey="id"
+      stripedRows
+      paginator
+      :rows="8"
+      tableStyle="min-width: 50rem"
+    >
+      <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
       <Column field="prestation_id" header="ID"></Column>
       <Column field="prestation_name" header="Name"></Column>
       <Column field="formatted_id" header="Code"></Column>
-      <Column field="service" header="service"></Column>
+      <Column field="service" header="Service"></Column>
       <Column field="pricing.prix" header="Global Price"></Column>
       <Column field="pricing.company_price" header="Company Part"></Column>
       <Column field="pricing.patient_price" header="Patient Part"></Column>
@@ -224,16 +310,6 @@ const filteredItems = computed(() => {
             size="small"
             @click="openEditDialog(slotProps.data)"
           />
-        </template>
-      </Column>
-      <Column
-        v-if="
-          props.contractState === 'pending' ||
-          (props.avenantpage === 'yes' && props.avenantState === 'pending')
-        "
-        header="Delete"
-      >
-        <template #body="slotProps">
           <Button
             icon="pi pi-trash"
             severity="danger"

@@ -8,9 +8,10 @@ import axios from 'axios';
 const route = useRoute();
 const id = route.params.id;
 
-// Only include the fields you actually need
+// Enhance company ref with a more explicit id field
 const company = ref({
   id: '',
+  organisme_id: '', // Add this explicit field
   name: '',
   address: '',
   phone: '',
@@ -22,12 +23,13 @@ const fetchCompanyData = async () => {
     const response = await axios.get(`/api/organismes/${id}`);
     const data = response.data.data;
     
-    // Map only the necessary fields
+    // Update mapping to ensure ID is properly set
     company.value = {
       id: data.id,
+      organisme_id: data.id, // Explicitly set organisme_id
       name: data.name,
       address: data.address,
-      phone: data.phone || data.mobile, // Use mobile as fallback
+      phone: data.phone || data.mobile,
       email: data.email
     };
   } catch (error) {
@@ -35,8 +37,8 @@ const fetchCompanyData = async () => {
   }
 };
 
-onMounted(() => {
-  fetchCompanyData();
+onMounted(async() => {
+ await fetchCompanyData();
 });
 </script>
 
@@ -53,7 +55,7 @@ onMounted(() => {
     <div class="title">
       <h1 id="contracts">Company Content</h1>
     </div>
-    <Contract_contact_tab :companyId="company.id" />
+    <Contract_contact_tab :company="company" />
   </div>
 </template>
 

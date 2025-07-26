@@ -132,6 +132,20 @@ class PrestationPricingController extends Controller
             ], 500);
         }
     }
+      public function bulkDelete(Request $request)
+{
+    $request->validate([
+        'ids' => 'required|array',
+        'ids.*' => 'exists:prestation_pricing,id', // Ensures all IDs exist
+    ]);
+
+    try {
+        PrestationPricing::whereIn('id', $request->input('ids'))->delete();
+        return response()->json(['message' => 'Prestations deleted successfully.'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Failed to delete prestations.', 'error' => $e->getMessage()], 500);
+    }
+}
 
     /**
      * Update the specified prestation pricing entry.

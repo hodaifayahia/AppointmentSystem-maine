@@ -15,7 +15,7 @@ class ActivateScheduledAvenants extends Command
     {
         $today = Carbon::now()->startOfDay();
 
-        $avenants = Avenant::where('status', 'pending-approval')
+        $avenants = Avenant::where('status', 'scheduled')
             ->whereDate('activation_at', '<=', $today)
             ->get();
 

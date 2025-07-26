@@ -51,7 +51,25 @@ class AnnexController extends Controller
             ], 500);
         }
     }
-
+public function checkRelations($itemToDelete)
+{
+    try {
+        $annex = Annex::findOrFail($itemToDelete);
+        
+        $hasPrestationPricing = $annex->prestationPrices()->exists();
+        
+        return response()->json([
+            'success' => true,
+            'hasPrestationPricing' => $hasPrestationPricing
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error checking annex relations',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
     /**
      * Store a newly created annex with contractId from route.
      * This method is used when creating an annex directly linked to a contract ID in the URL.
@@ -226,32 +244,37 @@ class AnnexController extends Controller
      * @param string $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function destroy(string $id)
-    {
-        try {
-            $annex = Annex::find($id);
+   public function destroy(string $id)
+{
+    try {
+        $annex = Annex::with('prestationPrices')->find($id);
 
-            if (!$annex) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Annex not found'
-                ], 404);
-            }
-
-            // Note: If you have a cascading delete on 'annex_id' in 'prestation_pricing' migration,
-            // the related pricing entries will be automatically deleted.
-            $annex->delete();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Annex deleted successfully'
-            ], 200);
-        } catch (\Exception $e) {
+        if (!$annex) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error deleting annex',
-                'error' => $e->getMessage()
-            ], 500);
+                'message' => 'Annex not found'
+            ], 404);
         }
+
+        // Use a database transaction to ensure data integrity
+        \DB::transaction(function () use ($annex) {
+            // Delete related prestation pricing records first
+            $annex->prestationPrices()->delete();
+            
+            // Then delete the annex
+            $annex->delete();
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Annex deleted successfully'
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error deleting annex',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 }

@@ -2,10 +2,23 @@
 import { ref, computed, defineProps, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import axios from "axios";
-import { useToastr } from '../../../../toster';
+// Import PrimeVue components
+import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
+import Button from 'primevue/button';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import Paginator from 'primevue/paginator';
+import Dialog from 'primevue/dialog';
+import Toast from 'primevue/toast';
+import { useToast } from 'primevue/usetoast'; // PrimeVue's toast service
+import Calendar from 'primevue/calendar'; // Make sure to import Calendar
+import ProgressSpinner from 'primevue/progressspinner'; // Make sure to import ProgressSpinner
+import Avatar from 'primevue/avatar'; // Make sure to import Avatar
+import Message from 'primevue/message'; // Make sure to import Message
+import Tooltip from 'primevue/tooltip'; // Make sure to import Tooltip (v-tooltip)
 
-import AnnexTableListItem from './AnnexTableListItem.vue';
-import AnnexFormModal from '../models/AnnexFormModal.vue';
+import AnnexFormModal from '../models/AnnexFormModal.vue'; // Assuming this component will also be updated or is compatible
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -15,24 +28,35 @@ const props = defineProps({
 });
 
 const router = useRouter();
-const toast = useToastr();
+const toast = useToast(); // Initialize PrimeVue toast service
 
 // Search and filter state
 const searchQuery = ref("");
-const selectedFilter = ref("annex_name");
+const selectedFilter = ref({ label: "By Name", value: "annex_name" }); // Initialize with an object for Dropdown
 const filterOptions = [
   { label: "By ID", value: "id" },
   { label: "By Name", value: "annex_name" },
   { label: "By Creation time", value: "created_at" },
-  { label: "By Service", value: "service_name" } // Changed from specialty to service
+  { label: "By Service Name", value: "service_name" },
+  // Add more filters as needed
+
+  { label: "By Service", value: "service_name" },
+  { label: "By Service ID", value: "service_id" },
+  { label: "By Creation Date", value: "created_at" },
+ 
 ];
 
 const loading = ref(false);
 const isSaving = ref(false);
 const isDeleting = ref(false);
 
-const items = ref([]);
-const services = ref([]);
+const items = ref([]); // Stores all annexes for the current contract
+const services = ref([]); // All available services
+const usedServiceIds = computed(() => {
+  // Collect service_ids from existing annexes in the current contract
+  return items.value.map(item => item.service_id).filter(id => id !== null);
+});
+
 
 // Modal Visibility and Form State
 const showFormModal = ref(false);
@@ -42,29 +66,42 @@ const currentForm = ref({
   id: null,
   contract_id: '',
   annex_name: '',
-  service_id: null, // Changed from specialty_id to service_id
+  service_id: null,
+  description: '', // Make sure this is initialized if used in the form
+  min_price: 0, // Initialize price fields
+  prestation_prix_status: '', // Initialize status field
 });
 const itemToDelete = ref(null);
 
-// Pagination states
-const currentPage = ref(1);
-const itemsPerPage = ref(8);
+// Pagination states (PrimeVue DataTable handles its own pagination, but we'll keep for Paginator if needed)
+const first = ref(0); // For Paginator: index of the first record
+const rows = ref(8); // For Paginator: number of rows to display per page
 
-const paginatedFilteredItems = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value;
-  const end = start + itemsPerPage.value;
-  return filteredItemsComputed.value.slice(start, end);
+// Computed property for filtered items (DataTable can also handle filtering, but this remains for custom logic)
+const filteredItemsComputed = computed(() => {
+  if (!searchQuery.value) return items.value;
+
+  const query = String(searchQuery.value).toLowerCase();
+  const filterValue = selectedFilter.value.value; // Access the value from the selected object
+
+  return items.value.filter(item => {
+    switch (filterValue) {
+      case "id":
+        return item.id && String(item.id).includes(query);
+      case "annex_name":
+        return item.annex_name && String(item.annex_name).toLowerCase().includes(query);
+      case "created_at":
+        const searchDateFormatted = searchQuery.value instanceof Date
+          ? formatDateDisplay(searchQuery.value)
+          : query;
+        return item.created_at && formatDateDisplay(item.created_at).includes(searchDateFormatted);
+      case "service_name":
+        return item.service_name && String(item.service_name).toLowerCase().includes(query);
+      default:
+        return true;
+    }
+  });
 });
-
-const totalPages = computed(() => {
-  return Math.ceil(filteredItemsComputed.value.length / itemsPerPage.value);
-});
-
-const changePage = (page) => {
-  if (page > 0 && page <= totalPages.value) {
-    currentPage.value = page;
-  }
-};
 
 // Format date to dd/mm/yyyy
 const formatDateDisplay = (dateString) => {
@@ -87,56 +124,27 @@ const capitalizeFirstLetter = (string) => {
   return String(string).charAt(0).toUpperCase() + String(string).slice(1);
 };
 
-// Filtered items based on search query
-const filteredItemsComputed = computed(() => {
-  if (!searchQuery.value) return items.value;
-
-  const query = String(searchQuery.value).toLowerCase();
-
-  return items.value.filter(item => {
-    switch (selectedFilter.value) {
-      case "id":
-        return item.id && String(item.id).includes(query);
-      case "annex_name":
-        return item.annex_name && String(item.annex_name).toLowerCase().includes(query);
-      case "created_at":
-        const searchDateFormatted = searchQuery.value instanceof Date
-          ? formatDateDisplay(searchQuery.value)
-          : query;
-        return item.created_at && formatDateDisplay(item.created_at).includes(searchDateFormatted);
-      case "service_name": // Changed from specialty_name to service_name
-        return item.service_name && String(item.service_name).toLowerCase().includes(query);
-      default:
-        return true;
-    }
-  });
-});
-
-// Fetch annexes for the contract - CORRECTED
+// Fetch annexes for the contract
 const fetchAnnexes = async () => {
   if (!props.contractId) {
-    toast.error('Contract ID is missing');
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Contract ID is missing', life: 3000 });
     return;
   }
 
   try {
     loading.value = true;
-    // Use the correct endpoint with contractId in the URL path
     const response = await axios.get(`/api/annex/contract/${props.contractId}`);
-    
-    // Handle the response structure from your controller
+
     if (response.data.success) {
       items.value = response.data.data;
     } else {
       items.value = [];
-      toast.error('Failed to load annexes');
+      toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load annexes', life: 3000 });
     }
-    
-    currentPage.value = 1;
   } catch (error) {
     console.error("Error fetching annexes:", error);
     const errorMessage = error.response?.data?.message || 'Failed to load annexes';
-    toast.error(errorMessage);
+    toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -146,14 +154,13 @@ const fetchAnnexes = async () => {
 const fetchServices = async () => {
   try {
     const response = await axios.get(`/api/services`);
-    // Adjust based on your services API response structure
     services.value = response.data.data || response.data;
     if (services.value.length === 0) {
-      toast.warning('No available services found.');
+      toast.add({ severity: 'warn', summary: 'Warning', detail: 'No available services found.', life: 3000 });
     }
   } catch (error) {
     console.error("Error fetching services:", error);
-    toast.error('Failed to load services for form.');
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load services for form.', life: 3000 });
   }
 };
 
@@ -164,9 +171,12 @@ const openAddFormModal = async () => {
     id: null,
     contract_id: props.contractId,
     annex_name: "",
-    service_id: null, // Changed from specialty_id
+    service_id: null,
+    description: "",
+    min_price: 0,
+    prestation_prix_status: "empty" // Set default for new annex
   });
-  await fetchServices();
+  await fetchServices(); // Fetch all services
   showFormModal.value = true;
 };
 
@@ -177,18 +187,17 @@ const openEditFormModal = async (item) => {
     id: item.id,
     contract_id: item.contract_id,
     annex_name: item.annex_name,
-    service_id: item.service_id, // Changed from specialty_id
+    service_id: item.service_id,
+    description: item.description || '',
+    min_price: item.min_price || 0,
+    prestation_prix_status: item.prestation_prix_status || 'empty'
   });
-   fetchServices();
-  
-  // Ensure the current service is in the list
-  const serviceExists = services.value.some(s => s.id === item.service_id);
-  if (!serviceExists && item.service_id && item.service_name) {
-    services.value.push({
-      id: item.service_id,
-      name: item.service_name
-    });
-  }
+  await fetchServices(); // Fetch services every time to ensure up-to-date list
+
+  // The modal will handle filtering based on `usedServiceIds` and its `isEditing` prop.
+  // No need to manually add the current service if it's already in the fetched `services`.
+  // The `AnnexFormModal` will display the selected service regardless of its availability
+  // in the general `services` list when `isEditing` is true.
   showFormModal.value = true;
 };
 
@@ -197,16 +206,17 @@ const openDeleteConfirmModal = (item) => {
   itemToDelete.value = item;
   showDeleteConfirmModal.value = true;
 };
+
 // Function to handle the 'save' event from AnnexFormModal
 const handleFormSave = async (formDataPayload) => {
   isSaving.value = true;
   try {
     const formData = new FormData();
     formData.append('annex_name', formDataPayload.annex_name);
-    formData.append('service_id', formDataPayload.service_id); // Fixed: was specialty_id
-    formData.append('min_price', formDataPayload.min_price); // Fixed: was specialty_id
-    formData.append('prestation_prix_status', formDataPayload.prestation_prix_status); // Fixed: was specialty_id
-    
+    formData.append('service_id', formDataPayload.service_id);
+    formData.append('min_price', formDataPayload.min_price);
+    formData.append('prestation_prix_status', formDataPayload.prestation_prix_status);
+
     if (formDataPayload.description) {
       formData.append('description', formDataPayload.description);
     }
@@ -216,7 +226,7 @@ const handleFormSave = async (formDataPayload) => {
 
     if (isEditingMode.value) {
       url = `/api/annex/${formDataPayload.id}`;
-      method = 'put';
+      method = 'post'; // Use POST for FormData with _method=PUT
       formData.append('_method', 'PUT');
     } else {
       url = `/api/annex/${props.contractId}`;
@@ -233,49 +243,59 @@ const handleFormSave = async (formDataPayload) => {
     });
 
     if (response.data.success) {
-      toast.success(`Annex ${isEditingMode.value ? 'updated' : 'added'} successfully`);
-      await fetchAnnexes();
+      toast.add({ severity: 'success', summary: 'Success', detail: `Annex ${isEditingMode.value ? 'updated' : 'added'} successfully`, life: 3000 });
+      await fetchAnnexes(); // Re-fetch annexes to update the `usedServiceIds` computed property
       showFormModal.value = false;
     } else {
-      toast.error(response.data.message || 'Operation failed');
+      toast.add({ severity: 'error', summary: 'Error', detail: response.data.message || 'Operation failed', life: 3000 });
     }
   } catch (error) {
     console.error("Error saving annex:", error);
     if (error.response && error.response.data) {
       if (error.response.data.errors) {
-        // Display backend validation errors
         for (const field in error.response.data.errors) {
-          error.response.data.errors[field].forEach(message => toast.error(message));
+          error.response.data.errors[field].forEach(message => toast.add({ severity: 'error', summary: 'Validation Error', detail: message, life: 5000 }));
         }
       } else {
-        toast.error(error.response.data.message || `Failed to ${isEditingMode.value ? 'update' : 'save'} annex`);
+        toast.add({ severity: 'error', summary: 'Error', detail: error.response.data.message || `Failed to ${isEditingMode.value ? 'update' : 'save'} annex`, life: 3000 });
       }
     } else {
-      toast.error(`Failed to ${isEditingMode.value ? 'update' : 'save'} annex: ${error.message}`);
+      toast.add({ severity: 'error', summary: 'Error', detail: `Failed to ${isEditingMode.value ? 'update' : 'save'} annex: ${error.message}`, life: 3000 });
     }
   } finally {
     isSaving.value = false;
   }
 };
 
-
-
 // Handle delete confirmation
 const handleDeleteConfirm = async () => {
   isDeleting.value = true;
   try {
+    // First check if annex has any prestation pricing (This is good to keep)
+    const checkResponse = await axios.get(`/api/annex/${itemToDelete.value.id}/check-relations`);
+
+    if (checkResponse.data.hasPrestationPricing) {
+      toast.add({ severity: 'error', summary: 'Error', detail: 'Cannot delete annex: It has associated prestation pricing records', life: 5000 });
+      showDeleteConfirmModal.value = false;
+      return;
+    }
+
     const response = await axios.delete(`/api/annex/${itemToDelete.value.id}`);
-    
+
     if (response.data.success) {
-      toast.success('Annex deleted successfully');
-      await fetchAnnexes();
+      toast.add({ severity: 'success', summary: 'Success', detail: 'Annex deleted successfully', life: 3000 });
+      await fetchAnnexes(); // Re-fetch annexes to update the `usedServiceIds` computed property
       showDeleteConfirmModal.value = false;
     } else {
-      toast.error(response.data.message || 'Failed to delete annex');
+      toast.add({ severity: 'error', summary: 'Error', detail: response.data.message || 'Failed to delete annex', life: 3000 });
     }
   } catch (error) {
     console.error("Error deleting annex:", error);
-    toast.error(`Failed to delete annex: ${error.response?.data?.message || error.message}`);
+    const errorMessage = error.response?.data?.message ||
+      (error.response?.data?.error?.includes('foreign key constraint')
+        ? 'Cannot delete annex: It has associated records'
+        : 'Failed to delete annex');
+    toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 });
   } finally {
     isDeleting.value = false;
     itemToDelete.value = null;
@@ -284,11 +304,16 @@ const handleDeleteConfirm = async () => {
 
 // Function to handle navigation to details page
 const viewAnnexDetails = (id) => {
-  
   router.push({
     name: 'convention.annex.details',
     params: { id: id }
   });
+};
+
+// DataTable pagination handler
+const onPage = (event) => {
+  first.value = event.first;
+  rows.value = event.rows;
 };
 
 // Initial data fetch
@@ -298,89 +323,170 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="container-fluid py-4">
-    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-center mb-4 gap-2">
-      <div class="d-flex flex-grow-1 gap-2 w-100">
-        <select v-model="selectedFilter" class="form-select border rounded-3 w-auto">
-          <option v-for="option in filterOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
+  <div class="surface-card border-round-lg shadow-2 p-4">
+    <Toast />
 
-        <input v-if="selectedFilter !== 'created_at'" type="text" v-model="searchQuery" placeholder="Search..."
-          class="form-control flex-grow-1" />
+    <div class="flex flex-column sm:flex-row justify-content-between align-items-start sm:align-items-center mb-4 gap-3">
+      <div class="d-flex gap-2 w-full">
+        <div class="flex gap-2 flex-grow-1">
+          <Dropdown
+            v-model="selectedFilter"
+            :options="filterOptions"
+            optionLabel="label"
+            placeholder="Select a Filter"
+            class="p-inputtext-sm"
+            style="min-width: 150px;"
+          />
 
-        <input v-if="selectedFilter === 'created_at'" type="date" v-model="searchQuery"
-          placeholder="Select Date" class="form-control flex-grow-1" />
+          <InputText
+            v-if="selectedFilter && selectedFilter.value !== 'created_at'"
+            type="text"
+            v-model="searchQuery"
+            placeholder="Search..."
+            class="flex-grow-1 p-inputtext-sm"
+          />
+
+          <Calendar
+            v-if="selectedFilter && selectedFilter.value === 'created_at'"
+            v-model="searchQuery"
+            dateFormat="dd/mm/yy"
+            placeholder="Select Date"
+            class="flex-grow-1 p-inputtext-sm"
+          />
+        </div>
+
+        <Button
+          v-if="props.contractState === 'pending'"
+          label="Add Annex"
+          icon="pi pi-plus"
+          class="p-button-primary border-round-md white-space-nowrap"
+          @click="openAddFormModal()"
+        />
       </div>
-
-      <button v-if="props.contractState === 'pending'" class="btn btn-primary d-flex align-items-center"
-        @click="openAddFormModal()">
-        <i class="fas fa-plus me-1"></i> Add Annex
-      </button>
     </div>
 
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div v-if="loading" class="text-center py-5">
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-          </div>
-          <p class="mt-2 text-muted">Loading annexes...</p>
-        </div>
-        <div v-else-if="paginatedFilteredItems.length === 0"
-          class="text-center text-muted py-5 d-flex flex-column align-items-center">
-          <i class="fas fa-folder-open fs-3 mb-2"></i>
-          <span>No annexes found.</span>
-        </div>
-        <div v-else class="table-responsive">
-          <table class="table table-striped table-hover annex-table">
-            <thead>
-              <tr>
-                <th scope="col">ID</th>
-                <th scope="col">Name</th>
-                <th scope="col">Service</th> <!-- Changed from Specialty to Service -->
-                <th scope="col">Created By</th>
-                <th scope="col">Created At</th>
-                <th scope="col">max price </th>
-                <th scope="col">min price</th>
-                <th v-if="props.contractState === 'pending'" scope="col">Edit</th>
-                <th v-if="props.contractState === 'pending'" scope="col">Delete</th>
-                <th scope="col">Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              <AnnexTableListItem
-                v-for="item in paginatedFilteredItems"
-                :key="item.id"
-                :annex="item"
-                :contract-state="props.contractState"
-                @edit="openEditFormModal"
-                @delete="openDeleteConfirmModal"
-                @view-details="viewAnnexDetails"
-              />
-            </tbody>
-          </table>
-        </div>
+    <div class="surface-card border-round-lg border-1 border-300 overflow-hidden">
+      <div v-if="loading" class="flex flex-column align-items-center justify-content-center py-6 px-4">
+        <ProgressSpinner
+          style="width: 50px; height: 50px"
+          strokeWidth="6"
+          fill="transparent"
+          animationDuration=".8s"
+          aria-label="Loading"
+        />
+        <p class="mt-3 text-600 font-medium">Loading annexes...</p>
+      </div>
 
-        <nav v-if="totalPages > 1" aria-label="Page navigation">
-          <ul class="pagination justify-content-center">
-            <li class="page-item" :class="{ 'disabled': currentPage === 1 }">
-              <button class="page-link" @click="changePage(currentPage - 1)" aria-label="Previous">
-                <span aria-hidden="true">&laquo;</span>
-              </button>
-            </li>
-            <li class="page-item" v-for="page in totalPages" :key="page"
-              :class="{ 'active': currentPage === page }">
-              <button class="page-link" @click="changePage(page)">{{ page }}</button>
-            </li>
-            <li class="page-item" :class="{ 'disabled': currentPage === totalPages }">
-              <button class="page-link" @click="changePage(currentPage + 1)" aria-label="Next">
-                <span aria-hidden="true">&raquo;</span>
-              </button>
-            </li>
-          </ul>
-        </nav>
+      <div
+        v-else-if="filteredItemsComputed.length === 0"
+        class="flex flex-column justify-content-center align-items-center py-8 px-4 text-center"
+      >
+        <div class="bg-blue-50 border-circle w-5rem h-5rem flex align-items-center justify-content-center mb-3">
+          <i class="pi pi-folder-open text-3xl text-blue-400"></i>
+        </div>
+        <h6 class="text-900 font-semibold mb-2">No annexes found</h6>
+        <p class="text-600 mb-0">Try adjusting your search criteria or add a new annex.</p>
+      </div>
+
+      <div v-else class="overflow-auto">
+        <DataTable
+          :value="filteredItemsComputed"
+          :paginator="true"
+          :rows="rows"
+          :first="first"
+          @page="onPage"
+          responsiveLayout="scroll"
+          class="p-datatable-sm"
+          :class="{ 'p-datatable-striped': true }"
+          paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+        >
+          <Column field="id" header="ID" sortable class="white-space-nowrap">
+            <template #body="slotProps">
+              <span class="font-mono text-sm">#{{ slotProps.data.id }}</span>
+            </template>
+          </Column>
+
+          <Column field="annex_name" header="Name" sortable>
+            <template #body="slotProps">
+              <span class="font-semibold text-900">{{ slotProps.data.annex_name }}</span>
+            </template>
+          </Column>
+
+          <Column field="service_name" header="Service" sortable>
+            <template #body="slotProps">
+              <span class="text-sm">{{ slotProps.data.service_name || 'N/A' }}</span>
+            </template>
+          </Column>
+
+          <Column field="created_by" header="Created By" sortable>
+            <template #body="slotProps">
+              <div class="flex align-items-center gap-2">
+                <Avatar
+                  :label="slotProps.data.created_by.charAt(0).toUpperCase()"
+                  class="bg-primary text-primary-contrast"
+                  size="small"
+                  shape="circle"
+                />
+                <span class="text-sm">{{ slotProps.data.created_by }}</span>
+              </div>
+            </template>
+          </Column>
+
+          <Column field="created_at" header="Created At" sortable>
+            <template #body="slotProps">
+              <span class="text-sm text-600">{{ formatDateDisplay(slotProps.data.created_at) }}</span>
+            </template>
+          </Column>
+
+          <Column field="max_price" header="Max Price" sortable>
+            <template #body="slotProps">
+              <span class="font-semibold text-green-600">${{ slotProps.data.max_price }}</span>
+            </template>
+          </Column>
+
+          <Column field="min_price" header="Min Price" sortable>
+            <template #body="slotProps">
+              <span class="font-semibold text-orange-600">${{ slotProps.data.min_price }}</span>
+            </template>
+          </Column>
+
+          <Column v-if="props.contractState === 'pending'" header="Actions" class="white-space-nowrap">
+            <template #body="slotProps">
+              <div class="flex gap-1">
+                <Button
+                  icon="pi pi-info-circle"
+                  class="p-button-sm p-button-text p-button-info border-round-md"
+                  @click="viewAnnexDetails(slotProps.data.id)"
+                  v-tooltip.top="'View Details'"
+                />
+                <Button
+                  icon="pi pi-pencil"
+                  class="p-button-sm p-button-text p-button-warning border-round-md"
+                  @click="openEditFormModal(slotProps.data)"
+                  v-tooltip.top="'Edit'"
+                />
+                <Button
+                  icon="pi pi-trash"
+                  class="p-button-sm p-button-text p-button-danger border-round-md"
+                  @click="openDeleteConfirmModal(slotProps.data)"
+                  v-tooltip.top="'Delete'"
+                />
+              </div>
+            </template>
+          </Column>
+
+          <Column v-else header="Actions" class="white-space-nowrap">
+            <template #body="slotProps">
+              <Button
+                icon="pi pi-info-circle"
+                class="p-button-sm p-button-text p-button-info border-round-md"
+                @click="viewAnnexDetails(slotProps.data.id)"
+                v-tooltip.top="'View Details'"
+              />
+            </template>
+          </Column>
+        </DataTable>
       </div>
     </div>
 
@@ -389,121 +495,136 @@ onMounted(() => {
       :is-editing="isEditingMode"
       :form-data="currentForm"
       :services="services"
+      :used-service-ids="usedServiceIds"
       :is-loading="isSaving"
       @save="handleFormSave"
       @close-modal="showFormModal = false"
     />
 
-    <div v-if="showDeleteConfirmModal" class="modal fade" :class="{ 'show d-block': showDeleteConfirmModal }"
-      id="deleteAnnexModal" tabindex="-1" aria-labelledby="deleteAnnexModalLabel" aria-hidden="true"
-      @click.self="showDeleteConfirmModal = false">
-      <div class="modal-dialog modal-sm">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="deleteAnnexModalLabel">Confirm Delete</h5>
-            <button type="button" class="btn-close" @click="showDeleteConfirmModal = false" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <p>Are you sure you want to delete annex <strong>{{ itemToDelete?.annex_name }}</strong>?</p>
-            <div class="alert alert-warning" role="alert">
-              This action cannot be undone.
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="showDeleteConfirmModal = false" :disabled="isDeleting">No</button>
-            <button type="button" class="btn btn-danger" @click="handleDeleteConfirm" :disabled="isDeleting">
-              <span v-if="isDeleting" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-              Yes, Delete
-            </button>
-          </div>
+    <Dialog
+      v-model:visible="showDeleteConfirmModal"
+      modal
+      header="Confirm Delete"
+      :style="{ width: '400px' }"
+      class="border-round-lg"
+    >
+      <div class="flex flex-column align-items-center text-center p-3">
+        <div class="bg-red-50 border-circle w-4rem h-4rem flex align-items-center justify-content-center mb-3">
+          <i class="pi pi-exclamation-triangle text-2xl text-red-500" />
         </div>
+        <h6 class="text-900 font-semibold mb-2">Delete Annex</h6>
+        <p class="text-600 mb-3">
+          Are you sure you want to delete
+          <strong class="text-900">"{{ itemToDelete?.annex_name }}"</strong>?
+        </p>
+        <Message
+          severity="warn"
+          :closable="false"
+          class="w-full border-round-md"
+        >
+          <span class="text-sm">This action cannot be undone.</span>
+        </Message>
       </div>
-    </div>
-    <div v-if="showDeleteConfirmModal" class="modal-backdrop fade" :class="{ 'show': showDeleteConfirmModal }"></div>
+
+      <template #footer>
+        <div class="flex justify-content-end gap-2 p-3">
+          <Button
+            label="Cancel"
+            icon="pi pi-times"
+            class="p-button-text border-round-md"
+            @click="showDeleteConfirmModal = false"
+            :disabled="isDeleting"
+          />
+          <Button
+            label="Delete"
+            icon="pi pi-check"
+            class="p-button-danger border-round-md"
+            @click="handleDeleteConfirm"
+            :loading="isDeleting"
+          />
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <style scoped>
-/* Your existing styles remain the same */
-.container-fluid.py-4 {
-  padding-top: 1.5rem !important;
-  padding-bottom: 1.5rem !important;
+/* Your existing styles */
+.surface-card {
+  background: var(--surface-card);
+  transition: all 0.2s ease-in-out;
 }
 
-.d-flex.gap-2 > * {
-  margin-right: 0.5rem;
-}
-.d-flex.gap-2 > *:last-child {
-  margin-right: 0;
-}
-
-.card {
-  border-radius: 0.75rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
-  border: 1px solid #e2e8f0;
+/* Custom scrollbar for data table */
+.overflow-auto::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.form-control, .form-select {
-  border-radius: 0.5rem;
-  padding: 0.625rem 0.75rem;
+.overflow-auto::-webkit-scrollbar-track {
+  background: var(--surface-100);
+  border-radius: 3px;
 }
 
-.annex-table {
-  min-width: 50rem;
+.overflow-auto::-webkit-scrollbar-thumb {
+  background: var(--surface-300);
+  border-radius: 3px;
 }
 
-.table th, .table td {
-  vertical-align: middle;
-  padding: 0.75rem;
-  white-space: nowrap;
+.overflow-auto::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-400);
 }
 
-.text-muted {
-  color: #6c757d !important;
+/* Improved table styling */
+:deep(.p-datatable .p-datatable-header) {
+  background: var(--surface-50);
+  border-bottom: 1px solid var(--surface-200);
 }
 
-.fs-3 {
-  font-size: calc(1.3rem + .6vw) !important;
+:deep(.p-datatable .p-datatable-thead > tr > th) {
+  background: var(--surface-50);
+  border-bottom: 1px solid var(--surface-200);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+  padding: 1rem 0.75rem;
 }
 
-.modal-dialog.modal-md {
-  max-width: 500px;
+:deep(.p-datatable .p-datatable-tbody > tr > td) {
+  padding: 0.875rem 0.75rem;
+  border-bottom: 1px solid var(--surface-100);
 }
 
-.modal-dialog.modal-sm {
-  max-width: 300px;
+:deep(.p-datatable .p-datatable-tbody > tr:hover) {
+  background: var(--surface-50);
 }
 
-.btn-primary {
-  background-color: #007bff;
-  border-color: #007bff;
+/* Button hover effects */
+:deep(.p-button:hover) {
+  transform: translateY(-1px);
+  transition: all 0.2s ease-in-out;
 }
 
-.btn-primary:hover {
-  background-color: #0056b3;
-  border-color: #0056b3;
+/* Improved spacing for mobile */
+@media (max-width: 576px) {
+  .surface-card {
+    margin: 0 -0.5rem;
+    border-radius: 0;
+  }
+
+  /* Stack the search controls and button vertically on mobile */
+  .flex.gap-2.w-full {
+    flex-direction: column;
+  }
+
+  .flex.gap-2.flex-grow-1 {
+    width: 100%;
+  }
 }
 
-.btn-danger {
-  background-color: #dc3545;
-  border-color: #dc3545;
-}
-
-.btn-danger:hover {
-  background-color: #c82333;
-  border-color: #bd2130;
-}
-
-.spinner-border-sm {
-  width: 1rem;
-  height: 1rem;
-  margin-right: 0.25rem;
-}
-
-.text-danger {
-  color: #dc3545 !important;
-  font-size: 0.875em;
-  margin-top: 0.25rem;
-  display: block;
+/* Loading animation enhancement */
+:deep(.p-progress-spinner-circle) {
+  stroke: var(--primary-color);
+  stroke-linecap: round;
 }
 </style>
