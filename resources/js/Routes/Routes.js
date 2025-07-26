@@ -7,7 +7,8 @@ import doctorRoutes from './doctor';
 import configurationRoutes from './configuration'; // 👈 NEW IMPORT
 import infrastructureRoutes from './infrastructure'; // 👈 NEW IMPORT
 import convenationRoutes from './convenation'; // 👈 NEW IMPORT
-
+import crmRoutes from './crm'; // 👈 NEW IMPORT
+import TicketManagementRoutes from './ticket-management'; // 👈 NEW IMPORT
 
 
 
@@ -19,7 +20,8 @@ export const allRoutes = [
     ...configurationRoutes, // 👈 ADDED HERE
     ...infrastructureRoutes,
     ...convenationRoutes,
-    
+    ...crmRoutes,
+    ...TicketManagementRoutes,
 
 
 
