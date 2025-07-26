@@ -51,6 +51,7 @@ use App\Http\Controllers\B2B\PrestationPricingController;
 use App\Http\Controllers\B2B\AvenantController;
 use App\Http\Controllers\CRM\OrganismeContactController;
 use App\Http\Controllers\Auth\LoginController; // Assuming you have a LoginController to handle the actual login process
+use App\Http\Controllers\B2B\ConvenctionDashborad; // Import the controller
 
 use Illuminate\Support\Facades\Route;
 
@@ -326,6 +327,8 @@ Route::middleware(['auth'])->group(function () {
         Route::apiResource('/organisme-contacts', OrganismeContactController::class);
 
         // Pavilions, Conventions, Rooms, Beds
+        Route::get('/convention/dashboard', [ConvenctionDashborad::class, 'getDashboardData']);
+
         Route::apiResource('/conventions', ConventionController::class);
         Route::apiResource('/pavilions', PavilionController::class);
         Route::patch('/conventions/{conventionId}/activate', [ConventionController::class, 'activate']);

@@ -1,3 +1,139 @@
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import Card from 'primevue/card'
+import Chart from 'primevue/chart'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+// Reactive data
+const dashboardData = ref({
+  totalCompanies: 0,
+  activeContracts: 0,
+  pendingContracts: 0,
+  expiredContracts: 0,
+  recentContracts: [],
+  topCompanies: [],
+  specialtyStats: [],
+  monthlyContractData: []
+})
+
+// Chart data
+const contractStatusChartData = computed(() => ({
+  labels: ['Active', 'Pending', 'Expired'],
+  datasets: [{
+    data: [
+      dashboardData.value.activeContracts,
+      dashboardData.value.pendingContracts,
+      dashboardData.value.expiredContracts
+    ],
+    backgroundColor: [
+      '#10B981', // Green for active
+      '#F59E0B', // Orange for pending
+      '#EF4444'  // Red for expired
+    ],
+    borderWidth: 2,
+    borderColor: '#ffffff'
+  }]
+}))
+
+const monthlyChartData = computed(() => ({
+  labels: dashboardData.value.monthlyContractData.map(item => {
+    const date = new Date(item.month + '-01')
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  }),
+  datasets: [{
+    label: 'Contracts Created',
+    data: dashboardData.value.monthlyContractData.map(item => item.count),
+    backgroundColor: '#3B82F6',
+    borderColor: '#1D4ED8',
+    borderWidth: 1
+  }]
+}))
+
+// Chart options
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: true,
+  aspectRatio: 1.5,
+  plugins: {
+    legend: {
+      position: 'bottom',
+      labels: {
+        padding: 10,
+        usePointStyle: true
+      }
+    }
+  }
+}
+
+const barChartOptions = {
+  responsive: true,
+  maintainAspectRatio: true,
+  aspectRatio: 1.8,
+  plugins: {
+    legend: {
+      display: false
+    }
+  },
+  scales: {
+    y: {
+      beginAtZero: true,
+      ticks: {
+        stepSize: 1
+      }
+    }
+  },
+  layout: {
+    padding: {
+      top: 10,
+      bottom: 10
+    }
+  }
+}
+
+// Methods
+const getStatusSeverity = (status) => {
+  switch (status.toLowerCase()) {
+    case 'active':
+      return 'success'
+    case 'pending':
+      return 'warning'
+    case 'expired':
+      return 'danger'
+    default:
+      return 'info'
+  }
+}
+
+const formatDate = (dateString) => {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+const fetchDashboardData = async () => {
+  try {
+    const response = await fetch(`/api/convention/dashboard`)
+    const data = await response.json()
+    dashboardData.value = data
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error)
+  }
+}
+
+onMounted(() => {
+  fetchDashboardData()
+})
+</script>
+
 <template>
   <div class="dashboard-container">
     <!-- Header Section -->
@@ -197,140 +333,6 @@
   </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted } from 'vue'
-import Card from 'primevue/card'
-import Chart from 'primevue/chart'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import Tag from 'primevue/tag'
-import Badge from 'primevue/badge'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-
-// Reactive data
-const dashboardData = ref({
-  totalCompanies: 0,
-  activeContracts: 0,
-  pendingContracts: 0,
-  expiredContracts: 0,
-  recentContracts: [],
-  topCompanies: [],
-  specialtyStats: [],
-  monthlyContractData: []
-})
-
-// Chart data
-const contractStatusChartData = computed(() => ({
-  labels: ['Active', 'Pending', 'Expired'],
-  datasets: [{
-    data: [
-      dashboardData.value.activeContracts,
-      dashboardData.value.pendingContracts,
-      dashboardData.value.expiredContracts
-    ],
-    backgroundColor: [
-      '#10B981', // Green for active
-      '#F59E0B', // Orange for pending
-      '#EF4444'  // Red for expired
-    ],
-    borderWidth: 2,
-    borderColor: '#ffffff'
-  }]
-}))
-
-const monthlyChartData = computed(() => ({
-  labels: dashboardData.value.monthlyContractData.map(item => {
-    const date = new Date(item.month + '-01')
-    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-  }),
-  datasets: [{
-    label: 'Contracts Created',
-    data: dashboardData.value.monthlyContractData.map(item => item.count),
-    backgroundColor: '#3B82F6',
-    borderColor: '#1D4ED8',
-    borderWidth: 1
-  }]
-}))
-
-// Chart options
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: true,
-  aspectRatio: 1.5,
-  plugins: {
-    legend: {
-      position: 'bottom',
-      labels: {
-        padding: 10,
-        usePointStyle: true
-      }
-    }
-  }
-}
-
-const barChartOptions = {
-  responsive: true,
-  maintainAspectRatio: true,
-  aspectRatio: 1.8,
-  plugins: {
-    legend: {
-      display: false
-    }
-  },
-  scales: {
-    y: {
-      beginAtZero: true,
-      ticks: {
-        stepSize: 1
-      }
-    }
-  },
-  layout: {
-    padding: {
-      top: 10,
-      bottom: 10
-    }
-  }
-}
-
-// Methods
-const getStatusSeverity = (status) => {
-  switch (status.toLowerCase()) {
-    case 'active':
-      return 'success'
-    case 'pending':
-      return 'warning'
-    case 'expired':
-      return 'danger'
-    default:
-      return 'info'
-  }
-}
-
-const formatDate = (dateString) => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
-const fetchDashboardData = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/convention/dashboard`)
-    const data = await response.json()
-    dashboardData.value = data
-  } catch (error) {
-    console.error('Error fetching dashboard data:', error)
-  }
-}
-
-onMounted(() => {
-  fetchDashboardData()
-})
-</script>
 
 <style scoped>
 /* Main Container */

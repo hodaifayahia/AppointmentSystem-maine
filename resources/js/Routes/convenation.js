@@ -7,12 +7,12 @@ const convenationRoutes = [
         meta: { role: ['admin', 'SuperAdmin'], appKey: 'convention' },
         children: [
             // Convention Management
-            // {
-            //     path: 'Dashborad',
-            //     name: 'convention.Dashborad',
-            //     component: () => import('../Pages/Apps/convention/Dashborad/Dashborad.vue'), // Placeholder
-            //     meta: { title: 'Corporate Partners' }
-            // },
+            {
+                path: 'Dashborad',
+                name: 'convention.Dashborad',
+                component: () => import('../Pages/Apps/convention/Dashborad/Dashborad.vue'), // Placeholder
+                meta: { title: 'Corporate Partners' }
+            },
             {
                 path: 'organismes',
                 name: 'convention.organismes',
