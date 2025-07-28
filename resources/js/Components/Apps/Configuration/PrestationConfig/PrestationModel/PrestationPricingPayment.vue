@@ -96,7 +96,16 @@ const estimatedTotal = computed(() => {
                         </div>
                         <span v-if="errors.public_price" class="error-message">{{ errors.public_price }}</span>
                     </div>
-
+                    <div class="form-group">
+                        <label class="form-label "> convenience Price </label>
+                        <div class="input-with-icon">
+                            <i class="fas fa-dollar-sign input-icon"></i>
+                            <input v-model="form.convenience_prix" type="number" step="0.01" class="form-input with-icon"
+                                :class="{ 'error': errors.convenience_prix }" placeholder="0.00" />
+                        </div>
+                        <span v-if="errors.convenience_prix" class="error-message">{{ errors.convenience_prix }}</span>
+                    </div>
+                    
                     <div class="form-group">
                         <label class="form-label">VAT Rate (%)</label>
                         <div class="input-with-icon">
@@ -153,7 +162,7 @@ const estimatedTotal = computed(() => {
         </div>
 
         <!-- Social Security Section -->
-        <div class="form-card">
+        <!-- <div class="form-card">
             <div class="card-header">
                 <div class="section-info">
                     <i class="fas fa-shield-alt section-icon security"></i>
@@ -178,7 +187,7 @@ const estimatedTotal = computed(() => {
                         placeholder="e.g., Requires prior approval, Only for chronic illnesses"></textarea>
                 </div>
             </div>
-        </div>
+        </div> -->
 
         <!-- Payment & Discounts Section -->
         <div class="form-card">
@@ -212,15 +221,7 @@ const estimatedTotal = computed(() => {
                     </div>
                 </div>
 
-                <div class="form-group full-width">
-                    <label class="form-label">Non-Applicable Discount Rules</label>
-                    <select v-model="form.non_applicable_discount_rules" multiple class="form-select multi-select">
-                        <option v-for="discount in formOptions.available_discounts" :key="discount.id" :value="discount.id">
-                            {{ discount.name }}
-                        </option>
-                    </select>
-                    <small class="form-help">Select discounts that cannot be applied to this prestation</small>
-                </div>
+          
             </div>
         </div>
     </div>

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, defineProps, defineEmits, computed, watch } from 'vue';
-// Assuming you have a PrimeVue Toast component and useToast composable in your setup
-import { useToast } from 'primevue/usetoast'; // Make sure PrimeVue Toast is imported and configured
+import { useToast } from 'primevue/usetoast';
+import MultiSelect from 'primevue/multiselect'; // Ensure this import is correct
 
 const props = defineProps({
     visible: Boolean,
@@ -26,11 +26,11 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'save']);
-const toast = useToast(); // Initialize useToast
+const toast = useToast();
 
 const formData = ref({
     name: "",
-    id: null, // For edit mode, this will hold the contract ID
+    id: null,
     start_date: null,
     end_date: null,
     min_price: null,
@@ -39,7 +39,7 @@ const formData = ref({
     status: 'pending',
 });
 
-const selectedFamilyAuth = ref([]);
+const selectedFamilyAuth = ref([]); // This needs to be an array for MultiSelect
 const errors = ref({
     name: "",
     start_date: "",
@@ -59,27 +59,31 @@ const close = () => {
 const hasAnnexes = computed(() => props.contractData?.annexes?.length > 0);
 
 const isFieldEditable = computed(() => {
-    // If it's not edit mode, allow all fields
     if (!props.isEdit) return true;
 
-    // If contract is not pending, restrict editing
     if (props.contractData?.status !== 'pending') return false;
 
-    // If there are no annexes, allow editing everything
     if (!hasAnnexes.value) return true;
 
-    // With annexes, only allow specific fields
     return {
         name: true,
         start_date: true,
         end_date: true,
         id: false,
         min_price: true,
-        family_auth: true,
+        family_auth: true, // Family auth is editable even with annexes
         max_price: false,
         discount_percentage: false,
         status: false
     };
+});
+
+// Helper computed property for MultiSelect disabled state
+const isFamilyAuthDisabled = computed(() => {
+    if (typeof isFieldEditable.value === 'object') {
+        return !isFieldEditable.value.family_auth;
+    }
+    return !isFieldEditable.value;
 });
 
 const resetForm = () => {
@@ -136,6 +140,9 @@ const validateForm = () => {
     } else if (formData.value.start_date && new Date(formData.value.start_date) >= new Date(formData.value.end_date)) {
         errors.value.end_date = "End date must be after start date";
         isValid = false;
+    }else if (formData.value.end_date && new Date(formData.value.end_date) < new Date()) {
+        errors.value.end_date = "End date cannot be in the past";
+        isValid = false;
     }
 
     if (formData.value.min_price !== null && formData.value.max_price !== null &&
@@ -165,7 +172,7 @@ watch(() => props.contractData, (newVal) => {
             discount_percentage: newVal.discount_percentage || null,
             status: newVal.status || 'pending',
         };
-        // If family_auth is a comma-separated string, split it into array
+        // Initialize selectedFamilyAuth as an array of values
         if (newVal.family_auth) {
             selectedFamilyAuth.value = newVal.family_auth.split(',');
         } else {
@@ -187,10 +194,10 @@ const save = () => {
 
     const dataToSave = {
         ...formData.value,
+        // Join the array back into a comma-separated string for the API
         family_auth: selectedFamilyAuth.value.length > 0 ? selectedFamilyAuth.value.join(',') : null
     };
 
-    // Format dates before emitting
     if (dataToSave.start_date) {
         dataToSave.start_date = formatDateForAPI(dataToSave.start_date);
     }
@@ -204,8 +211,8 @@ const save = () => {
 
 const showRestrictionToast = (fieldName) => {
     if (props.isEdit && props.contractData?.status === 'pending' && hasAnnexes.value) {
-        // Check if the specific field is disabled by the isFieldEditable computed property
-        if (typeof isFieldEditable.value === 'object' && !isFieldEditable.value[fieldName]) {
+        const fieldAccess = typeof isFieldEditable.value === 'object' ? isFieldEditable.value[fieldName] : isFieldEditable.value;
+        if (!fieldAccess) {
             toast.add({
                 severity: 'warn',
                 summary: 'Edit Restricted',
@@ -218,8 +225,8 @@ const showRestrictionToast = (fieldName) => {
 </script>
 
 <template>
-    <div v-if="visible" class="custom-modal-overlay">
-        <div class="custom-modal-container">
+    <div v-if="visible" class="custom-modal-overlay ">
+        <div class="custom-modal-container overflow-auto " @click.stop>
             <div class="custom-modal-header">
                 <div class="header-content">
                     <div class="modal-icon">
@@ -237,7 +244,6 @@ const showRestrictionToast = (fieldName) => {
                 </button>
             </div>
 
-            <!-- Info Message for Annexes Restriction -->
             <div v-if="props.isEdit && hasAnnexes && props.contractData?.status === 'pending'" class="annexe-info-banner">
                 <div class="info-content">
                     <div class="info-icon">
@@ -246,15 +252,15 @@ const showRestrictionToast = (fieldName) => {
                     <div class="info-text">
                         <h4 class="info-title">Editing Restrictions</h4>
                         <p class="info-message">
-                            This contract has <strong>{{ props.contractData?.annexes?.length }} annexe(s)</strong> attached. 
-                            To modify the <strong>Max Price</strong> and <strong>Discount Percentage</strong>, 
+                            This contract has <strong>{{ props.contractData?.annexes?.length }} annexe(s)</strong> attached.
+                            To modify the <strong>Max Price</strong> and <strong>Discount Percentage</strong>,
                             you must first remove all existing annexes from this contract.
                         </p>
                     </div>
                 </div>
             </div>
 
-            <div class="custom-modal-body">
+            <div class="custom-modal-body ">
                 <form @submit.prevent="save" class="modal-form">
                     <div class="form-group">
                         <label for="addContractName" class="form-label">
@@ -346,9 +352,9 @@ const showRestrictionToast = (fieldName) => {
                         <div class="form-group">
                             <label for="addMaxPrice" class="form-label">
                                 <i class="fas fa-dollar-sign label-icon"></i> Max Price:
-                                <span v-if="props.isEdit && hasAnnexes && typeof isFieldEditable === 'object' && !isFieldEditable.max_price" 
-                                      class="restricted-field-indicator">
-                                    <i class="fas fa-lock"></i>
+                                <span v-if="props.isEdit && hasAnnexes && typeof isFieldEditable === 'object' && !isFieldEditable.max_price"
+                                            class="restricted-field-indicator">
+                                        <i class="fas fa-lock"></i>
                                 </span>
                             </label>
                             <div class="input-with-addon">
@@ -376,8 +382,8 @@ const showRestrictionToast = (fieldName) => {
                     <div class="form-group">
                         <label for="addDiscountPercentage" class="form-label">
                             <i class="fas fa-percent label-icon"></i> Company Percentage:
-                            <span v-if="props.isEdit && hasAnnexes && typeof isFieldEditable === 'object' && !isFieldEditable.discount_percentage" 
-                                  class="restricted-field-indicator">
+                            <span v-if="props.isEdit && hasAnnexes && typeof isFieldEditable === 'object' && !isFieldEditable.discount_percentage"
+                                    class="restricted-field-indicator">
                                 <i class="fas fa-lock"></i>
                             </span>
                         </label>
@@ -402,23 +408,21 @@ const showRestrictionToast = (fieldName) => {
                         </small>
                     </div>
 
-                    <div class="form-group">
+                    <div class="">
                         <label class="form-label">
                             <i class="fas fa-users label-icon"></i> Family Authorization:
                         </label>
-                        <div class="d-flex flex-wrap gap-3 mt-2">
-                            <div v-for="option in familyAuthOptions" :key="option.value" class="form-check me-3">
-                                <input
-                                    class="form-check-input"
-                                    type="checkbox"
-                                    :value="option.value"
-                                    :id="`familyAuth_${option.value}`"
-                                    v-model="selectedFamilyAuth"
-                                    :disabled="!isFieldEditable || (typeof isFieldEditable === 'object' && !isFieldEditable.family_auth)"
-                                >
-                                <label class="form-check-label" :for="`familyAuth_${option.value}`">{{ option.label }}</label>
-                            </div>
-                        </div>
+                        <MultiSelect
+                            v-model="selectedFamilyAuth"
+                            :options="familyAuthOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Select Family Authorizations"
+                            :disabled="isFamilyAuthDisabled"
+                            class="w-full md:w-20rem"
+                            :class="{ 'p-invalid': errors.family_auth, 'input-disabled': isFamilyAuthDisabled }"
+                            @focus="showRestrictionToast('family_auth')"
+                        />
                         <small v-if="errors.family_auth" class="error-message">
                             <i class="fas fa-exclamation-circle"></i> {{ errors.family_auth }}
                         </small>
@@ -624,19 +628,42 @@ const showRestrictionToast = (fieldName) => {
 }
 
 .input-disabled {
-    background-color: #f3f4f6;
-    cursor: not-allowed;
+    background-color: #f3f4f6 !important;
+    cursor: not-allowed !important;
     opacity: 0.7;
 }
 
-.form-check-input:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
+/* Specific styles for PrimeVue MultiSelect when disabled */
+.p-multiselect.p-disabled {
+    background-color: #f3f4f6 !important;
+    cursor: not-allowed !important;
+    opacity: 0.7 !important; /* Added !important for stronger override */
 }
 
-.form-check-input:disabled + .form-check-label {
-    opacity: 0.7;
-    cursor: not-allowed;
+/* Add a style to make the PrimeVue MultiSelect match your other form inputs */
+.p-multiselect {
+    width: 100%;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    transition: all 0.3s ease;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.p-multiselect:not(.p-disabled):hover {
+    border-color: #3b82f6; /* Apply hover style */
+}
+
+.p-multiselect:not(.p-disabled).p-focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    transform: translateY(-1px);
+}
+
+.p-multiselect.p-invalid {
+    border-color: #ef4444; /* Error border for PrimeVue component */
 }
 
 .custom-modal-header .modal-subtitle {
@@ -670,7 +697,6 @@ const showRestrictionToast = (fieldName) => {
 .custom-modal-body {
     padding: 2rem;
     max-height: calc(90vh - 8rem);
-    overflow-y: auto;
 }
 
 .modal-form {

@@ -58,6 +58,8 @@ onMounted(async () => {
             v-if="annexData"
             :contractState="annexData.convention_status" 
             :avenantpage="'no'" 
+            :serviceId="annexData.service_id"
+            :serviceName="annexData.service_name"
             :contractdata="annexData"
             :annexId="annexData.id" 
         />

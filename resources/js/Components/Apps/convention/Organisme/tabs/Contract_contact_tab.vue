@@ -11,6 +11,10 @@ const props = defineProps({
     type: Object,
     required: true,
     validator: (obj) => obj.id !== undefined
+  },
+  companyId: {
+    type: String,
+    required: true
   }
 });
 
@@ -39,11 +43,11 @@ const activeIndex = ref(0); // 0 for Contracts, 1 for Contacts
       <TabView v-model:activeIndex="activeIndex" class="custom-tabview">
         <TabPanel header="Contracts">
           <!-- Explicitly convert id to string if needed -->
-          <Contract_table :companyId="String(company.id)" />
+          <Contract_table :companyId="String(props.companyId)" />
         </TabPanel>
 
         <TabPanel header="Contacts">
-          <Contacts_table :companyId="String(company.id)" />
+          <Contacts_table :companyId="String(props.companyId)" />
         </TabPanel>
       </TabView>
     </div>

@@ -48,12 +48,12 @@ const goBack = () => {
 </script>
 
 <template>
-    <aside class="main-sidebar sidebar-dark-primary elevation-4 fixed"
+    <aside class="main-sidebar   sidebar-dark-primary elevation-4 fixed "
          :style="{ background: appColor }">
     <a href="#" class="brand-link d-flex align-items-center">
       <img :src="appIcon" class="img-circle elevation-2 me-2 mr-3"
            style="width: 40px; height: 40px;" :alt="appName">
-      <span class="brand-text font-weight-light ms-2">{{ appName }}</span>
+      <span class="brand-text font-weight-light ms-">{{ appName }}</span>
     </a>
     <div class="sidebar">
       <div class="user-panel mt-3 pb-3 mb-3 d-flex justify-content-between">

@@ -365,6 +365,8 @@ Route::middleware(['auth'])->group(function () {
         });
         Route::get('prestations/available-for-avenant/{avenantId}', [PrestationPricingController::class, 'getAvailablePrestations']);
         Route::get('/prestations/available-for-service-avenant/{serviceId}/{avenantId}', [PrestationPricingController::class, 'getAvailablePrestationsForServiceAndAvenant']);
+Route::get('/prestations/available-for-service-annex/{serviceId}/{annexId}', [PrestationPricingController::class, 'getAvailablePrestationsForServiceAndAnnex']);
+Route::get('/prestations/allavailable-for-service-annex/{serviceId}/{annexId}', [PrestationPricingController::class, 'getallAvailablePrestationsForServiceAndAnnex']);
 
         // Avenants
         Route::prefix('/avenants')->group(function () {

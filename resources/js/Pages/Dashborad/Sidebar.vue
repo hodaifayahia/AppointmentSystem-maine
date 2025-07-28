@@ -59,7 +59,7 @@ const fetchPendingRequestCount = async (doctorId) => {
 
 onMounted(async () => {
     // Only listen for doctor role
-    if (props.user.role === 'doctor') {
+    if (props.user.data.role === 'doctor') {
         try {
             // Fetch doctor data to get the doctor ID
             await doctorStore.getDoctor();
@@ -124,7 +124,7 @@ onMounted(async () => {
         }
     } else {
         console.log('WebSocket not initialized - user is not a doctor:', {
-            role: props.user.role,
+            role: props.user.data.role,
             user: props.user
         });
     }
@@ -146,7 +146,7 @@ watch(
     (newPath) => {
         // When navigating to the opinion receiver page, re-fetch the count
         // to ensure it's accurate after the user has potentially viewed requests.
-        if (newPath === '/doctor/opinionReciver' && props.user.role === 'doctor' && doctorStore.doctorData.id) {
+        if (newPath === '/doctor/opinionReciver' && props.user.data.role === 'doctor' && doctorStore.doctorData.id) {
             fetchPendingRequestCount(doctorStore.doctorData.id);
         }
     }
@@ -198,7 +198,7 @@ const playNotificationSound = () => {
                             <p>Calendar</p>
                         </router-link>
                     </li>
-                    <template v-if="user.role === 'admin' || user.role === 'SuperAdmin'">
+                    <template v-if="user.data.role === 'admin' || user.data.role === 'SuperAdmin'">
                         <li class="nav-item">
                             <router-link to="/admin/appointments/users" active-class="active" class="nav-link">
                                 <i class="nav-icon fas fa-users"></i>
@@ -232,7 +232,7 @@ const playNotificationSound = () => {
                     </template>
 
                     <template
-                        v-if="user.role === 'admin' || user.role === 'receptionist' || user.role === 'SuperAdmin'">
+                        v-if="user.data.role === 'admin' || user.data.role === 'receptionist' || user.data.role === 'SuperAdmin'">
                         <li class="nav-item">
                             <router-link to="/admin/appointments/doctors" active-class="active" class="nav-link">
                                 <i class="nav-icon fas fa-users"></i>
@@ -266,7 +266,7 @@ const playNotificationSound = () => {
                             </router-link>
                         </li>
 
-                    <template v-if="user.role === 'doctor'">
+                    <template v-if="user.data.role === 'doctor'">
                         <li class="nav-item">
                             <router-link to="/doctor/appointments" active-class="active" class="nav-link">
                                 <i class="nav-icon fas fa-calendar-check"></i>
@@ -316,7 +316,7 @@ const playNotificationSound = () => {
                         </li>
                     </template>
 
-                    <template v-if="['admin', 'doctor', 'SuperAdmin'].includes(user.role)">
+                    <template v-if="['admin', 'doctor', 'SuperAdmin'].includes(user.data.role)">
                         <li class="nav-item">
                             <router-link to="/admin/consultations/consultation" active-class="active" class="nav-link">
                                 <i class="fas fa-clipboard nav-icon"></i>

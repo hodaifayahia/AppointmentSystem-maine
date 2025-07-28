@@ -293,4 +293,42 @@ class PrestationPricingController extends Controller
             ], 500);
         }
     }
+       public function getAvailablePrestationsForServiceAndAnnex(string $serviceId, string $annexId): JsonResponse
+    {
+        try {
+            $prestations = $this->prestationPricingService->getAvailablePrestationsForServiceAndAnnex($serviceId, $annexId);
+
+            return response()->json([
+                'success' => true,
+                'data' => PrestationResource::collection($prestations),
+                'message' => 'Available prestations for service and annex fetched successfully.'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Error fetching available prestations for service {$serviceId} and annex {$annexId}: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch available prestations.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+       public function getallAvailablePrestationsForServiceAndAnnex(string $serviceId, string $annexId): JsonResponse
+    {
+        try {
+            $prestations = $this->prestationPricingService->getallAvailablePrestationsForServiceAndAnnex($serviceId, $annexId);
+
+            return response()->json([
+                'success' => true,
+                'data' => PrestationResource::collection($prestations),
+                'message' => 'Available prestations for service and annex fetched successfully.'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Error fetching available prestations for service {$serviceId} and annex {$annexId}: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch available prestations.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

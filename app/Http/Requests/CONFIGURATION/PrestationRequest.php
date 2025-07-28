@@ -30,6 +30,7 @@ class PrestationRequest extends FormRequest
             ],
             'billing_code' => 'nullable|string|max:50',
             'description' => 'nullable|string',
+
             'service_id' => 'required|exists:services,id',
             'specialization_id' => 'nullable|exists:specializations,id',
             'type' => 'required|in:Médical,Chirurgical',
@@ -37,6 +38,8 @@ class PrestationRequest extends FormRequest
 
             // Financial Configuration
             'public_price' => 'required|numeric|min:0',
+            'convenience_prix' => 'nullable|numeric|min:0',
+            
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'night_tariff' => 'nullable|numeric|min:0',
             'consumables_cost' => 'nullable|numeric|min:0',

@@ -19,6 +19,7 @@ const props = defineProps({
   discountPercentage: Number,
 });
 
+
 const copyToClipboard = (text) => {
   const textarea = document.createElement('textarea');
   textarea.value = text;

@@ -66,11 +66,11 @@ const gotoCompanyDetails = () => {
             </span>
         </td>
         <td class="table-cell actions-cell">
-            <button @click="emit('edit', organisme)" class="action-button edit-button" title="Edit">
+            <button @click.stop.prevent="emit('edit', organisme)" class="action-button edit-button" title="Edit">
                 <i class="fas fa-edit"></i>
             </button>
             <!-- Removed toggle-status button as 'is_active' is not in current organisme mock data -->
-            <button @click="emit('delete', organisme.id)" class="action-button delete-button" title="Delete">
+            <button @click.stop.prevent="emit('delete', organisme.id)" class="action-button delete-button" title="Delete">
                 <i class="fas fa-trash-alt"></i>
             </button>
         </td>

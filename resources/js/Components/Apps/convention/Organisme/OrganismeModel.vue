@@ -214,7 +214,7 @@ const closeModal = () => {
 <template>
     <teleport to="body">
         <transition name="modal-fade">
-            <div v-if="isVisible" class="modal-overlay" @click="closeModal">
+            <div v-if="isVisible" class="modal-overlay">
                 <div class="modal-container" @click.stop>
                     <div class="modal-header">
                         <div class="header-content">

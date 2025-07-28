@@ -1,84 +1,94 @@
 <template>
-  <div v-if="showModal" class="modal fade show d-block" tabindex="-1" @click.self="closeModal">
-    <div class="modal-dialog modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">
-            {{ modalTitle }}
-          </h5>
-          <button type="button" class="btn-close" @click="closeModal"></button>
-        </div>
-        <div class="modal-body">
-          <div v-if="modalType === 'delete'">
-            <p>Are you sure you want to delete agreement "{{ selectedItem.title || selectedItem.name }}"?</p>
-          </div>
-          <div v-else-if="modalType === 'info'">
-            <p><strong>ID:</strong> {{ selectedItem.id }}</p>
-            <p><strong>Title:</strong> {{ selectedItem.title || selectedItem.name }}</p>
-            <p><strong>Description:</strong> {{ selectedItem.description || 'No description' }}</p>
-            <p><strong>Created At:</strong> {{ formatDate(selectedItem.created_at) }}</p>
-            <p v-if="selectedItem.file_path">
-              <strong>Document:</strong>
-              <a :href="selectedItem.file_url" target="_blank" class="btn btn-sm btn-info ms-2">
-                <i class="fas fa-file-alt"></i> View File ({{ getFileExtension(selectedItem.file_path) }})
-              </a>
-            </p>
-            <p v-else><strong>Document:</strong> No file attached</p>
-          </div>
-          <form v-else @submit.prevent="handleSave">
-            <div class="mb-3">
-              <label for="agreementTitle" class="form-label">Title</label>
-              <input type="text" class="form-control" id="agreementTitle" v-model="localForm.title" required />
-            </div>
-            <div class="mb-3">
-              <label for="agreementDescription" class="form-label">Description</label>
-              <textarea class="form-control" id="agreementDescription" v-model="localForm.description" rows="3"></textarea>
-            </div>
-            <div class="mb-3">
-              <label for="agreementFile" class="form-label">Document File</label>
-              <input type="file" class="form-control" id="agreementFile" @change="handleFileChange" />
-              <div v-if="localForm.file_path" class="mt-2 d-flex align-items-center">
-                <span class="me-2">Current file: {{ getFileName(localForm.file_path) }}</span>
-                <button type="button" class="btn btn-sm btn-outline-danger" @click="removeCurrentFile">
-                  <i class="fas fa-times"></i> Remove
-                </button>
-              </div>
-              <div v-if="localForm.remove_file" class="mt-1 text-danger small">
-                File will be removed on save. Upload a new file to replace.
-              </div>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="closeModal">Close</button>
-          <button
-            v-if="modalType === 'delete'"
-            type="button"
-            class="btn btn-danger"
-            @click="$emit('delete')"
-            :disabled="isLoading"
-          >
-            <span v-if="isLoading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            {{ isLoading ? 'Deleting...' : 'Delete' }}
-          </button>
-          <button
-            v-else-if="modalType !== 'info'"
-            type="submit"
-            class="btn btn-primary"
-            @click="handleSave"
-            :disabled="isLoading"
-          >
-            <span v-if="isLoading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            {{ isLoading ? 'Saving...' : 'Save Changes' }}
-          </button>
-        </div>
+  <Dialog
+    :visible="showModal"
+    :modal="true"
+    :header="modalTitle"
+    @update:visible="closeModal"
+    :style="{ width: '50vw' }"
+    :breakpoints="{ '960px': '75vw', '641px': '100vw' }"
+  >
+    <div class="p-fluid">
+      <div v-if="modalType === 'delete'">
+        <p>Are you sure you want to delete agreement "<strong>{{ selectedItem.title || selectedItem.name }}</strong>"?</p>
       </div>
+      <div v-else-if="modalType === 'info'">
+        <p><strong>ID:</strong> {{ selectedItem.id }}</p>
+        <p><strong>Title:</strong> {{ selectedItem.title || selectedItem.name }}</p>
+        <p><strong>Description:</strong> {{ selectedItem.description || 'No description' }}</p>
+        <p><strong>Created At:</strong> {{ formatDate(selectedItem.created_at) }}</p>
+        <p v-if="selectedItem.file_path">
+          <strong>Document:</strong>
+          <a :href="selectedItem.file_url" target="_blank" class="p-button p-button-sm p-button-info p-ml-2">
+            <i class="pi pi-file"></i> View File ({{ getFileExtension(selectedItem.file_path) }})
+          </a>
+        </p>
+        <p v-else><strong>Document:</strong> No file attached</p>
+      </div>
+      <form v-else @submit.prevent="handleSave">
+        <div class="p-field mb-3">
+          <label for="agreementTitle">Title</label>
+          <InputText id="agreementTitle" v-model="localForm.title" required />
+        </div>
+        <div class="p-field mb-3">
+          <label for="agreementDescription">Description</label>
+          <Textarea id="agreementDescription" v-model="localForm.description" rows="3" />
+        </div>
+        <div class="p-field mb-3">
+          <label for="agreementFile">Document File</label>
+          <FileUpload
+            mode="basic"
+            name="agreementFile"
+            url="./upload"
+            :auto="false"
+            :chooseLabel="localForm.file ? 'Change File' : 'Choose File'"
+            @select="handleFileChange"
+            :customUpload="true"
+          />
+          <div v-if="localForm.file_path" class="p-mt-2 p-d-flex p-align-center">
+            <span class="p-mr-2">Current file: {{ getFileName(localForm.file_path) }}</span>
+            <Button
+              type="button"
+              icon="pi pi-times"
+              class="p-button-sm p-button-outlined p-button-danger"
+              @click="removeCurrentFile"
+              label="Remove"
+            />
+          </div>
+          <div v-if="localForm.remove_file" class="p-mt-1 p-text-danger p-text-sm">
+            File will be removed on save. Upload a new file to replace.
+          </div>
+        </div>
+      </form>
     </div>
-  </div>
+
+    <template #footer>
+      <Button label="Close" icon="pi pi-times" class="p-button-text" @click="closeModal" />
+      <Button
+        v-if="modalType === 'delete'"
+        label="Delete"
+        icon="pi pi-trash"
+        class="p-button-danger"
+        @click="$emit('delete')"
+        :loading="isLoading"
+      />
+      <Button
+        v-else-if="modalType !== 'info'"
+        label="Save Changes"
+        icon="pi pi-check"
+        @click="handleSave"
+        :loading="isLoading"
+      />
+    </template>
+  </Dialog>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import Dialog from 'primevue/dialog';
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
+import Textarea from 'primevue/textarea';
+import FileUpload from 'primevue/fileupload';
 
 const props = defineProps({
   showModal: {
@@ -105,7 +115,6 @@ const props = defineProps({
 
 const emit = defineEmits(['close-modal', 'save', 'delete']);
 
-// Use a local copy of the form prop for two-way binding within the modal
 const localForm = ref({ ...props.form });
 
 watch(
@@ -140,31 +149,29 @@ const handleSave = () => {
 };
 
 const handleFileChange = (event) => {
-  localForm.value.file = event.target.files[0];
-  localForm.value.remove_file = false; // If a new file is selected, don't remove the old one
+  // PrimeVue FileUpload provides an array of files in event.files
+  localForm.value.file = event.files[0];
+  localForm.value.remove_file = false;
 };
 
 const removeCurrentFile = () => {
-  localForm.value.file_path = null; // Clear display
-  localForm.value.file = null; // Clear actual file input if set
-  localForm.value.remove_file = true; // Signal backend to remove the file
+  localForm.value.file_path = null;
+  localForm.value.file = null;
+  localForm.value.remove_file = true;
 };
 
-// Helper function to get file extension
 const getFileExtension = (filePath) => {
   if (!filePath) return '';
   const parts = filePath.split('.');
   return parts[parts.length - 1].toUpperCase();
 };
 
-// Helper function to get filename from path
 const getFileName = (filePath) => {
   if (!filePath) return '';
   const parts = filePath.split('/');
   return parts[parts.length - 1];
 };
 
-// Format date function (duplicate, but good to have in modal for info view)
 const formatDate = (dateString) => {
   if (!dateString) return '';
   const date = new Date(dateString);
@@ -173,23 +180,9 @@ const formatDate = (dateString) => {
 </script>
 
 <style scoped>
-/* Modal backdrop and positioning */
-.modal.show {
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
+/* No specific styles needed here for the modal itself, PrimeVue handles styling */
+/* You might want to add margin-bottom for form fields if p-fluid is not enough */
+.p-fluid .p-field {
+  margin-bottom: 1rem;
 }
-
-.modal-dialog {
-  max-width: 600px;
-  width: 90%;
-  margin: auto;
-}
-
-.modal-content {
-  border-radius: 0.5rem;
-}
-
-/* Other styles from your main component's modal related styles can be moved here if specific to the modal */
 </style>

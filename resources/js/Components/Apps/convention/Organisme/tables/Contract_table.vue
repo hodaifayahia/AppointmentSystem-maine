@@ -2,10 +2,9 @@
 import { ref, computed, defineProps, onMounted, watch } from "vue";
 import axios from "axios";
 import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast"; // PrimeVue Toast service
-import { useConfirm } from 'primevue/useconfirm'; // PrimeVue Confirm service
+import { useToast } from "primevue/usetoast";
+import { useConfirm } from 'primevue/useconfirm';
 
-// PrimeVue Components
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import InputText from 'primevue/inputtext';
@@ -13,13 +12,14 @@ import Dropdown from 'primevue/dropdown';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import ProgressSpinner from 'primevue/progressspinner';
-import Toast from 'primevue/toast'; // Toast component for display
-import ConfirmDialog from 'primevue/confirmdialog'; // Confirmation dialog component
+import Toast from 'primevue/toast';
+import ConfirmDialog from 'primevue/confirmdialog';
 
 import ContractModal from "../Models/AddContractModal.vue";
+// import Calendar from 'primevue/calendar'; // Not used in this component directly, consider removing if not needed
 
 const toast = useToast();
-const confirm = useConfirm(); // Initialize confirm service
+const confirm = useConfirm();
 
 const props = defineProps({
     companyId: {
@@ -28,6 +28,15 @@ const props = defineProps({
     }
 });
 
+const formatDate = (date) => {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('fr-FR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+};
+
 const loading = ref(false);
 const router = useRouter();
 const addDialog = ref(false);
@@ -35,68 +44,61 @@ const editDialog = ref(false);
 const contractToEdit = ref(null);
 
 const searchQuery = ref("");
-const searchFilter = ref("contract_name"); // Default search filter
+const searchFilter = ref("contract_name");
 
 const filterOptions = ref([
     { label: "By ID", value: "id" },
     { label: "By Name", value: "contract_name" },
     { label: "Active Only", value: "Active" },
     { label: "Pending Only", value: "Pending" },
-    { label: "Expired Only", value: "Terminated" }, // Assuming 'Expired' maps to 'Terminated' status
+    { label: "Expired Only", value: "Terminated" },
 ]);
 
-// Pagination State
 const currentPage = ref(1);
 const rowsPerPage = ref(10);
-const totalRecords = ref(0); // To store the total count from the API
+const totalRecords = ref(0);
 
-const items = ref([]); // This will now hold only the contracts for the current page
+const items = ref([]);
 
-// Debounce for search input
 let searchTimeout = null;
 const debouncedSearch = () => {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
-        currentPage.value = 1; // Reset to first page on new search
+        currentPage.value = 1;
         fetchContracts();
-    }, 500); // 500ms delay
+    }, 500);
 };
 
-// Add watch to debug companyId changes
-watch(() => props.companyId, (newId) => {
-    console.log('Company ID changed:', newId);
-    if (newId) {
-        // Reset pagination to first page when companyId changes
-        currentPage.value = 1;
-        fetchContracts(); // Fetch contracts for the new company ID
-    }
-}, { immediate: true });
-
 const fetchContracts = async () => {
+    if (!props.companyId) {
+        console.warn("Company ID not available, skipping contract fetch.");
+        items.value = [];
+        totalRecords.value = 0;
+        loading.value = false;
+        return;
+    }
+
     console.log("Fetching contracts for company ID:", props.companyId, "Page:", currentPage.value, "Rows:", rowsPerPage.value, "Search:", searchQuery.value, "Filter:", searchFilter.value);
 
     loading.value = true;
     try {
-        // Adjust the API call to include pagination and search parameters
         const response = await axios.get(`/api/conventions/`, {
             params: {
                 organisme_id: props.companyId,
                 page: currentPage.value,
                 per_page: rowsPerPage.value,
-                // Pass searchQuery and searchFilter to the backend for server-side filtering
                 search_query: searchQuery.value,
                 filter_by: searchFilter.value
             }
         });
 
         if (response.data && response.data.data) {
-            // Adjust this based on your actual API response structure.
-            if (Array.isArray(response.data.data.data)) { // Example for Laravel's nested 'data.data'
+            if (Array.isArray(response.data.data.data)) {
                 items.value = response.data.data.data;
                 totalRecords.value = response.data.data.total;
-            } else if (Array.isArray(response.data.data)) { // Example if 'data' is directly the array
+            } else if (Array.isArray(response.data.data)) {
                 items.value = response.data.data;
-                totalRecords.value = response.data.total || response.data.data.length; // Fallback
+                totalRecords.value = response.data.total || response.data.data.length;
             } else {
                 console.warn("Unexpected API response structure:", response.data);
                 items.value = [];
@@ -107,8 +109,6 @@ const fetchContracts = async () => {
             items.value = [];
             totalRecords.value = 0;
         }
-
-        // toast.add({ severity: 'success', summary: 'Success', detail: 'Contracts loaded successfully', life: 3000 });
     } catch (error) {
         console.error("Failed to fetch contracts:", error);
         items.value = [];
@@ -119,41 +119,32 @@ const fetchContracts = async () => {
     }
 };
 
-onMounted(() => {
-    fetchContracts(); // Initial fetch on component mount
-});
+watch(() => props.companyId, (newId) => {
+    console.log('Company ID changed or initialized:', newId);
+    if (newId) {
+        currentPage.value = 1;
+        fetchContracts();
+    } else {
+        items.value = [];
+        totalRecords.value = 0;
+    }
+}, { immediate: true });
 
-// Method to handle PrimeVue DataTable pagination events
 const onPage = (event) => {
-    currentPage.value = event.page + 1; // PrimeVue's page is 0-indexed
-    rowsPerPage.value = event.rows;
-    fetchContracts(); // Fetch new page data
+    if (currentPage.value !== event.page + 1 || rowsPerPage.value !== event.rows) {
+        currentPage.value = event.page + 1;
+        rowsPerPage.value = event.rows;
+        fetchContracts();
+    }
 };
 
-// Filtered items computed property (now primarily for client-side status filtering if applicable, otherwise just displays fetched items)
 const filteredItems = computed(() => {
     const itemsArray = Array.isArray(items.value) ? items.value : [];
-
-    // Client-side filtering for statuses if the searchFilter is one of the status options
-    if (["Active", "Pending", "Terminated"].includes(searchFilter.value)) {
-        return itemsArray.filter((item) => item.status === searchFilter.value);
-    }
-
-    // If a text search is active, the backend should handle it.
-    // This client-side filter would only apply if the backend *didn't* support search.
-    // Since we've added searchQuery to fetchContracts params, this client-side block is mostly redundant for text search.
-    // It's kept here just in case, but ideally, the API does the heavy lifting for `searchQuery`.
-    if (searchQuery.value && !["id", "contract_name"].includes(searchFilter.value)) {
-        // This block would only make sense if searchFilter was not 'id' or 'contract_name'
-        // and you still wanted a client-side search on a different field not covered by backend.
-        // For 'id' and 'contract_name', backend search (via fetchContracts) is preferred.
-    }
-
-    return itemsArray; // Return the current page's items if no specific client-side filter is active
+    return itemsArray;
 });
 
 const openAddDialog = () => {
-    contractToEdit.value = null; // Clear any pre-existing data
+    contractToEdit.value = null;
     addDialog.value = true;
 };
 
@@ -169,24 +160,24 @@ const saveContract = async (contractData) => {
             organisme_id: props.companyId,
         });
 
-        // Assuming the API returns the newly created contract in response.data
         if (response.data && response.data.data) {
-            // Add the new contract to the beginning of the items array
-            items.value.unshift(response.data.data);
-            totalRecords.value++; // Increment total records
-            // If you are on the last page and add a new item, you might need to re-evaluate pagination
-            // For simplicity, we just add it to the current view. If the table is full, the last item might be pushed out.
-            // A more robust solution might involve checking if total records exceed current page capacity and adjusting.
-        } else {
-            console.warn("API did not return new contract data after creation.");
+            await fetchContracts();
+            addDialog.value = false;
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Contract created successfully',
+                life: 3000
+            });
         }
-
-        addDialog.value = false;
-        toast.add({ severity: 'success', summary: 'Success', detail: 'Contract created successfully', life: 3000 });
     } catch (error) {
         const errorMessage = error.response?.data?.message || "Failed to create contract";
-        toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 3000 });
-        console.error("API error details:", error.response?.data);
+        toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: errorMessage,
+            life: 3000
+        });
     }
 };
 
@@ -194,58 +185,53 @@ const updateContract = async (contractData) => {
     try {
         const response = await axios.put(`/api/conventions/${contractData.id}`, contractData);
 
-        // Assuming the API returns the updated contract in response.data
         if (response.data && response.data.data) {
-            // Find the index of the updated contract and replace it
-            const index = items.value.findIndex(item => item.id === contractData.id);
-            if (index !== -1) {
-                items.value[index] = response.data.data;
-            } else {
-                console.warn("Updated contract not found in current items list.");
-                // If the updated item wasn't on the current page, a re-fetch might be necessary,
-                // but for simple updates of visible items, this is fine.
-            }
-        } else {
-            console.warn("API did not return updated contract data after update.");
+            await fetchContracts();
+            editDialog.value = false;
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Contract updated successfully',
+                life: 3000
+            });
         }
-
-        editDialog.value = false;
-        toast.add({ severity: 'success', summary: 'Success', detail: 'Contract updated successfully', life: 3000 });
     } catch (error) {
         const errorMessage = error.response?.data?.message || "Failed to update contract";
-        toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 3000 });
-        console.error("API error details:", error.response?.data);
+        toast.add({
+            severity: 'error',
+            summary: 'error',
+            detail: errorMessage,
+            life: 3000
+        });
     }
 };
 
 const deleteContract = async (contractToDelete) => {
     try {
         await axios.delete(`/api/conventions/${contractToDelete.id}`);
-
-        // Remove the deleted contract from the items array
-        items.value = items.value.filter(item => item.id !== contractToDelete.id);
-        totalRecords.value--; // Decrement total records
-
-        // If the current page becomes empty after deletion and it's not the first page,
-        // you might want to move to the previous page.
-        if (items.value.length === 0 && currentPage.value > 1) {
-            currentPage.value--;
-            fetchContracts(); // Re-fetch for the previous page
-        } else {
-            // If staying on the same page, re-fetch just to ensure the pagination state is correct
-            // (e.g., if a new item needs to be pulled from the next "page" on the server to fill the gap).
-            // This is a common pattern for lazy loaded tables when deleting.
-            fetchContracts();
-        }
-
-        toast.add({ severity: 'success', summary: 'Success', detail: 'Contract deleted successfully', life: 3000 });
+        // After successful deletion on the backend, re-fetch the data.
+        // This ensures the table is up-to-date and handles pagination shifts.
+        await fetchContracts();
+        toast.add({
+            severity: 'success',
+            summary: 'Success',
+            detail: 'Contract deleted successfully',
+            life: 3000
+        });
     } catch (error) {
         console.error("Error deleting contract:", error);
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete contract', life: 3000 });
+        toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'Failed to delete contract',
+            life: 3000
+        });
     }
 };
 
 const confirmDelete = (contract) => {
+    // PrimeVue's confirm service handles showing the dialog.
+    // Ensure you're not trying to manually hide/show it based on state within this function.
     confirm.require({
         message: `Are you sure you want to delete the contract "${contract.contract_name}"?`,
         header: 'Delete Confirmation',
@@ -254,14 +240,16 @@ const confirmDelete = (contract) => {
         acceptLabel: 'Yes, Delete',
         rejectLabel: 'Cancel',
         accept: () => {
+            // This 'accept' callback is executed ONLY when the user confirms.
             deleteContract(contract);
         },
         reject: () => {
-            toast.add({ 
-                severity: 'info', 
-                summary: 'Cancelled', 
-                detail: 'Contract deletion cancelled', 
-                life: 3000 
+            // This 'reject' callback is executed when the user cancels.
+            toast.add({
+                severity: 'info',
+                summary: 'Cancelled',
+                detail: 'Contract deletion cancelled',
+                life: 3000
             });
         }
     });
@@ -294,7 +282,7 @@ const moreInfo = (contract) => {
                     v-model="searchQuery"
                     placeholder="Search contracts..."
                     class="filter-input"
-                    @keyup.enter="fetchContracts" 
+                    @keyup.enter="fetchContracts"
                     @input="debouncedSearch" />
             </div>
             <Button
@@ -318,27 +306,35 @@ const moreInfo = (contract) => {
 
             <div v-else>
                 <DataTable
-                    :value="filteredItems" 
+                    :value="filteredItems"
                     stripedRows
                     :paginator="true"
                     :rows="rowsPerPage"
                     :rowsPerPageOptions="[10, 20, 50, 100]"
                     :totalRecords="totalRecords"
-                    :lazy="true" 
-                    @page="onPage" 
+                    :lazy="true"
+                    @page="onPage"
                     responsiveLayout="scroll"
                     class="contracts-table"
                 >
                     <Column field="id" header="ID" />
                     <Column field="contract_name" header="Name" />
-                    <Column field="start_date" header="Start Date" />
-                    <Column field="end_date" header="End Date" />
+                    <Column field="start_date" header="Start Date">
+                        <template #body="slotProps">
+                            {{ formatDate(slotProps.data.start_date) }}
+                        </template>
+                    </Column>
+                    <Column field="end_date" header="End Date">
+                        <template #body="slotProps">
+                            {{ formatDate(slotProps.data.end_date) }}
+                        </template>
+                    </Column>
                     <Column field="status" header="Status">
                         <template #body="slotProps">
                             <span
                                 :class="['status-tag', {
                                     active: slotProps.data.status === 'Active',
-                                    pending: slotProps.data.status === 'pending',
+                                    pending: slotProps.data.status === 'Pending',
                                     expired: slotProps.data.status === 'Terminated'
                                 }]"
                             >
@@ -392,11 +388,10 @@ const moreInfo = (contract) => {
 </template>
 
 <style scoped>
-/* Your existing styles remain the same */
+/* Your existing styles remain unchanged */
 .container {
     padding: 2rem 1.5rem;
-    min-height: 100vh;
-    min-width: 80vw;
+    min-width: 75vw;
     background: linear-gradient(135deg, #f4f8fa 0%, #e9edf2 100%);
 }
 

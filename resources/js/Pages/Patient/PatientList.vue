@@ -1,10 +1,10 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import axios from 'axios';
 import { useToastr } from '../../Components/toster';
 import PatientModel from "../../Components/PatientModel.vue";
 import PatientListItem from './PatientListItem.vue';
-import { useAuthStore } from '../../stores/auth'; // Import your Pinia store
+import { useAuthStore } from '../../stores/auth';
 
 const patients = ref([]);
 const loading = ref(false);
@@ -13,11 +13,11 @@ const toaster = useToastr();
 
 // Use the Pinia store
 const authStore = useAuthStore();
-const role = ref(''); // Initialize with empty string, will be updated by Pinia
 
-// Changed from pagination to paginationData for clarity
+// Use computed instead of ref for role to prevent reactivity issues
+const role = computed(() => authStore.user?.role || '');
+
 const paginationData = ref({});
-
 const selectedPatient = ref({});
 const searchQuery = ref('');
 const isModalOpen = ref(false);
@@ -27,10 +27,9 @@ const getPatients = async (page = 1) => {
         loading.value = true;
         const response = await axios.get(`/api/patients?page=${page}`);
 
-        // Store the entire response data
         if (response.data.data) {
             patients.value = response.data.data;
-            paginationData.value = response.data.meta; // Store the complete pagination object
+            paginationData.value = response.data.meta;
         } else {
             patients.value = response.data;
         }
@@ -57,13 +56,16 @@ const refreshPatients = async () => {
     await getPatients();
 };
 
-onMounted(async () => { // Make onMounted async
+onMounted(async () => {
+    // Initialize auth store first
+    if (!authStore.user) {
+        await authStore.getUser();
+    }
+    // Then get patients
     await getPatients();
-    // Fetch user details including role using the Pinia store
-    await authStore.getUser();
-    role.value = authStore.user.role; // Access the role from the store's user ref
 });
 </script>
+
 
 <template>
     <div class="appointment-page">

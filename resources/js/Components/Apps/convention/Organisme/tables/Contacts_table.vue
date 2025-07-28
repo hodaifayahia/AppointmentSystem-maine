@@ -39,6 +39,9 @@ const filterOptions = ref([
   { label: "By ID", value: "id" },
   { label: "By Job Function", value: "role" },
   { label: "By Phone", value: "phone" },
+  {label:'start_date', value: 'start_date'},
+  { label: "By End Date", value: "end_date" },
+  { label: "By Company ID", value: "organisme_id" },
   { label: "By Email", value: "email" }
 ]);
 

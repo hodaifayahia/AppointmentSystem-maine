@@ -1,5 +1,6 @@
 <script setup>
 import { defineProps } from 'vue';
+import MultiSelect from 'primevue/multiselect'; // Import PrimeVue MultiSelect
 
 const props = defineProps({
     form: {
@@ -24,7 +25,6 @@ const props = defineProps({
             <p class="section-description">Configure timing, resources, and patient requirements</p>
         </div>
 
-        <!-- Timing & Resources Card -->
         <div class="form-card">
             <div class="card-header">
                 <div class="section-info">
@@ -62,7 +62,6 @@ const props = defineProps({
             </div>
         </div>
 
-        <!-- Hospitalization Card -->
         <div class="form-card">
             <div class="card-header">
                 <div class="section-info">
@@ -97,7 +96,6 @@ const props = defineProps({
             </div>
         </div>
 
-        <!-- Dependencies Card -->
         <div class="form-card">
             <div class="card-header">
                 <div class="section-info">
@@ -109,20 +107,21 @@ const props = defineProps({
                 <div class="form-group w-full">
                     <label class="form-label">Required Prestations (Informational Only)</label>
                     <div class="select-container">
-                        <i class="fas fa-list-ul select-icon"></i>
-                        <select v-model="form.required_prestations_info" multiple class="form-select multi-select with-icon">
-                            <option v-for="prestation in formOptions.available_prestations" :key="prestation.id"
-                                :value="prestation.id">
-                                {{ prestation.name }}
-                            </option>
-                        </select>
+                        <MultiSelect
+                            v-model="form.required_prestations_info"
+                            :options="formOptions.available_prestations"
+                            optionLabel="name"
+                            optionValue="id"
+                            placeholder="Select Prestations"
+                            display="chip"
+                            class="primevue-multiselect"
+                        />
                     </div>
                     <small class="form-help">Link other prestations typically required before this one</small>
                 </div>
             </div>
         </div>
 
-        <!-- Patient Instructions Card -->
         <div class="form-card">
             <div class="card-header">
                 <div class="section-info">
@@ -143,43 +142,47 @@ const props = defineProps({
             </div>
         </div>
 
-        <!-- Summary Card -->
-        <div class="summary-card">
-            <div class="summary-header">
-                <i class="fas fa-clipboard-check summary-icon"></i>
-                <span class="summary-title">Configuration Summary</span>
-            </div>
-            <div class="summary-content">
-                <div class="summary-grid">
-                    <div class="summary-item">
-                        <span class="summary-label">Duration:</span>
-                        <span class="summary-value">{{ form.default_duration_minutes || 'Not set' }} minutes</span>
-                    </div>
-                    <div class="summary-item">
-                        <span class="summary-label">Modality:</span>
-                        <span class="summary-value">
-                            {{ formOptions.modality_types?.find(m => m.id === form.required_modality_type_id)?.name || 'None required' }}
-                        </span>
-                    </div>
-                    <div class="summary-item">
-                        <span class="summary-label">Hospitalization:</span>
-                        <span class="summary-value">
-                            {{ form.requires_hospitalization ? `Required (${form.default_hosp_nights || 0} nights)` : 'Not required' }}
-                        </span>
-                    </div>
-                    <div class="summary-item">
-                        <span class="summary-label">Dependencies:</span>
-                        <span class="summary-value">
-                            {{ form.required_prestations_info?.length || 0 }} linked prestation(s)
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
+    
     </div>
 </template>
 
 <style scoped>
+/* Your existing styles */
+
+/* Add some basic styling for PrimeVue MultiSelect to fit your theme */
+.primevue-multiselect {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #374151;
+    background-color: #fff;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.primevue-multiselect:focus-within {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+    outline: none;
+}
+
+/* Adjust padding for the icon in the select-container if needed */
+.select-container .p-multiselect {
+    padding-left: 2.75rem; /* Adjust this to make space for the icon */
+}
+
+/* You might need to adjust the icon's position for PrimeVue's structure */
+.select-container .select-icon {
+    top: 50%;
+    transform: translateY(-50%);
+    left: 0.875rem;
+    z-index: 2; /* Ensure icon is above the multiselect */
+}
+
+
 .tab-content {
     max-width: 900px;
     margin: 0 auto;
@@ -285,7 +288,6 @@ const props = defineProps({
 .form-select.with-icon {
     padding-left: 2.75rem;
     width: 100%;
-;
 }
 
 .textarea-container {
@@ -393,25 +395,25 @@ const props = defineProps({
     .tab-content {
         padding: 1rem;
     }
-    
+
     .card-header {
         padding: 1rem;
     }
-    
+
     .card-content {
         padding: 1rem;
     }
-    
+
     .summary-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .summary-item {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.25rem;
     }
-    
+
     .summary-value {
         text-align: left;
     }

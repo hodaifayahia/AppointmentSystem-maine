@@ -14,6 +14,14 @@ const props = defineProps({
   }
   
 });
+const formatDate = (date) => {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('fr-FR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+};
 
 const copyToClipboard = (text) => {
   navigator.clipboard.writeText(text);
@@ -64,7 +72,7 @@ const copyToClipboard = (text) => {
               </div>
               <div class="flex-grow-1 ml-2">
                 <p class="text-muted small mb-1">Start Date</p>
-                <p class="text-gray-800 font-weight-medium mb-0">{{ contract.start_date }}</p>
+                <p class="text-gray-800 font-weight-medium mb-0">{{ formatDate(contract.start_date) || 'No start date' }}</p>
               </div>
             </div>
 
@@ -74,7 +82,7 @@ const copyToClipboard = (text) => {
               </div>
               <div class="flex-grow-1 ml-2">
                 <p class="text-muted small mb-1">End Date</p>
-                <p class="text-gray-800 font-weight-medium mb-0">{{ contract.end_date || 'No end date' }}</p>
+                <p class="text-gray-800 font-weight-medium mb-0">{{formatDate(contract.end_date)|| 'No end date' }}</p>
               </div>
             </div>
           </div>

@@ -8,9 +8,15 @@ const convenationRoutes = [
         children: [
             // Convention Management
             {
+                path: '', // Empty path makes this the default child
+                name: 'convention.default',
+                component: () => import('../Pages/Apps/convention/Dashborad/Dashborad.vue'),
+                meta: { title: 'Corporate Partners' }
+            },
+            {
                 path: 'Dashborad',
                 name: 'convention.Dashborad',
-                component: () => import('../Pages/Apps/convention/Dashborad/Dashborad.vue'), // Placeholder
+                component: () => import('../Pages/Apps/convention/Dashborad/Dashborad.vue'),
                 meta: { title: 'Corporate Partners' }
             },
             {

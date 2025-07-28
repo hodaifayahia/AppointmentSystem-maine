@@ -29,6 +29,11 @@ class PrestationPricingRequest extends FormRequest
                 'integer',
                 'exists:prestations,id' // This validates that the prestation exists
             ],
+            'subname' => [
+                'nullable',
+                'string',
+                'max:255' // Adjust max length as needed
+            ],
             'prix' => [
                 'required',
                 'numeric',

@@ -20,7 +20,7 @@ class StoreConventionRequest extends FormRequest
             'is_general' => 'nullable|boolean',
             'status' => 'required|string|in:active,inactive,pending', // Adjust values as needed
             'start_date' => 'required|date',
-            'end_date' => 'required|date|after:start_date',
+            'end_date' => 'required|date|after:start_date|after:today', // Ensure end date is after start date and not in the past
             'min_price' => 'nullable|numeric|min:0',
             'max_price' => 'nullable|numeric|min:0|gte:min_price',
             'discount_percentage' => 'nullable|numeric|min:0|max:100',

@@ -45,7 +45,7 @@ const formatDate = (date) => {
 </script>
 
 <template>
-    <nav class=" main-header  navbar navbar-expand premium-navbar ">
+    <nav class="main-header navbar navbar-expand premium-navbar">
         <!-- Left navbar links -->
         <ul class="navbar-nav">
             <li class="nav-item">
@@ -149,7 +149,7 @@ const formatDate = (date) => {
 <style scoped>
 /* Premium Navbar */
 .premium-navbar {
-    background: linear-gradient(135deg, #5271fa 0%, #2d72f1 100%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
     box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
@@ -159,8 +159,6 @@ const formatDate = (date) => {
     left: 0;
     right: 0;
     z-index: 1030;
-    margin-bottom: 1rem; /* or use 16px or any other value you prefer */
-
 }
 
 /* Sidebar Toggle */
@@ -303,7 +301,6 @@ const formatDate = (date) => {
     position: absolute;
     top: 100%;
     right: 0;
-    margin-left: -200px;
     min-width: 280px;
     background: white;
     border-radius: 12px;
@@ -354,7 +351,7 @@ const formatDate = (date) => {
 .dropdown-divider {
     height: 1px;
     background: #e9ecef;
-   
+    margin: 0;
 }
 
 .dropdown-item {

@@ -18,9 +18,11 @@ class Prestation extends Model
         'billing_code',
         'description',
         'service_id',
+
         'specialization_id',
         'type', // <-- Missing in your provided fillable
         'public_price',
+        'convenience_prix',
         'vat_rate',
         'night_tariff', // Corrected from 'Tarif_de_nuit' in your validation
         'consumables_cost',

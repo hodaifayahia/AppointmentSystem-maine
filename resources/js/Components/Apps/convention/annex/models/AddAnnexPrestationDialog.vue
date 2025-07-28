@@ -1,6 +1,5 @@
-
 <script setup>
-import { ref, watch, defineProps, defineEmits } from "vue";
+import { ref, watch, defineProps, defineEmits, onMounted } from "vue";
 import Dialog from "primevue/dialog";
 import Dropdown from "primevue/dropdown";
 import InputNumber from "primevue/inputnumber";
@@ -11,19 +10,36 @@ import { usePrestationPricingLogic } from "../../usePrestationPricingLogic"; // 
 
 const props = defineProps({
   visible: Boolean,
-  annexId: String, // Changed from avenantId
+  annexId: String,
   contractData: Object,
+  defaultServiceId: {
+    type: String,
+    required: true
+  },
+  defaultServiceName: {
+    type: String,
+    required: true
+  },
 });
 
 const emit = defineEmits(["update:visible", "prestationAdded"]);
 
 const toast = useToast();
 
-const availableServices = ref([]);
-const selectedServiceCategory = ref(null);
-
 const availablePrestations = ref([]);
 const selectedPrestationToAdd = ref(null);
+
+// Log props when they change
+watch(() => props, (newProps) => {
+  console.log('Props updated:', {
+    defaultServiceId: newProps.defaultServiceId,
+    defaultServiceName: newProps.defaultServiceName,
+    annexId: newProps.annexId
+  });
+}, { deep: true, immediate: true });
+
+// Set the service category to the default value
+const selectedServiceCategory = ref(props.defaultServiceId);
 
 // Use the pricing logic composable
 const {
@@ -45,7 +61,10 @@ watch(
     dialogVisible.value = newVal;
     if (newVal) {
       resetForm();
-      fetchAvailableServices();
+      // Ensure default service category is set before fetching prestations
+      // This is important if the dialog is opened multiple times
+      selectedServiceCategory.value = props.defaultServiceId;
+      fetchPrestationsByServiceAndAnnex();
     }
   }
 );
@@ -54,7 +73,7 @@ watch(dialogVisible, (newVal) => {
 });
 
 const resetForm = () => {
-  selectedServiceCategory.value = null;
+  selectedServiceCategory.value = props.defaultServiceId;
   selectedPrestationToAdd.value = null;
   availablePrestations.value = [];
   prix.value = 0;
@@ -63,40 +82,37 @@ const resetForm = () => {
   patientPercentage.value = 0;
 };
 
-const fetchAvailableServices = async () => {
-  try {
-    const response = await axios.get(`/api/services`);
-    availableServices.value = response.data.data.map((s) => ({
-      label: s.name,
-      value: s.id,
-    }));
-  } catch (error) {
-    console.error("Error fetching available services:", error);
-    toast.add({
-      severity: "error",
-      summary: "Error",
-      detail: "Failed to load service categories.",
-      life: 3000,
-    });
-  }
-};
-
-const fetchPrestationsByServiceAndAnnex = async () => { // Changed function name
+const fetchPrestationsByServiceAndAnnex = async () => {
   if (!selectedServiceCategory.value) {
     availablePrestations.value = [];
     return;
   }
   try {
-    // Adjusted API endpoint for annex
+    console.log("Fetching available prestations for service:", selectedServiceCategory.value, "and Annex ID:", props.annexId);
+
     const response = await axios.get(
-      `/api/prestations/available-for-service-annex/${selectedServiceCategory.value}/${props.annexId}` // Changed endpoint
+      `/api/prestations/available-for-service-annex/${selectedServiceCategory.value}/${props.annexId}`
     );
-    availablePrestations.value = response.data.data.map((p) => ({
+
+    const prestationsData = response.data.data;
+    console.log("Prestations from backend for dropdown:", prestationsData);
+
+    availablePrestations.value = prestationsData.map((p) => ({
       label: `${p.name} (${p.formatted_id || p.internal_code})`,
       value: p.id,
+      public_price: p.public_price // Make sure public_price is included in the options
     }));
+
+    if (availablePrestations.value.length === 0) {
+      toast.add({
+        severity: "info",
+        summary: "Info",
+        detail: "All prestations for this service have already been added to this annex.",
+        life: 3000,
+      });
+    }
   } catch (error) {
-    console.error("Error fetching prestations for selected service and annex:", error); // Changed message
+    console.error("Error fetching available prestations:", error);
     toast.add({
       severity: "error",
       summary: "Error",
@@ -109,11 +125,34 @@ const fetchPrestationsByServiceAndAnnex = async () => { // Changed function name
 const onServiceCategorySelect = async () => {
   selectedPrestationToAdd.value = null;
   prix.value = 0; // Reset price when service category changes
-  await fetchPrestationsByServiceAndAnnex(); // Changed function call
+  company_price.value = 0; // Also reset calculated parts
+  patient_price.value = 0;
+  await fetchPrestationsByServiceAndAnnex();
 };
 
 const onPrestationSelect = (event) => {
   selectedPrestationToAdd.value = event.value; // Store the ID directly
+
+  // Find the selected prestation in the availablePrestations array
+  const selectedPrestation = availablePrestations.value.find(
+    (p) => p.value === selectedPrestationToAdd.value
+  );
+
+  if (selectedPrestation && selectedPrestation.public_price !== undefined) {
+    prix.value = selectedPrestation.public_price; // Set global price
+    calculatePartsFromGlobal(); // Trigger calculation for company and patient parts
+  } else {
+    // If public_price is not found or is undefined, reset prices
+    prix.value = 0;
+    company_price.value = 0;
+    patient_price.value = 0;
+    toast.add({
+        severity: "warn",
+        summary: "Warning",
+        detail: "Public price not found for the selected prestation.",
+        life: 3000,
+    });
+  }
 };
 
 const savePrestationPricing = async () => {
@@ -147,10 +186,11 @@ const savePrestationPricing = async () => {
 
   try {
     const payload = {
-      annex_id: props.annexId, // Changed from avenant_id
+      annex_id: props.annexId,
       prestation_id: selectedPrestationToAdd.value,
       prix: parseFloat(prix.value || 0),
-      // company_price and patient_price will be calculated by backend
+      company_price: parseFloat(company_price.value || 0),
+      patient_price: parseFloat(patient_price.value || 0)
     };
 
     await axios.post(`/api/prestation-pricings`, payload);
@@ -168,6 +208,14 @@ const savePrestationPricing = async () => {
     toast.add({ severity: "error", summary: "Error", detail: errorMessage, life: 5000 });
   }
 };
+
+// onMounted hook to ensure initial fetch if dialog is visible on mount
+onMounted(() => {
+  if (props.visible && props.defaultServiceId) {
+    selectedServiceCategory.value = props.defaultServiceId;
+    fetchPrestationsByServiceAndAnnex();
+  }
+});
 </script>
 
 <template>
@@ -175,21 +223,14 @@ const savePrestationPricing = async () => {
     v-model:visible="dialogVisible"
     header="Add New Prestation Pricing"
     modal
-    :style="{ width: '30rem' }"
+    :style="{ width: '45rem' }"
   >
     <div class="p-fluid flex flex-col gap-3">
       <div>
-        <label for="serviceCategory" class="font-bold">Service Category:</label>
-        <Dropdown
-          id="serviceCategory"
-          v-model="selectedServiceCategory"
-          :options="availableServices"
-          optionLabel="label"
-          optionValue="value"
-          placeholder="Select Service Category"
-          class="w-full"
-          @change="onServiceCategorySelect"
-        />
+        <label class="font-bold">Service Category:</label>
+        <div class="p-2 border rounded bg-gray-100">
+          {{ props.defaultServiceName }}
+        </div>
       </div>
 
       <div>
@@ -206,7 +247,12 @@ const savePrestationPricing = async () => {
           @change="onPrestationSelect"
         >
           <template #empty>
-            No prestations available for this category or already priced for this annex.
+            <div class="text-gray-500 p-2">
+              <i class="pi pi-info-circle mr-2"></i>
+              {{ selectedServiceCategory
+                ? "All prestations for this service have already been added to this annex."
+                : "Please select a service category first." }}
+            </div>
           </template>
         </Dropdown>
       </div>

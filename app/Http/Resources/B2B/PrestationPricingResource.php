@@ -58,6 +58,7 @@ class PrestationPricingResource extends JsonResource
             'id'=> $this->id,
             'prestation_id' => $this->prestation_id,
             'prestation_name' => $prestationName,
+            'subname' => $this->subname,
             'service' => $this->prestation->service->name,
 
             'organisme_abrv' => $displayOrganismeAbrv, // Now uses the guaranteed non-null value

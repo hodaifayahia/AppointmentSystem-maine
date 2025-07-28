@@ -28,8 +28,11 @@ class PrestationController extends Controller
      */
     public function index(Request $request)
     {
+       
         try {
+
             $prestations = $this->prestationService->getPrestations($request);
+            //  dd($prestations);
             return PrestationResource::collection($prestations);
         } catch (\Exception $e) {
             return response()->json([

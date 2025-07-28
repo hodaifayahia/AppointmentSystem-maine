@@ -8,6 +8,7 @@ import PrestationBasicInfo from '../../../../Components/Apps/Configuration/Prest
 import PrestationPricingPayment from '../../../../Components/Apps/Configuration/PrestationConfig/PrestationModel/PrestationPricingPayment.vue';
 import PrestationFeeDistribution from '../../../../Components/Apps/Configuration/PrestationConfig/PrestationModel/PrestationFeeDistribution.vue';
 import PrestationOperationalClinical from '../../../../Components/Apps/Configuration/PrestationConfig/PrestationModel/PrestationOperationalClinical.vue';
+import PrestationSummary from './PrestationModel/PrestationSummary.vue';
 import ModalFooter from '../../../../Components/Apps/Configuration/PrestationConfig/PrestationModel/ModalFooter.vue'; // Reusable footer
 
 const props = defineProps({
@@ -36,6 +37,7 @@ const form = ref({ // Use ref() for the form object itself
     type: 'Médical', // Default for new
     is_active: true,
     public_price: 0, // Default to 0 for new
+    convenience_prix: 0, // Default to 0 for new
     vat_rate: null, // Null for new
     night_tariff: null, // Null for new
     night_tariff_active: false, // New toggle for night tariff
@@ -75,6 +77,7 @@ const resetForm = () => {
         type: 'Médical', // Default for new
         is_active: true,
         public_price: 0,
+        convenience_prix: 0,
         vat_rate: null,
         night_tariff_active: false,
         night_tariff: null,
@@ -131,7 +134,7 @@ const formOptions = ref({
 watch(() => props.showModal, async (newVal) => { // Make the watcher async
     if (newVal) {
         resetForm(); // Reset form to clear previous state
-        
+
         // Ensure options are fetched BEFORE populating the form
         await getFormOptions(); // Await the API call for options
 
@@ -152,6 +155,7 @@ const tabComponents = {
     pricing: PrestationPricingPayment,
     fees: PrestationFeeDistribution,
     medical: PrestationOperationalClinical,
+    summary: PrestationSummary, // New summary tab
     // 'settings' is kept as a simple div for now, but could be its own component too
 };
 
@@ -166,7 +170,7 @@ const sharedProps = computed(() => ({
     errors: errors.value,
     formOptions: formOptions.value,
     // Add the filtered specializations here
-    filteredSpecializations: filteredSpecializations.value, 
+    filteredSpecializations: filteredSpecializations.value,
 }));
 
 // Computed
@@ -180,6 +184,7 @@ const modalTitle = computed(() => {
 
 const estimatedTotal = computed(() => {
     const price = parseFloat(form.value.public_price) || 0;
+    const convenience_prix = parseFloat(form.value.convenience_prix) || 0;
     const vatRate = parseFloat(form.value.vat_rate) || 0;
     const consumables = parseFloat(form.value.consumables_cost) || 0;
     const nightTariff = form.value.night_tariff_active ? (parseFloat(form.value.night_tariff) || 0) : 0;
@@ -250,10 +255,10 @@ watch([
         if (totalPercentageShares > 100) {
             errors.value.fee_distribution_shares = 'Total percentage shares exceed 100%. Please adjust.';
         } else if (totalPercentageShares !== 100 &&
-                    form.value.primary_doctor_is_percentage &&
-                    form.value.assistant_doctor_is_percentage &&
-                    form.value.technician_is_percentage &&
-                    form.value.clinic_is_percentage) {
+            form.value.primary_doctor_is_percentage &&
+            form.value.assistant_doctor_is_percentage &&
+            form.value.technician_is_percentage &&
+            form.value.clinic_is_percentage) {
             errors.value.fee_distribution_shares = `Total percentage shares must sum to 100%. Current total: ${totalPercentageShares}%`;
         } else {
             // Clear error if it's no longer problematic
@@ -272,7 +277,7 @@ const populateForm = () => {
         // Assign the ID for edit mode
         form.value.id = props.prestationData.id;
         console.log('Prestation Data:', props.prestationData);
-        
+
 
         // Use a loop to assign most fields directly
         for (const key in form.value) {
@@ -285,13 +290,13 @@ const populateForm = () => {
                 } else if (key === 'required_modality_type_id' && props.prestationData.modality_type) {
                     form.value.required_modality_type_id = props.prestationData.modality_type.id;
                 }
-                 // Handle booleans coming from backend (e.g., 0/1 or true/false)
+                // Handle booleans coming from backend (e.g., 0/1 or true/false)
                 else if (typeof form.value[key] === 'boolean' && props.prestationData[key] !== undefined) {
                     form.value[key] = Boolean(props.prestationData[key]);
                 }
                 // Handle arrays (e.g., from JSON casts)
                 else if (Array.isArray(form.value[key]) && props.prestationData[key] !== undefined) {
-                     form.value[key] = Array.isArray(props.prestationData[key]) ? props.prestationData[key] : [];
+                    form.value[key] = Array.isArray(props.prestationData[key]) ? props.prestationData[key] : [];
                 }
                 // All other direct assignments
                 else {
@@ -378,7 +383,7 @@ const getFormOptions = async () => {
     try {
         formOptions.value.services = await prestationApiService.getServices();
         // Fetch ALL specializations initially
-        formOptions.value.specializations = await prestationApiService.getSpecializations(); 
+        formOptions.value.specializations = await prestationApiService.getSpecializations();
         formOptions.value.modality_types = await prestationApiService.getModalityTypes();
     } catch (err) {
         console.error('Error fetching form options:', err);
@@ -432,9 +437,9 @@ const validateForm = () => {
     // Fee distribution validation logic - specific to percentage model
     let totalPercentageShares = 0;
     const allSharesArePercentages = form.value.primary_doctor_is_percentage &&
-                                     form.value.assistant_doctor_is_percentage &&
-                                     form.value.technician_is_percentage &&
-                                     form.value.clinic_is_percentage;
+        form.value.assistant_doctor_is_percentage &&
+        form.value.technician_is_percentage &&
+        form.value.clinic_is_percentage;
 
     if (form.value.fee_distribution_model === 'percentage') {
         if (form.value.primary_doctor_is_percentage) totalPercentageShares += (parseFloat(form.value.primary_doctor_share) || 0);
@@ -445,9 +450,9 @@ const validateForm = () => {
         if (allSharesArePercentages && totalPercentageShares !== 100) {
             errors.value.fee_distribution_shares = `Fee distribution percentages must sum to 100%. Current total: ${totalPercentageShares}%`;
         } else if (!allSharesArePercentages && totalPercentageShares === 0) {
-             // If not all are percentages, but the sum of percentage parts is 0,
-             // it might indicate an incomplete setup if fixed values aren't set
-             // This logic might need refinement based on exact business rules for mixed models
+            // If not all are percentages, but the sum of percentage parts is 0,
+            // it might indicate an incomplete setup if fixed values aren't set
+            // This logic might need refinement based on exact business rules for mixed models
         }
     }
 
@@ -489,7 +494,7 @@ const submitForm = async () => {
         sharesToFormat.forEach(role => {
             const shareField = `${role}_share`;
             // FIX: Corrected typo here from `_is_is_percentage` to `_is_percentage`
-            const isPercentageField = `${role}_is_percentage`; 
+            const isPercentageField = `${role}_is_percentage`;
 
             if (dataToSubmit[isPercentageField]) {
                 // If it's a percentage, append '%'
@@ -502,7 +507,7 @@ const submitForm = async () => {
                 // If it's a fixed amount, ensure it's a string (as per Laravel validation)
                 if (dataToSubmit[shareField] !== null && dataToSubmit[shareField] !== '') {
                     // CRUCIAL FIX: Convert the number to a string here
-                    dataToSubmit[shareField] = String(parseFloat(dataToSubmit[shareField])); 
+                    dataToSubmit[shareField] = String(parseFloat(dataToSubmit[shareField]));
                 } else {
                     dataToSubmit[shareField] = null; // Send null if empty and not percentage
                 }
@@ -527,7 +532,7 @@ const submitForm = async () => {
         console.error('Error saving prestation:', err);
         if (err.response?.data?.errors) {
             errors.value = err.response.data.errors;
-             // Add a toastr for general form errors if specific ones are present
+            // Add a toastr for general form errors if specific ones are present
             toaster.error('Please check the form for errors.');
         } else {
             toaster.error(err.response?.data?.message || 'Failed to save prestation.');
@@ -604,9 +609,13 @@ const filteredSpecializations = computed(() => {
                         <i class="fas fa-stethoscope"></i>
                         Operational & Clinical
                     </button>
-                    <button @click="switchTab('settings')"
-                        :class="['tab-button', { active: activeTab === 'settings' }]" aria-controls="tab-settings"
-                        :aria-selected="activeTab === 'settings'">
+                    <button @click="switchTab('summary')" :class="['tab-button', { active: activeTab === 'summary' }]"
+                        aria-controls="tab-summary" :aria-selected="activeTab === 'summary'">
+                        <i class="fas fa-clipboard-list"></i>
+                        Summary
+                    </button>
+                    <button @click="switchTab('settings')" :class="['tab-button', { active: activeTab === 'settings' }]"
+                        aria-controls="tab-settings" :aria-selected="activeTab === 'settings'">
                         <i class="fas fa-cog"></i>
                         Settings & Other
                     </button>
@@ -615,11 +624,8 @@ const filteredSpecializations = computed(() => {
                 <div class="modal-body">
                     <form @submit.prevent="submitForm">
                         <div v-if="currentTabComponent" :id="`tab-${activeTab}`" role="tabpanel">
-                            <component
-                                :is="currentTabComponent"
-                                v-bind="sharedProps"
-                                :estimatedTotal="estimatedTotal"
-                            />
+                            <component :is="currentTabComponent" v-bind="sharedProps"
+                                :estimatedTotal="estimatedTotal" />
                         </div>
 
                         <div v-show="activeTab === 'settings'" class="tab-content" id="tab-settings" role="tabpanel">
@@ -666,11 +672,14 @@ const filteredSpecializations = computed(() => {
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     width: 100%;
-    max-width: 1000px; /* Increased max-width for more content */
-    max-height: 90vh; /* Adjust as needed */
+    max-width: 1000px;
+    /* Increased max-width for more content */
+    max-height: 90vh;
+    /* Adjust as needed */
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Ensures content inside doesn't spill */
+    overflow: hidden;
+    /* Ensures content inside doesn't spill */
 }
 
 .modal-header {
@@ -705,8 +714,8 @@ const filteredSpecializations = computed(() => {
     display: flex;
     border-bottom: 1px solid #eee;
     background-color: #f5f5f5;
-   max-height: 70px;
-   width: 100%;
+    max-height: 70px;
+    width: 100%;
 }
 
 .tab-button {
@@ -720,7 +729,8 @@ const filteredSpecializations = computed(() => {
     display: flex;
     align-items: center;
     gap: 8px;
-    white-space: nowrap; /* Prevent wrapping */
+    white-space: nowrap;
+    /* Prevent wrapping */
 }
 
 .tab-button:hover:not(.active) {
@@ -737,12 +747,15 @@ const filteredSpecializations = computed(() => {
 
 .modal-body {
     padding: 25px;
-    flex-grow: 1; /* Allows body to take up available space */
-    overflow-y: auto; /* Scroll for content inside the body */
+    flex-grow: 1;
+    /* Allows body to take up available space */
+    overflow-y: auto;
+    /* Scroll for content inside the body */
 }
 
 .modal-body form {
-    height: 100%; /* Ensure form takes full height for its children */
+    height: 100%;
+    /* Ensure form takes full height for its children */
 }
 
 .tab-content {
@@ -757,7 +770,8 @@ const filteredSpecializations = computed(() => {
 
 .form-group {
     margin-bottom: 15px;
-    position: relative; /* For error message positioning */
+    position: relative;
+    /* For error message positioning */
 }
 
 .form-group label {
@@ -777,7 +791,8 @@ const filteredSpecializations = computed(() => {
     font-size: 1rem;
     color: #555;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    box-sizing: border-box; /* Include padding in element's total width and height */
+    box-sizing: border-box;
+    /* Include padding in element's total width and height */
 }
 
 .form-input:focus,
@@ -789,7 +804,8 @@ const filteredSpecializations = computed(() => {
 }
 
 .input-error {
-    border-color: #dc3545; /* Red border for errors */
+    border-color: #dc3545;
+    /* Red border for errors */
 }
 
 .error-message {
@@ -815,11 +831,13 @@ const filteredSpecializations = computed(() => {
     display: flex;
     align-items: center;
     cursor: pointer;
-    user-select: none; /* Prevent text selection */
+    user-select: none;
+    /* Prevent text selection */
 }
 
 .checkbox-input {
-    display: none; /* Hide default checkbox */
+    display: none;
+    /* Hide default checkbox */
 }
 
 .checkbox-custom {
@@ -830,15 +848,16 @@ const filteredSpecializations = computed(() => {
     margin-right: 10px;
     position: relative;
     transition: all 0.2s ease;
-    flex-shrink: 0; /* Prevent shrinking */
+    flex-shrink: 0;
+    /* Prevent shrinking */
 }
 
-.checkbox-input:checked + .checkbox-custom {
+.checkbox-input:checked+.checkbox-custom {
     background-color: #007bff;
     border-color: #007bff;
 }
 
-.checkbox-input:checked + .checkbox-custom::after {
+.checkbox-input:checked+.checkbox-custom::after {
     content: '';
     position: absolute;
     top: 2px;
@@ -850,7 +869,7 @@ const filteredSpecializations = computed(() => {
     transform: rotate(45deg);
 }
 
-.checkbox-input:focus + .checkbox-custom {
+.checkbox-input:focus+.checkbox-custom {
     box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
 }
 
@@ -860,7 +879,8 @@ const filteredSpecializations = computed(() => {
 }
 
 .full-width {
-    grid-column: 1 / -1; /* Spans all columns in a grid */
+    grid-column: 1 / -1;
+    /* Spans all columns in a grid */
 }
 
 /* Responsive adjustments */
@@ -888,7 +908,8 @@ const filteredSpecializations = computed(() => {
     }
 
     .form-grid {
-        grid-template-columns: 1fr; /* Stack columns on small screens */
+        grid-template-columns: 1fr;
+        /* Stack columns on small screens */
     }
 }
 </style>

@@ -3,6 +3,8 @@ import { ref, watch, defineProps, defineEmits } from "vue";
 import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
 import Button from "primevue/button";
+import InputText from "primevue/inputtext";
+import Checkbox from "primevue/checkbox";
 import { useToast } from "primevue/usetoast";
 import { useConfirm } from "primevue/useconfirm";
 import axios from "axios";
@@ -21,6 +23,9 @@ const confirm = useConfirm();
 
 // Internal state for the dialog visibility
 const dialogVisible = ref(props.visible);
+const hasSubname = ref(false);
+const subname = ref("");
+
 watch(
   () => props.visible,
   (newVal) => {
@@ -46,8 +51,13 @@ watch(
         formatted_id: newVal.formatted_id,
         id: newVal.id, // PrestationPricing record ID
       };
+      // Initialize subname state
+      hasSubname.value = !!newVal.pricing?.subname;
+      subname.value = newVal.pricing?.subname || "";
     } else {
       currentPrestation.value = {};
+      hasSubname.value = false;
+      subname.value = "";
     }
   },
   { immediate: true, deep: true }
@@ -94,80 +104,27 @@ watch(
   (newValue) => {
     if (newValue === true) {
       toast.add({
-        severity: "error",
-        summary: "CRITICAL ERROR",
-        detail: `🚨 Company share (${(company_price.value || 0).toFixed(2)} DZD) CANNOT exceed maximum price of ${
+        severity: "warning", // Changed from error to warning
+        summary: "Warning",
+        detail: `⚠️ Company share (${(company_price.value || 0).toFixed(2)} DZD) exceeds recommended maximum of ${
           props.contractData?.max_price?.toFixed(2) || "N/A"
         } DZD`,
-        life: 10000,
-      });
-
-      confirm.require({
-        message: `CRITICAL VALIDATION ERROR\n\nCompany share (${(
-          company_price.value || 0
-        ).toFixed(
-          2
-        )} DZD) exceeds the maximum allowed price of ${
-          props.contractData?.max_price?.toFixed(2) || "N/A"
-        } DZD.\n\nThis is not allowed and you cannot save until this is fixed.`,
-        header: "🚨 COMPANY SHARE EXCEEDS MAXIMUM PRICE",
-        icon: "pi pi-exclamation-triangle",
-        rejectLabel: "I Understand",
-        acceptLabel: "Auto Fix",
-        accept: () => {
-          if (props.contractData?.max_price) {
-            company_price.value = parseFloat(props.contractData.max_price);
-            calculatePatientFromCompany();
-          }
-        },
-        reject: () => {
-          toast.add({
-            severity: "warn",
-            summary: "Action Required",
-            detail: "Please reduce the company share or increase the global price",
-            life: 5000,
-          });
-        },
+        life: 5000,
       });
     }
   }
 );
 
 const updatePrestationPricing = async () => {
-  // STRICT CHECK: Absolutely prevent saving if company exceeds max
   if (priceValidation.value.companyExceedsMax) {
-    toast.add({
-      severity: "error",
-      summary: "SAVE BLOCKED",
-      detail:
-        "🚨 Cannot save: Company share exceeds maximum price. Please fix this critical error first.",
-      life: 8000,
-    });
-
     confirm.require({
-      message:
-        "SAVE OPERATION BLOCKED\n\nYou cannot save while the company share exceeds the maximum price. Please fix this issue first.",
-      header: "🚨 SAVE BLOCKED",
-      icon: "pi pi-ban",
-      rejectLabel: "OK",
-      acceptLabel: "Auto Fix Now",
-      accept: () => {
-        if (props.contractData?.max_price) {
-          company_price.value = parseFloat(props.contractData.max_price);
-          calculatePatientFromCompany();
-        }
-      },
-    });
-    return; // STOP EXECUTION
-  }
-
-  if (priceValidation.value.patientDiffers) {
-    confirm.require({
-      message: `The patient part differs from the calculated amount (${priceValidation.value.calculatedPatientPart.toFixed(
-        2
-      )} DZD). Are you sure you want to save with this deviation?`,
-      header: "Confirm Patient Part Deviation",
+      message: `Warning: The company share (${(company_price.value || 0).toFixed(2)} DZD) 
+                exceeds the recommended maximum of ${props.contractData?.max_price?.toFixed(2) || "N/A"} DZD. 
+                Do you want to proceed?`,
+      header: "⚠️ Confirm High Company Share",
       icon: "pi pi-exclamation-triangle",
+      acceptLabel: "Yes, Save Anyway",
+      rejectLabel: "Cancel",
       accept: () => {
         performUpdate();
       },
@@ -175,14 +132,16 @@ const updatePrestationPricing = async () => {
         toast.add({
           severity: "info",
           summary: "Cancelled",
-          detail: "Update cancelled by user.",
+          detail: "Update cancelled",
           life: 3000,
         });
-      },
+      }
     });
-  } else {
-    performUpdate();
+    return;
   }
+
+  // Remove the blocking validation for patient part and directly proceed
+  performUpdate();
 };
 
 const performUpdate = async () => {
@@ -193,6 +152,7 @@ const performUpdate = async () => {
       patient_price: parseFloat(patient_price.value || 0),
       prestationpringid: currentPrestation.value.id, // Ensure this sends the PrestationPricing ID
       prestation_id: currentPrestation.value.prestation_id, // Ensure this sends the related prestation ID
+      subname: hasSubname.value ? subname.value : null, // Only send subname if checkbox is checked
       // annex_id: props.annexId, // Not strictly necessary for PUT if ID is in URL, but harmless.
     };
 
@@ -215,31 +175,37 @@ const performUpdate = async () => {
 </script>
 
 <template>
-  <Dialog
-    v-model:visible="dialogVisible"
-    header="Edit Prestation Pricing"
-    modal
-    :style="{ width: '35rem' }"
-  >
+  <Dialog v-model:visible="dialogVisible" header="Edit Prestation Pricing" modal :style="{ width: '35rem' }">
     <div class="p-fluid flex flex-col gap-3">
+      <!-- Changed error message to warning -->
       <div
         v-if="priceValidation.companyExceedsMax"
-        class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded"
+        class="mb-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded"
       >
         <div class="flex items-center">
           <i class="pi pi-exclamation-triangle mr-2"></i>
-          <strong>🚨 CRITICAL ERROR</strong>
+          <strong>⚠️ Warning</strong>
         </div>
         <p class="mt-1 text-sm">
-          Company share cannot exceed maximum price of
+          Company share exceeds recommended maximum of
           {{ props.contractData?.max_price?.toFixed(2) || "N/A" }} DZD
         </p>
       </div>
 
       <div>
-        <label class="font-bold">Name & Code:</label>
+        <div class="flex items-center justify-between mb-2">
+          <label class="font-bold">Name & Code:</label>
+          <div class="d-flex items-center">
+            <Checkbox v-model="hasSubname" binary class="mr-2" />
+            <label>Add Subname</label>
+          </div>
+        </div>
         <div class="p-2 border rounded bg-gray-100">
           {{ currentPrestation.prestation_name }} ({{ currentPrestation.formatted_id }})
+        </div>
+        <div v-if="hasSubname" class="mt-2">
+          <label class="font-bold">Subname:</label>
+          <InputText v-model="subname" class="w-full" placeholder="Enter subname" />
         </div>
       </div>
 
@@ -272,14 +238,14 @@ const performUpdate = async () => {
             id="companyPartEdit"
             v-model="company_price"
             @update:modelValue="calculatePatientFromCompany"
-            :class="{ 'p-invalid': priceValidation.companyExceedsMax }"
+            :class="{ 'p-warning': priceValidation.companyExceedsMax }"
             mode="decimal"
             :min="0"
             :maxFractionDigits="2"
             class="w-full"
           />
-          <small v-if="priceValidation.companyExceedsMax" class="p-error mt-1">
-            🚨 Max: {{ props.contractData?.max_price?.toFixed(2) || "N/A" }} DZD.
+          <small v-if="priceValidation.companyExceedsMax" class="p-warning-text mt-1">
+            ⚠️ Recommended max: {{ props.contractData?.max_price?.toFixed(2) || "N/A" }} DZD
           </small>
         </div>
 
@@ -289,14 +255,13 @@ const performUpdate = async () => {
             id="patientPartEdit"
             v-model="patient_price"
             @update:modelValue="calculateCompanyFromPatient"
-            :class="{ 'p-invalid': priceValidation.patientDiffers }"
             mode="decimal"
             :min="0"
             :maxFractionDigits="2"
             class="w-full"
           />
-          <small v-if="priceValidation.patientDiffers" class="p-error mt-1">
-            Calculated: {{ priceValidation.calculatedPatientPart.toFixed(2) }} DZD.
+          <small v-if="priceValidation.patientDiffers" class="p-info-text mt-1">
+            💡 Calculated amount: {{ priceValidation.calculatedPatientPart.toFixed(2) }} DZD
           </small>
         </div>
       </div>
@@ -313,8 +278,7 @@ const performUpdate = async () => {
         label="Save"
         icon="pi pi-check"
         @click="updatePrestationPricing"
-        :disabled="priceValidation.companyExceedsMax"
-        :class="{ 'p-button-danger': priceValidation.companyExceedsMax }"
+        :class="{ 'p-button-warning': priceValidation.companyExceedsMax }"
         class="ml-2"
       />
     </template>
@@ -322,6 +286,51 @@ const performUpdate = async () => {
 </template>
 
 <style scoped>
+/* Add these new styles */
+.p-warning {
+  border-color: #f59e0b !important;
+  background-color: #fef3c7 !important;
+}
+
+.p-warning-text {
+  color: #b45309;
+  font-size: 0.875rem;
+}
+.p-info-text {
+  color: #3b82f6;
+  font-size: 0.875rem;
+}
+
+/* Keep your existing styles */
+.p-warning {
+  border-color: #f59e0b !important;
+  background-color: #fef3c7 !important;
+}
+
+.bg-yellow-100 {
+  background-color: #fef3c7;
+}
+
+.border-yellow-400 {
+  border-color: #fbbf24;
+}
+
+.text-yellow-700 {
+  color: #b45309;
+}
+
+.p-button-warning {
+  background-color: #f59e0b !important;
+  border-color: #f59e0b !important;
+  color: white !important;
+}
+
+.p-button-warning:hover {
+  background-color: #d97706 !important;
+  border-color: #d97706 !important;
+}
+
+/* Keep your existing styles */
 .p-invalid {
   border-color: #f56565 !important;
 }

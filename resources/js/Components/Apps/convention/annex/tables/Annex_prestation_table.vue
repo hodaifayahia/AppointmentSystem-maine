@@ -20,6 +20,8 @@ const props = defineProps({
   contractdata: Object,
   avenantpage: String,
   avenantState: String,
+  serviceId: String,
+  serviceName: String,
   annexId: String,
 });
 
@@ -32,6 +34,7 @@ const searchFilter = ref("prestation_name");
 
 const prestations = ref([]); // This will hold the fetched PrestationPricing records
 const selectedPrestations = ref([]); // New: Holds selected prestations for bulk actions
+const currentService = ref(null); // To store the current service info
 
 const filterOptions = ref([
   { label: "By ID", value: "prestation_id" },
@@ -60,6 +63,17 @@ const fetchPrestations = async () => {
     });
     const rawPrestations = response.data.data || response.data;
 
+    if (rawPrestations.length > 0) {
+      // Get the first prestation's service info
+      const firstPrestation = rawPrestations[0];
+      if (firstPrestation.prestation?.service) {
+        currentService.value = {
+          id: firstPrestation.prestation.service.id,
+          name: firstPrestation.prestation.service.name
+        };
+      }
+    }
+
     prestations.value = rawPrestations.map((item) => {
       if (item.pricing && item.pricing.prix > 0) {
         item.patientPercentage = (item.pricing.patient_price / item.pricing.prix) * 100;
@@ -81,15 +95,7 @@ const fetchPrestations = async () => {
 
 // Handlers for AddAnnexPrestationDialog
 const openAddDialog = () => {
-  toast.add({
-    severity: "info",
-    summary: "Info",
-    detail:
-      "Adding new prestations is handled automatically when an annex is created. To add new prestation types to the system, please use the Prestation Management section.",
-    life: 5000,
-  });
-  // If you want to enable the dialog, uncomment the line below:
-  // addDialogVisible.value = true;
+  addDialogVisible.value = true;
 };
 
 const handlePrestationAdded = async () => {
@@ -244,8 +250,8 @@ const showBulkDeleteButton = computed(() => {
 
 <template>
   <div class="w-full p-4">
-    <div class="flex flex-col lg:flex-row justify-between items-center mb-4 gap-2">
-      <div class="relative flex-grow flex items-center gap-2">
+    <div class="d-flex justify-content-between align-items-center items-center mb-4 gap-2">
+      <div class="d-flex gap-2 pl-2 mr-2 flex-grow-1">
         <Dropdown
           v-model="searchFilter"
           :options="filterOptions"
@@ -257,10 +263,10 @@ const showBulkDeleteButton = computed(() => {
         <InputText
           v-model="searchQuery"
           placeholder="Search..."
-          class="w-full p-2 border rounded-lg"
+          class=" p-2 border rounded-lg flex-grow-1 w-full p-inputtext-sm"
         />
       </div>
-      <div class="flex gap-2">
+      <div class="d-flex gap-2">
         <Button
           v-if="showBulkDeleteButton"
           label="Delete Selected"
@@ -268,7 +274,7 @@ const showBulkDeleteButton = computed(() => {
           severity="danger"
           @click="confirmBulkDelete"
         />
-        <!-- <Button
+        <Button
           v-if="
             props.contractState === 'pending' ||
             (props.avenantpage === 'yes' && props.avenantState === 'pending')
@@ -276,7 +282,7 @@ const showBulkDeleteButton = computed(() => {
           label="Add Prestation"
           icon="pi pi-plus"
           @click="openAddDialog"
-        /> -->
+        />
       </div>
     </div>
     <DataTable
@@ -291,6 +297,7 @@ const showBulkDeleteButton = computed(() => {
       <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
       <Column field="prestation_id" header="ID"></Column>
       <Column field="prestation_name" header="Name"></Column>
+      <Column field="subname" header="sub_prestation_name"></Column>
       <Column field="formatted_id" header="Code"></Column>
       <Column field="service" header="Service"></Column>
       <Column field="pricing.prix" header="Global Price"></Column>
@@ -326,15 +333,15 @@ const showBulkDeleteButton = computed(() => {
         </div>
       </template>
     </DataTable>
-
-    <AddAnnexPrestationDialog
-      :visible="addDialogVisible"
-      @update:visible="addDialogVisible = $event"
-      :annexId="props.annexId"
-      :contractData="props.contractdata"
-      @prestationAdded="handlePrestationAdded"
-    />
-
+  <AddAnnexPrestationDialog
+    :visible="addDialogVisible"
+    @update:visible="addDialogVisible = $event"
+    :annexId="props.annexId"
+    :contractData="props.contractdata"
+    :defaultServiceId="props.serviceId"
+    :defaultServiceName="props.serviceName"
+    @prestationAdded="handlePrestationAdded"
+  />
     <EditAnnexPrestationDialog
       :visible="editDialogVisible"
       @update:visible="editDialogVisible = $event"

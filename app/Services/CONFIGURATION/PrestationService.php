@@ -33,7 +33,7 @@ class PrestationService
 
         // Add filtering by service
         if ($request->has('service_id')) {
-            $query->where('service_id', $request->get('service_id'));
+            $query->where('service_id', $request->service_id);
         }
 
         // Add filtering by type
@@ -43,10 +43,11 @@ class PrestationService
 
         // Add filtering by active status
         if ($request->has('is_active')) {
-            $query->where('is_active', $request->get('is_active'));
+            $query->where('is_active', $request->is_active);
         }
 
-        return $query->paginate($request->get('per_page', 15));
+
+        return $query->get();
     }
 
     /**

@@ -170,40 +170,7 @@ watch(() => props.form.service_id, (newServiceId, oldServiceId) => {
             </div>
         </div>
 
-        <div class="preview-card">
-            <div class="preview-header">
-                <i class="fas fa-eye preview-icon"></i>
-                <span class="preview-title">Quick Preview</span>
-            </div>
-            <div class="preview-content">
-                <div class="preview-item">
-                    <span class="preview-label">Name:</span>
-                    <span class="preview-value">{{ form.name || 'Not specified' }}</span>
-                </div>
-                <div class="preview-item">
-                    <span class="preview-label">Code:</span>
-                    <span class="preview-value">{{ form.internal_code || 'Not specified' }}</span>
-                </div>
-                <div class="preview-item">
-                    <span class="preview-label">Service:</span>
-                    <span class="preview-value">
-                        {{ formOptions.services?.find(s => s.id === form.service_id)?.name || 'Not selected' }}
-                    </span>
-                </div>
-                <div class="preview-item">
-                    <span class="preview-label">Specialty:</span>
-                    <span class="preview-value">
-                        {{ formOptions.specializations?.find(s => s.id === form.specialization_id)?.name || 'Not selected' }}
-                    </span>
-                </div>
-                <div class="preview-item">
-                    <span class="preview-label">Type:</span>
-                    <span class="preview-value">
-                        {{ formOptions.prestation_types?.find(t => t.value === form.type)?.label || 'Not selected' }}
-                    </span>
-                </div>
-            </div>
-        </div>
+      
     </div>
 </template>
 

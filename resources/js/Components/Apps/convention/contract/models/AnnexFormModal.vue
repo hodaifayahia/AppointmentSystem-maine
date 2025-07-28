@@ -1,5 +1,6 @@
 <script setup>
-import { defineProps, defineEmits, ref, watch, reactive, computed } from 'vue'; // Import computed
+import { defineProps, defineEmits, ref, watch, reactive, computed } from 'vue';
+import axios from 'axios';
 
 // PrimeVue Components
 import Dialog from 'primevue/dialog';
@@ -10,7 +11,6 @@ import Button from 'primevue/button';
 // Utility function to format number as DZD currency
 const formatDZD = (value) => {
     if (value === null || value === '' || isNaN(value) || value === 0) return '';
-    // Corrected locale to 'ar-DZ' for Algerian Dinar formatting
     return new Intl.NumberFormat('fr-FR', {
         style: 'currency',
         currency: 'DZD',
@@ -22,13 +22,8 @@ const formatDZD = (value) => {
 // Utility function to parse DZD input to number
 const parseDZD = (value) => {
     if (!value || value.trim() === '') return null;
-
-    // Remove all non-numeric characters except decimal point
     const cleaned = value.replace(/[^\d.]/g, '');
-
-    // If the cleaned string is empty, return null
     if (cleaned === '' || cleaned === '.') return null;
-
     const parsed = parseFloat(cleaned);
     return isNaN(parsed) ? null : parsed;
 };
@@ -50,7 +45,7 @@ const props = defineProps({
         type: Array,
         default: () => []
     },
-    usedServiceIds: { // NEW PROP
+    usedServiceIds: {
         type: Array,
         default: () => []
     },
@@ -69,35 +64,29 @@ const internalForm = reactive({
     annex_name: '',
     service_id: null,
     min_price: null,
-    prestation_prix_status: 'empty' // Added this field with a default value
+    prestation_prix_status: 'empty'
 });
 
-// Ref for formatted input display
-const displayMinPrice = ref(''); // Renamed to clearly indicate it's for display
-// Track if user is currently editing the price field
+const displayMinPrice = ref('');
 const isEditingPrice = ref(false);
-
-// Internal errors
 const internalFormErrors = reactive({});
 
-// Options for the price status dropdown
+// Reactive state to track if service/price status fields should be disabled
+const hasLinkedPrestations = ref(false);
+
 const prestationPrixStatusOptions = ref([
     { label: 'Empty', value: 'empty' },
     { label: 'Convenience Price', value: 'convenience_prix' },
     { label: 'Public Price', value: 'public_prix' }
 ]);
 
-// Computed property to filter services for the dropdown
 const availableServices = computed(() => {
     if (props.isEditing) {
-        // When editing, the currently selected service should always be available.
-        // Other services should only be available if they are not used by other annexes.
         const currentServiceId = internalForm.service_id;
         return props.services.filter(service =>
             !props.usedServiceIds.includes(service.id) || service.id === currentServiceId
         );
     } else {
-        // When adding, only services not already used by any annex are available.
         return props.services.filter(service => !props.usedServiceIds.includes(service.id));
     }
 });
@@ -106,33 +95,44 @@ const availableServices = computed(() => {
 watch(() => props.formData, (newVal) => {
     if (newVal) {
         Object.assign(internalForm, newVal);
-        // Only update formatted display if not currently editing
         if (!isEditingPrice.value) {
             displayMinPrice.value = formatDZD(newVal.min_price);
         }
     }
 }, { immediate: true, deep: true });
 
-// Watch for changes in internalForm.min_price to update formatted values for display
-watch(() => internalForm.min_price, (newVal) => {
-    // Only update formatted display if not currently editing the field
-    if (!isEditingPrice.value) {
-        displayMinPrice.value = formatDZD(newVal);
-    }
-});
-
-
-// Watch for showModal to clear form and errors
-watch(() => props.showModal, (newVal) => {
-    if (!newVal) {
+// NEW WATCH: Trigger checkLinkedPrestations based on modal visibility and edit mode
+watch(() => [props.showModal, props.isEditing], async ([newShowModal, newIsEditing]) => {
+    if (newShowModal && newIsEditing && internalForm.id && internalForm.service_id) {
+        // Only run the check if the modal is shown, it's in edit mode,
+        // AND the internal form has valid IDs (meaning formData has populated it)
+        await checkLinkedPrestations(internalForm.service_id, internalForm.id);
+    } else if (!newShowModal) {
+        // When modal closes, reset everything cleanly
         Object.keys(internalFormErrors).forEach(key => delete internalFormErrors[key]);
-        displayMinPrice.value = ''; // Clear display value on modal close
+        displayMinPrice.value = '';
         isEditingPrice.value = false;
-    } else {
-        // When modal opens, initialize displayMinPrice based on internalForm.min_price
-        displayMinPrice.value = formatDZD(internalForm.min_price);
+        hasLinkedPrestations.value = false; // Reset when modal closes
+    } else if (newShowModal && !newIsEditing) {
+        // If it's add mode, ensure hasLinkedPrestations is false
+        hasLinkedPrestations.value = false;
     }
-});
+}, { immediate: true });
+
+
+// Function to check if there are linked prestations
+const checkLinkedPrestations = async (serviceId, annexId) => {
+    try {
+        const response = await axios.get(`/api/prestations/allavailable-for-service-annex/${serviceId}/${annexId}`);
+        console.log(`Response for service ${serviceId} and annex ${annexId}:`, response.data);
+        hasLinkedPrestations.value = response.data.data.length > 0;
+        console.log(`Annex ${annexId} has linked prestations: ${hasLinkedPrestations.value}`);
+    } catch (error) {
+        console.error("Error checking linked prestations:", error);
+        hasLinkedPrestations.value = false; // Assume no linked prestations on error
+    }
+};
+
 
 // Client-side validation
 const validateInternalForm = () => {
@@ -154,11 +154,10 @@ const validateInternalForm = () => {
         isValid = false;
     }
 
-    // Optional: Add validation for min_price if needed
-    // if (internalForm.min_price === null || isNaN(internalForm.min_price) || internalForm.min_price < 0) {
-    //     internalFormErrors.min_price = "Minimum price must be a non-negative number.";
-    //     isValid = false;
-    // }
+    if (internalForm.prestation_prix_status !== 'empty' && (internalForm.min_price === null || isNaN(internalForm.min_price) || internalForm.min_price < 0)) {
+        internalFormErrors.min_price = "Minimum price must be a non-negative number when price status is set.";
+        isValid = false;
+    }
 
     return isValid;
 };
@@ -171,52 +170,44 @@ const saveAnnex = () => {
 
 const handleCloseModal = () => {
     Object.keys(internalFormErrors).forEach(key => delete internalFormErrors[key]);
-    displayMinPrice.value = ''; // Clear display value on modal close
+    displayMinPrice.value = '';
     isEditingPrice.value = false;
+    hasLinkedPrestations.value = false; // Important: reset this on close
     emit('close-modal');
 };
 
-// Handle price input events
 const handlePriceInput = (event) => {
     const value = event.target.value;
-    // Update the display value directly from the input
     displayMinPrice.value = value;
-    // Parse the value and update the actual numeric model
     internalForm.min_price = parseDZD(value);
 };
 
 const handlePriceFocus = () => {
     isEditingPrice.value = true;
-    // Show raw numeric value when focused for easier editing
     if (internalForm.min_price !== null && internalForm.min_price !== '') {
         displayMinPrice.value = internalForm.min_price.toString();
     } else {
-        displayMinPrice.value = ''; // Clear if null/empty
+        displayMinPrice.value = '';
     }
 };
 
 const handlePriceBlur = () => {
     isEditingPrice.value = false;
-    // Format the value when focus is lost
     displayMinPrice.value = formatDZD(internalForm.min_price);
 };
 
 const handlePriceKeydown = (event) => {
-    // Allow special keys: backspace, delete, tab, escape, enter
     if ([8, 9, 27, 13, 46].indexOf(event.keyCode) !== -1 ||
-        // Allow Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
         (event.keyCode === 65 && event.ctrlKey === true) ||
         (event.keyCode === 67 && event.ctrlKey === true) ||
         (event.keyCode === 86 && event.ctrlKey === true) ||
         (event.keyCode === 88 && event.ctrlKey === true) ||
-        // Allow home, end, left, right
         (event.keyCode >= 35 && event.keyCode <= 39)) {
         return;
     }
-    // Ensure that it is a number or decimal point and stop the keypress
     if ((event.shiftKey || (event.keyCode < 48 || event.keyCode > 57)) &&
         (event.keyCode < 96 || event.keyCode > 105) &&
-        event.keyCode !== 190 && event.keyCode !== 110) { // 190 for '.', 110 for numpad '.'
+        event.keyCode !== 190 && event.keyCode !== 110) {
         event.preventDefault();
     }
 };
@@ -233,6 +224,15 @@ const handlePriceKeydown = (event) => {
         :closable="!isLoading"
     >
         <div class="p-fluid">
+            <div v-if="isEditing && hasLinkedPrestations" class="p-message p-message-warn mb-3">
+                <div class="p-message-wrapper">
+                    <span class="pi pi-exclamation-triangle p-message-icon"></span>
+                    <div class="p-message-text">
+                        **Important:** To change the **Service** or **Price Status**, you must first remove all linked prestations associated with this annex.
+                    </div>
+                </div>
+            </div>
+
             <div class="field mb-3">
                 <label for="annexName">Name:</label>
                 <InputText
@@ -255,8 +255,7 @@ const handlePriceKeydown = (event) => {
                     optionValue="id"
                     placeholder="Select Service"
                     :class="{ 'p-invalid': internalFormErrors.service_id }"
-                    :disabled="isLoading"
-                />
+                    :disabled="isLoading || (isEditing && hasLinkedPrestations)" />
                 <small class="p-error" v-if="internalFormErrors.service_id">
                     {{ internalFormErrors.service_id }}
                 </small>
@@ -272,8 +271,7 @@ const handlePriceKeydown = (event) => {
                     optionValue="value"
                     placeholder="Select Price Status"
                     :class="{ 'p-invalid': internalFormErrors.prestation_prix_status }"
-                    :disabled="isLoading"
-                />
+                    :disabled="isLoading || (isEditing && hasLinkedPrestations)" />
                 <small class="p-error" v-if="internalFormErrors.prestation_prix_status">
                     {{ internalFormErrors.prestation_prix_status }}
                 </small>
@@ -338,5 +336,25 @@ const handlePriceKeydown = (event) => {
     color: var(--red-500); /* PrimeVue's default error color */
     display: block;
     margin-top: 0.25rem;
+}
+
+/* Style for the warning message */
+.p-message-warn {
+    background-color: var(--yellow-100); /* A light yellow for warning */
+    color: var(--yellow-800); /* Darker yellow for text */
+    border: 1px solid var(--yellow-300);
+    padding: 1rem;
+    border-radius: var(--border-radius);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.p-message-icon {
+    font-size: 1.5rem;
+}
+
+.p-message-text {
+    flex-grow: 1;
 }
 </style>

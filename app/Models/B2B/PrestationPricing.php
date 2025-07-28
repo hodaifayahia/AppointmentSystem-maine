@@ -22,6 +22,7 @@ class PrestationPricing extends Model
         'annex_id',
         'avenant_id',
         'updated_by_id',
+        'service_id', // Assuming this is the service linked to the prestation
         'head',
         'activate_at',
         'prix',          // Global Price
@@ -31,6 +32,7 @@ class PrestationPricing extends Model
         'max_price_exceeded',
         'original_company_share',
         'original_patient_share',
+        'subname'
     ];
 
     protected $casts = [
