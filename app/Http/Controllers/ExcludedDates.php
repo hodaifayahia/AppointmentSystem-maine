@@ -478,7 +478,7 @@ if ($request->is_afternoon_active) {
                 // Get appointments for this date, ordered by their creation date (oldest first)
                 $dateAppointments = $query->clone()
                     ->whereDate('appointment_date', $date)
-                    ->orderBy('appointment_date', 'asc')
+                    ->orderBy('created_at', 'asc')
                     ->get();
                 
                 if ($dateAppointments->isEmpty()) {
@@ -526,182 +526,175 @@ if ($request->is_afternoon_active) {
             throw $e;
         }
     }
-    public function getDoctorWorkingHours(
-        int $doctorId, 
-        string $date,
-        string $startTime = null,
-        string $endTime = null,
-        int $numberOfPatients = null,
-        ?string $shiftPeriod = null
-    ) {
-        // Parse the date parameter into a Carbon instance
-        $dateObj = Carbon::parse($date);
-        $dayOfWeek = DayOfWeekEnum::cases()[$dateObj->dayOfWeek]->value;
+  public function getDoctorWorkingHours(
+    int $doctorId, 
+    string $date,
+    string $startTime = null,
+    string $endTime = null,
+    int $numberOfPatients = null,
+    ?string $shiftPeriod = null
+) {
+    // Parse the date parameter into a Carbon instance
+    $dateObj = Carbon::parse($date);
+    $dayOfWeek = DayOfWeekEnum::cases()[$dateObj->dayOfWeek]->value;
+
+    // Get excluded dates schedules
+    $excludedSchedules = ExcludedDate::select('start_time', 'end_time', 'number_of_patients_per_day', 'shift_period')
+        ->where('doctor_id', $doctorId)
+        ->where('exclusionType', 'limited')
+        ->where(function ($query) use ($date) {
+            $query->where('start_date', '<=', $date)
+                  ->where(function ($q) use ($date) {
+                      $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $date);
+                  });
+        })
+        ->where('is_active', true)
+        ->get();
+
+    // Determine which schedules to use
+    $schedules = null;
+    $useExcludedSchedules = !$excludedSchedules->isEmpty();
     
-        // Get excluded dates schedules
-        $excludedSchedules = ExcludedDate::select('start_time', 'end_time', 'number_of_patients_per_day', 'shift_period')
+    if ($useExcludedSchedules) {
+        $schedules = $excludedSchedules;
+    } else {
+        $schedules = Schedule::select('start_time', 'end_time', 'number_of_patients_per_day', 'shift_period')
             ->where('doctor_id', $doctorId)
-            ->where('exclusionType', 'limited')
-            ->where(function ($query) use ($date) {
-                $query->where('start_date', '<=', $date)
-                      ->where(function ($q) use ($date) {
-                          $q->whereNull('end_date')
-                            ->orWhere('end_date', '>=', $date);
-                      });
-            })
             ->where('is_active', true)
+            ->where('day_of_week', $dayOfWeek)
             ->get();
+    }
+
+    $doctor = Doctor::find($doctorId, ['patients_based_on_time', 'time_slot']);
+
+    if (!$doctor || $schedules->isEmpty()) {
+        return [];
+    }
     
-        // If no excluded dates exist for this date, get the regular schedule
-        $schedules = null;
-        if ($excludedSchedules->isEmpty()) {
-            $schedules = Schedule::select('start_time', 'end_time', 'number_of_patients_per_day', 'shift_period')
-                ->where('doctor_id', $doctorId)
-                ->where('is_active', true)
-                ->where('day_of_week', $dayOfWeek)
-                ->get();
-        } else {
-            // Use the excluded schedules
-            $schedules = $excludedSchedules;
+    $workingHours = [];
+    
+    // **REMOVED**: Time buffer logic - now generates all slots regardless of time
+    
+    // When specific parameters are provided, check if we have excluded schedules
+    if ($shiftPeriod && $startTime && $endTime && $numberOfPatients !== null && $useExcludedSchedules) {
+        // Find the excluded schedule for the specific shift period
+        $excludedShiftSchedule = $schedules->firstWhere('shift_period', $shiftPeriod);
+        
+        if ($excludedShiftSchedule) {
+            // Use the excluded schedule's parameters instead of the provided ones
+            $startTime = $excludedShiftSchedule->start_time;
+            $endTime = $excludedShiftSchedule->end_time;
+            $numberOfPatients = $excludedShiftSchedule->number_of_patients_per_day;
         }
+    }
     
-        $doctor = Doctor::find($doctorId, ['patients_based_on_time', 'time_slot']);
-    
-        if (!$doctor || $schedules->isEmpty()) {
-            return [];
-        }
-        
-        $workingHours = [];
-        
-        // Get current date and time
-        $now = Carbon::now();
-        
-        // Check if the requested date is today
-        $isToday = $dateObj->isSameDay($now);
-        
-        // Create buffer time (current time + 5 minutes)
-        $bufferTime = $now->copy()->addMinutes(5);
-        
-        // If no specific shift period is provided, get schedules for the day
-        if (!$shiftPeriod || !$startTime || !$endTime || $numberOfPatients === null) {
-            // If doctor has a fixed time slot, calculate based on that
-            if ($doctor->time_slot !== null && (int)$doctor->time_slot > 0) {
-                $timeSlotMinutes = (int)$doctor->time_slot;
+    // If no specific shift period is provided, get schedules for the day
+    if (!$shiftPeriod || !$startTime || !$endTime || $numberOfPatients === null) {
+        // If doctor has a fixed time slot, calculate based on that
+        if ($doctor->time_slot !== null && (int)$doctor->time_slot > 0) {
+            $timeSlotMinutes = (int)$doctor->time_slot;
+            
+            foreach (['morning', 'afternoon'] as $shift) {
+                $schedule = $schedules->firstWhere('shift_period', $shift);
+                if (!$schedule) continue;
                 
-                foreach (['morning', 'afternoon'] as $shift) {
-                    $schedule = $schedules->firstWhere('shift_period', $shift);
-                    if (!$schedule) continue;
-                    
-                    // Create full datetime objects for start and end times
-                    $startTime = Carbon::parse($date . ' ' . $schedule->start_time);
-                    $endTime = Carbon::parse($date . ' ' . $schedule->end_time);
-                    $slotTime = clone $startTime;
-                    
-                    while ($slotTime < $endTime) {
-                        // Only add if not today OR (is today AND time is after buffer)
-                        if (!$isToday || $slotTime->greaterThan($bufferTime)) {
-                            $workingHours[] = $slotTime->format('H:i');
-                        }
-                        $slotTime = $slotTime->copy()->addMinutes($timeSlotMinutes);
-                    }
-                }
-            } else {
-                // Calculate based on number of patients per shift
-                foreach (['morning', 'afternoon'] as $shift) {
-                    $schedule = $schedules->firstWhere('shift_period', $shift);
-                    if (!$schedule) continue;
-                    
-                    // Create full datetime objects
-                    $startTime = Carbon::parse($date . ' ' . $schedule->start_time);
-                    $endTime = Carbon::parse($date . ' ' . $schedule->end_time);
-                    
-                    // Get number of patients for this specific shift
-                    $patientsForShift = (int)$schedule->number_of_patients_per_day;
-                    
-                    if ($patientsForShift <= 0) continue;
-                    
-                    if ($patientsForShift == 1) {
-                        // Special case: just one slot at start time
-                        if (!$isToday || $startTime->greaterThan($bufferTime)) {
-                            $workingHours[] = $startTime->format('H:i');
-                        }
-                        continue;
-                    }
-                    
-                    // Calculate total duration in minutes
-                    $totalDuration = abs($endTime->diffInMinutes($startTime));
-                    
-                    // Calculate the gap between each appointment - matching first function's logic
-                    $gap = $totalDuration / ($patientsForShift - 1);
-                    
-                    // Generate slots
-                    for ($i = 0; $i < $patientsForShift; $i++) {
-                        $minutesToAdd = round($i * $gap);
-                        $slotTime = $startTime->copy()->addMinutes($minutesToAdd);
-                        
-                        // Only add if not today OR (is today AND time is after buffer)
-                        if (!$isToday || $slotTime->greaterThan($bufferTime)) {
-                            $workingHours[] = $slotTime->format('H:i');
-                        }
-                    }
+                // Create full datetime objects for start and end times
+                $startTimeCarbon = Carbon::parse($date . ' ' . $schedule->start_time);
+                $endTimeCarbon = Carbon::parse($date . ' ' . $schedule->end_time);
+                $slotTime = clone $startTimeCarbon;
+                
+                while ($slotTime < $endTimeCarbon) {
+                    // **CHANGED**: Always add the slot regardless of time
+                    $workingHours[] = $slotTime->format('H:i');
+                    $slotTime = $slotTime->copy()->addMinutes($timeSlotMinutes);
                 }
             }
         } else {
-            // We're processing a specific shift with the provided parameters
-            if ($doctor->time_slot !== null && (int)$doctor->time_slot > 0 && $doctor->patients_based_on_time) {
-                $timeSlotMinutes = (int)$doctor->time_slot;
+            // Calculate based on number of patients per shift
+            foreach (['morning', 'afternoon'] as $shift) {
+                $schedule = $schedules->firstWhere('shift_period', $shift);
+                if (!$schedule) continue;
                 
-                $startTimeCopy = Carbon::parse($date . ' ' . $startTime);
-                $endTimeCopy = Carbon::parse($date . ' ' . $endTime);
-                $currentTime = clone $startTimeCopy;
+                // Create full datetime objects
+                $startTimeCarbon = Carbon::parse($date . ' ' . $schedule->start_time);
+                $endTimeCarbon = Carbon::parse($date . ' ' . $schedule->end_time);
                 
-                while ($currentTime < $endTimeCopy) {
-                    // Only add if not today OR (is today AND time is after buffer)
-                    if (!$isToday || $currentTime->greaterThan($bufferTime)) {
-                        $workingHours[] = $currentTime->format('H:i');
-                    }
-                    $currentTime->addMinutes($timeSlotMinutes);
-                }
-            } else {
-                // Calculate based on number of patients
-                $startTimeCopy = Carbon::parse($date . ' ' . $startTime);
-                $endTimeCopy = Carbon::parse($date . ' ' . $endTime);
+                // Get number of patients for this specific shift
+                $patientsForShift = (int)$schedule->number_of_patients_per_day;
                 
-                if ($numberOfPatients <= 0) {
-                    return [];
+                if ($patientsForShift <= 0) continue;
+                
+                if ($patientsForShift == 1) {
+                    // **CHANGED**: Always add the slot regardless of time
+                    $workingHours[] = $startTimeCarbon->format('H:i');
+                    continue;
                 }
                 
                 // Calculate total duration in minutes
-                $totalDuration = abs($endTimeCopy->diffInMinutes($startTimeCopy));
+                $totalDuration = abs($endTimeCarbon->diffInMinutes($startTimeCarbon));
                 
-                if ($numberOfPatients > 1) {
-                    // Calculate the gap between each appointment - matching first function's logic
-                    // We subtract 1 from patients because we need one less gap than appointments
-                    $gap = $totalDuration / ($numberOfPatients - 1);
-                    $totalDuration = $totalDuration - $gap;
-                    $gap = $totalDuration / ($numberOfPatients - 1);
+                // Calculate the gap between each appointment
+                $gap = $totalDuration / ($patientsForShift - 1);
+                
+                // Generate slots
+                for ($i = 0; $i < $patientsForShift; $i++) {
+                    $minutesToAdd = round($i * $gap);
+                    $slotTime = $startTimeCarbon->copy()->addMinutes($minutesToAdd);
                     
-                    // Generate slots
-                    for ($i = 0; $i < $numberOfPatients; $i++) {
-                        $minutesToAdd = round($i * $gap);
-                        $slotTime = (clone $startTimeCopy)->addMinutes($minutesToAdd);
-                        
-                        // Only add if not today OR (is today AND time is after buffer)
-                        if (!$isToday || $slotTime->greaterThan($bufferTime)) {
-                            $workingHours[] = $slotTime->format('H:i');
-                        }
-                    }
-                } else {
-                    // Handle case with just one patient
-                    if (!$isToday || $startTimeCopy->greaterThan($bufferTime)) {
-                        $workingHours[] = $startTimeCopy->format('H:i');
-                    }
+                    // **CHANGED**: Always add the slot regardless of time
+                    $workingHours[] = $slotTime->format('H:i');
                 }
             }
         }
-        
-        return array_unique($workingHours);
+    } else {
+        // We're processing a specific shift with the determined parameters
+        if ($doctor->time_slot !== null && (int)$doctor->time_slot > 0 && $doctor->patients_based_on_time) {
+            $timeSlotMinutes = (int)$doctor->time_slot;
+            
+            $startTimeCopy = Carbon::parse($date . ' ' . $startTime);
+            $endTimeCopy = Carbon::parse($date . ' ' . $endTime);
+            $currentTime = clone $startTimeCopy;
+            
+            while ($currentTime < $endTimeCopy) {
+                // **CHANGED**: Always add the slot regardless of time
+                $workingHours[] = $currentTime->format('H:i');
+                $currentTime->addMinutes($timeSlotMinutes);
+            }
+        } else {
+            // Calculate based on number of patients
+            $startTimeCopy = Carbon::parse($date . ' ' . $startTime);
+            $endTimeCopy = Carbon::parse($date . ' ' . $endTime);
+            
+            if ($numberOfPatients <= 0) {
+                return [];
+            }
+            
+            if ($numberOfPatients == 1) {
+                // **CHANGED**: Always add the slot regardless of time
+                $workingHours[] = $startTimeCopy->format('H:i');
+            } else {
+                // Calculate total duration in minutes
+                $totalDuration = abs($endTimeCopy->diffInMinutes($startTimeCopy));
+                
+                // Calculate the gap between each appointment
+                $gap = $totalDuration / ($numberOfPatients - 1);
+                
+                // Generate slots
+                for ($i = 0; $i < $numberOfPatients; $i++) {
+                    $minutesToAdd = round($i * $gap);
+                    $slotTime = $startTimeCopy->copy()->addMinutes($minutesToAdd);
+                    
+                    // **CHANGED**: Always add the slot regardless of time
+                    $workingHours[] = $slotTime->format('H:i');
+                }
+            }
+        }
     }
+    
+    return array_unique($workingHours);
+}
+
     /**
      * Remove the specified resource from storage.
      */

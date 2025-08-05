@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::table('prestation_pricing', function (Blueprint $table) {
             // add subname field to prestation_pricing table
-            $table->string('subname')->nullable()->after('annex_id');
+            // $table->string('subname')->nullable()->after('annex_id');
             
         });
     }

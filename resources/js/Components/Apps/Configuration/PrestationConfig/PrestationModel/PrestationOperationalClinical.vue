@@ -106,6 +106,7 @@ const props = defineProps({
             <div class="card-content">
                 <div class="form-group w-full">
                     <label class="form-label">Required Prestations (Informational Only)</label>
+                    <!-- {{ formOptions.available_prestations }} -->
                     <div class="select-container">
                         <MultiSelect
                             v-model="form.required_prestations_info"

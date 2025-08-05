@@ -3,367 +3,451 @@
 namespace App\Http\Controllers\CONFIGURATION;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\CONFIGURATION\Modality;
+use App\Models\CONFIGURATION\ModalitySchedule;
+use App\Models\CONFIGURATION\ModalityAvailableMonth;
+use App\Models\CONFIGURATION\AppointmentModalityForce;
 use App\Models\CONFIGURATION\ModalityType;
-use App\Models\CONFIGURATION\Room;
-use App\Models\CONFIGURATION\Service;
+use App\Models\Specialization;
+use Illuminate\Http\Request;
 use App\Http\Resources\CONFIGURATION\ModalityResource;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use App\DayOfWeekEnum; // Assuming you have a similar Enum for days
+use App\AppointmentSatatusEnum; // Assuming you have a similar Enum for appointment statuses
+
+// Import the new classes
+use App\Http\Requests\CONFIGURATION\StoreModalityRequest;
+use App\Http\Requests\CONFIGURATION\UpdateModalityRequest;
+use App\Services\CONFIGURATION\ModalityService;
 
 class ModalityController extends Controller
 {
+    protected $modalityService;
+
+    public function __construct(ModalityService $modalityService)
+    {
+        $this->modalityService = $modalityService;
+    }
+
     /**
      * Display a listing of the modalities with search and filter capabilities.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
+     * Mimics DoctorController's index logic, including is_active filtering.
      */
     public function index(Request $request)
     {
-        $query = Modality::with(['modalityType', 'service']);
+        $filter = $request->query('query');
+        $modalityId = $request->query('modality_id');
+        $modalityTypeId = $request->query('modality_type_id');
+        $operationalStatus = $request->query('operational_status');
+        $specialization_id = $request->query('specialization_id');
 
-        // Search functionality
-        if ($request->filled('search')) {
-            $searchTerm = $request->search;
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('name', 'LIKE', "%{$searchTerm}%")
-                  ->orWhere('internal_code', 'LIKE', "%{$searchTerm}%")
-                  ->orWhere('dicom_ae_title', 'LIKE', "%{$searchTerm}%")
-                  ->orWhere('ip_address', 'LIKE', "%{$searchTerm}%")
-                  ->orWhere('integration_protocol', 'LIKE', "%{$searchTerm}%")
-                  ->orWhere('data_retrieval_method', 'LIKE', "%{$searchTerm}%")
-                  ->orWhereHas('modalityType', function ($q) use ($searchTerm) {
-                      $q->where('name', 'LIKE', "%{$searchTerm}%");
-                  })
-                  ->orWhereHas('service', function ($q) use ($searchTerm) {
-                      $q->where('name', 'LIKE', "%{$searchTerm}%");
-                  });
+        $modalitiesQuery = Modality::with([
+            'modalityType:id,name',
+            'specialization:id,name',
+            'schedules',
+            'availableMonths',
+            'appointmentModalityForce'
+        ]);
+
+        // Mimic DoctorController's role-based filtering for 'is_active'
+        $user = Auth::user();
+        if ($user && in_array($user->role, ['admin', 'SuperAdmin'])) {
+            // Admin/SuperAdmin sees all modalities
+            // No specific 'user' relationship to filter on for Modality, so no whereHas here
+        } else {
+            // Other users only see active modalities
+            $modalitiesQuery->where('is_active', true);
+        }
+
+        if ($filter) {
+            $modalitiesQuery->where(function($query) use ($filter) {
+                $query->where('name', 'like', "%{$filter}%")
+                      ->orWhere('internal_code', 'like', "%{$filter}%");
             });
         }
-
-        // Filter by modality type
-        if ($request->filled('modality_type_id')) {
-            $query->where('modality_type_id', $request->modality_type_id);
+        if ($specialization_id) {
+            $modalitiesQuery->where('specialization_id', $specialization_id);
         }
 
-        // Filter by service
-        if ($request->filled('service_id')) {
-            $query->where('service_id', $request->service_id);
+        if ($modalityId) {
+            $modalitiesQuery->where('id', $modalityId);
         }
 
-        // Filter by operational status
-        if ($request->filled('operational_status')) {
-            $query->where('operational_status', $request->operational_status);
+        if ($modalityTypeId) {
+            $modalitiesQuery->where('modality_type_id', $modalityTypeId);
         }
 
-        // Filter by physical location
-        if ($request->filled('physical_location_id')) {
-            $query->where('physical_location_id', $request->physical_location_id);
+        if ($operationalStatus) {
+            $modalitiesQuery->where('operational_status', $operationalStatus);
         }
 
-        // Filter by integration protocol
-        if ($request->filled('integration_protocol')) {
-            $query->where('integration_protocol', 'LIKE', "%{$request->integration_protocol}%");
-        }
-
-        // Filter by data retrieval method
-        if ($request->filled('data_retrieval_method')) {
-            $query->where('data_retrieval_method', 'LIKE', "%{$request->data_retrieval_method}%");
-        }
-
-        // Date range filters
-        if ($request->filled('created_from')) {
-            $query->where('created_at', '>=', $request->created_from);
-        }
-
-        if ($request->filled('created_to')) {
-            $query->where('created_at', '<=', $request->created_to . ' 23:59:59');
-        }
-
-        // Sorting
-        $sortBy = $request->get('sort_by', 'created_at');
-        $sortDirection = $request->get('sort_direction', 'desc');
-        
-        // Validate sort fields
-        $allowedSortFields = ['name', 'internal_code', 'created_at', 'updated_at', 'operational_status'];
-        if (!in_array($sortBy, $allowedSortFields)) {
-            $sortBy = 'created_at';
-        }
-        
-        if (!in_array($sortDirection, ['asc', 'desc'])) {
-            $sortDirection = 'desc';
-        }
-
-        $query->orderBy($sortBy, $sortDirection);
-
-        // Pagination
-        $perPage = $request->get('per_page', 10);
-        $perPage = min(max($perPage, 1), 100); // Limit between 1 and 100
-
-        $modalities = $query->paginate($perPage);
+        $modalities = $modalitiesQuery->paginate(30);
 
         return ModalityResource::collection($modalities);
     }
 
     /**
-     * Get filter options for dropdowns and search.
-     *
-     * @return \Illuminate\Http\JsonResponse
+     * Get specific modality by ID.
+     * Mimics DoctorController's getDoctor method.
      */
-    public function getFilterOptions()
+    public function getModality(Request $request, $id = null)
     {
-        $modalityTypes = ModalityType::select('id', 'name')->get();
-        $services = Service::select('id', 'name')->get();
-       $Rooms = Room::select('id', 'name')->get();
-        
-        // Get unique values for certain fields
-        $protocols = Modality::whereNotNull('integration_protocol')
-            ->where('integration_protocol', '!=', '')
-            ->distinct()
-            ->pluck('integration_protocol');
-            
-       
-        return response()->json([
-            'modality_types' => $modalityTypes,
-            'services' => $services,
-           // 'physical_locations' => $Rooms,
-            'protocols' => $protocols,
-            'operational_statuses' => [
-                ['value' => 'active', 'label' => 'Active'],
-                ['value' => 'inactive', 'label' => 'Inactive']
-            ]
-        ]);
-    }
+        if ($id) {
+            $modality = Modality::with(['modalityType', 'specialization', 'schedules', 'availableMonths',  ])
+                                 ->find($id);
 
-    /**
-     * Advanced search with multiple criteria.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function advancedSearch(Request $request)
-    {
-        $query = Modality::with(['modalityType', 'service']);
-
-        // Build complex search queries
-        $searchCriteria = $request->get('criteria', []);
-        
-        foreach ($searchCriteria as $criteria) {
-            $field = $criteria['field'] ?? null;
-            $operator = $criteria['operator'] ?? 'like';
-            $value = $criteria['value'] ?? null;
-            
-            if (!$field || !$value) continue;
-            
-            switch ($operator) {
-                case 'equals':
-                    $query->where($field, $value);
-                    break;
-                case 'like':
-                    $query->where($field, 'LIKE', "%{$value}%");
-                    break;
-                case 'starts_with':
-                    $query->where($field, 'LIKE', "{$value}%");
-                    break;
-                case 'ends_with':
-                    $query->where($field, 'LIKE', "%{$value}");
-                    break;
-                case 'greater_than':
-                    $query->where($field, '>', $value);
-                    break;
-                case 'less_than':
-                    $query->where($field, '<', $value);
-                    break;
-                case 'between':
-                    if (is_array($value) && count($value) === 2) {
-                        $query->whereBetween($field, $value);
-                    }
-                    break;
+            if (!$modality) {
+                return response()->json(['message' => 'Modality not found'], 404);
             }
+
+            return new ModalityResource($modality);
         }
 
-        $modalities = $query->paginate($request->get('per_page', 10));
-        return ModalityResource::collection($modalities);
-    }
-
-    /**
-     * Store a newly created modality in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function store(Request $request)
-    {
-        $validatedData = $request->validate([
-            'name' => 'required|string|max:255|unique:modalities,name',
-            'internal_code' => 'nullable|string|max:255|unique:modalities,internal_code',
-            'modality_type_id' => 'required|exists:modality_types,id',
-            'dicom_ae_title' => 'nullable|string|max:255',
-            'port' => 'nullable|integer',
-'physical_location_id' => 'nullable|exists:rooms,id',
-            'operational_status' => 'required',
-            'service_id' => 'nullable|exists:services,id',
-            'integration_protocol' => 'nullable|string|max:255',
-            'connection_configuration' => 'nullable|string',
-            'data_retrieval_method' => 'nullable|string|max:255',
-            'ip_address' => 'nullable|ip',
-        ]);
-
-        // $validatedData['operational_status'] = $validatedData['operational_status'] ? 'active' : 'inactive';
-
-        $modality = Modality::create($validatedData);
-        
-        return response()->json([
-            'message' => 'Modality created successfully.',
-            'data' => new ModalityResource($modality->load(['modalityType', 'service']))
-        ], 201);
+        // If no ID, return paginated list (handled by index, but keeping for mimicry)
+        return $this->index($request);
     }
 
     /**
      * Display the specified modality.
-     *
-     * @param  \App\Models\CONFIGURATION\Modality  $modality
-     * @return \Illuminate\Http\JsonResponse
      */
-    public function show(Modality $modality)
+    public function show($id)
     {
-        return new ModalityResource($modality->load(['modalityType', 'service']));
+        try {
+            $modality = Modality::with([
+                'modalityType:id,name',
+                'specialization:id,name',
+                'schedules',
+                'availableMonths',
+            ])->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => new ModalityResource($modality)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Modality not found.',
+                'error' => $e->getMessage()
+            ], 404);
+        }
+    }
+
+    /**
+     * Get working dates for modalities for a specific month.
+     * Mimics DoctorController's WorkingDates method.
+     * This will require you to have an `Appointment` model that can be linked to modalities
+     * if appointments are also tied to modalities in your system.
+     */
+    public function WorkingDates(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'modalityId' => 'nullable|exists:modalities,id',
+                'month' => 'required|date_format:Y-m',
+            ]);
+
+            $startDate = Carbon::createFromFormat('Y-m', $validated['month'])->startOfMonth();
+            $endDate = $startDate->copy()->endOfMonth();
+
+            $modalitiesQuery = Modality::query()
+                ->select([
+                    'modalities.id',
+                    'modalities.name as modality_name',
+                    'modalities.specialization_id',
+                    'specializations.name as specialization_name'
+                ])
+                ->join('specializations', 'modalities.specialization_id', '=', 'specializations.id');
+
+            if (isset($validated['modalityId'])) {
+                $modalitiesQuery->where('modalities.id', $validated['modalityId']);
+            }
+
+            $modalities = $modalitiesQuery->get();
+
+            if ($modalities->isEmpty()) {
+                return response()->json([
+                    'data' => [],
+                    'month' => $validated['month'],
+                    'total_modalities' => 0
+                ]);
+            }
+
+            $modalityIds = $modalities->pluck('id')->toArray();
+
+            // Get active schedules for modalities
+            $schedules = DB::table('modality_schedules') // Use your modality schedules table
+                ->select(['modality_id', 'date', 'day_of_week', 'is_active'])
+                ->where('is_active', true)
+                ->where(function ($q) use ($startDate, $endDate) {
+                    $q->whereBetween('date', [$startDate, $endDate])
+                      ->orWhereNull('date');
+                })
+                ->whereIn('modality_id', $modalityIds)
+                ->get();
+
+            // Assuming you have an Appointment model that links to modalities
+            // If not, you'll need to adjust this part or remove it.
+            $appointments = DB::table('appointments') // Assuming `appointments` table has a `modality_id`
+                ->select(['modality_id', 'appointment_date'])
+                ->whereIn('modality_id', $modalityIds)
+                ->whereBetween('appointment_date', [$startDate, $endDate])
+                ->where('status', '!=', AppointmentSatatusEnum::CANCELED->value) // Adjust if no Enum exists for Modalities
+                ->whereNull('deleted_at')
+                ->distinct()
+                ->get();
+
+            // Get excluded dates (you might need a separate table for modality excluded dates)
+            // For now, mirroring doctor controller, assuming `excluded_dates` also applies to modalities
+            // or you create a new table like `modality_excluded_dates`
+            $excludedDates = DB::table('excluded_dates') // Assuming `excluded_dates` table can store `modality_id`
+                ->where(function ($query) use ($modalityIds) {
+                    $query->whereIn('modality_id', $modalityIds)
+                          ->where('exclusionType', 'complete') // Assuming this field exists
+                          ->orWhereNull('modality_id'); // Global exclusions
+                })
+                ->where(function ($query) use ($startDate, $endDate) {
+                    $query->whereBetween('start_date', [$startDate, $endDate])
+                          ->orWhereBetween('end_date', [$startDate, $endDate])
+                          ->orWhere(function ($q) use ($startDate, $endDate) {
+                              $q->where('start_date', '<=', $startDate)
+                                ->where('end_date', '>=', $endDate);
+                          });
+                })
+                ->get();
+
+            $result = $modalities->map(function ($modality) use ($schedules, $appointments, $excludedDates, $startDate, $endDate) {
+                if (!$modality->modality_name || !$modality->specialization_name) {
+                    return null;
+                }
+
+                $modalityExcludedDates = $excludedDates->filter(function ($excludedDate) use ($modality) {
+                    return $excludedDate->modality_id === $modality->id || is_null($excludedDate->modality_id);
+                })->values();
+
+                $modalitySchedules = $schedules->where('modality_id', $modality->id);
+                $modalityAppointments = $appointments->where('modality_id', $modality->id);
+
+                $workingDates = $this->calculateWorkingDatesOptimized(
+                    $modality->id,
+                    $modalitySchedules,
+                    $modalityAppointments,
+                    $modalityExcludedDates,
+                    $startDate,
+                    $endDate
+                );
+
+                return [
+                    'id' => $modality->id,
+                    'name' => $modality->modality_name,
+                    'specialization' => $modality->specialization_name,
+                    'excludedDates' => $modalityExcludedDates,
+                    'working_dates' => array_values(array_unique($workingDates)),
+                ];
+            })->filter();
+
+            return response()->json([
+                'data' => $result,
+                'month' => $validated['month'],
+                'total_modalities' => $result->count()
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in WorkingDates (ModalityController)', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'message' => 'Error fetching working dates for modalities',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Helper to calculate working dates, adapted for modalities.
+     * Mimics DoctorController's calculateWorkingDatesOptimized.
+     */
+    private function calculateWorkingDatesOptimized($modalityId, $schedules, $appointments, $excludedDates, $startDate, $endDate)
+    {
+        $workingDates = [];
+        $currentDate = $startDate->copy();
+
+        $modalityExcludedDates = $excludedDates->filter(function ($date) use ($modalityId) {
+            return $date->modality_id === $modalityId || $date->modality_id === null;
+        });
+
+        while ($currentDate <= $endDate) {
+            $dateStr = $currentDate->format('Y-m-d');
+
+            $isExcluded = $modalityExcludedDates->contains(function ($excludedDate) use ($currentDate) {
+                $endDate = $excludedDate->end_date ?? $excludedDate->start_date;
+                return $currentDate->between($excludedDate->start_date, $endDate);
+            });
+
+            if (!$isExcluded) {
+                $hasSpecificSchedule = $schedules->contains(function ($schedule) use ($dateStr) {
+                    return $schedule->date === $dateStr && $schedule->is_active;
+                });
+
+                $hasRecurringSchedule = $schedules->contains(function ($schedule) use ($currentDate) {
+                    return $schedule->day_of_week === $currentDate->dayOfWeek
+                           && $schedule->date === null
+                           && $schedule->is_active;
+                });
+
+                if ($hasSpecificSchedule || $hasRecurringSchedule) {
+                    $workingDates[] = $dateStr;
+                }
+            }
+            $currentDate->addDay();
+        }
+
+        $appointmentDates = $appointments
+            ->where('modality_id', $modalityId)
+            ->map(fn ($appointment) => Carbon::parse($appointment->appointment_date)->format('Y-m-d'))
+            ->toArray();
+
+        return array_values(array_unique(array_merge($workingDates, $appointmentDates)));
+    }
+
+    /**
+     * Store a newly created modality in storage.
+     */
+    public function store(StoreModalityRequest $request)
+    {
+        try {
+            $modality = $this->modalityService->createModality($request->validated());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Modality and associated data created successfully!',
+                'data' => new ModalityResource($modality->fresh(['modalityType', 'specialization', 'schedules', 'availableMonths',  ]))
+            ], 201);
+        } catch (\Exception $e) {
+            \Log::error('Error creating modality: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error creating modality',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
      * Update the specified modality in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\CONFIGURATION\Modality  $modality
-     * @return \Illuminate\Http\JsonResponse
      */
-    public function update(Request $request, Modality $modality)
+    public function update(UpdateModalityRequest $request, Modality $modality)
     {
-        $validatedData = $request->validate([
-            'name' => [
-                'required',
-                'string',
-                'max:255',
-                Rule::unique('modalities')->ignore($modality->id),
-            ],
-            'internal_code' => [
-                'nullable',
-                'string',
-                'max:255',
-                Rule::unique('modalities')->ignore($modality->id),
-            ],
-            'modality_type_id' => 'required|exists:modality_types,id',
-            'dicom_ae_title' => 'nullable|string|max:255',
-            'port' => 'nullable|integer',
-'physical_location_id' => 'nullable|exists:rooms,id',
-            'operational_status' => 'required',
-            'service_id' => 'nullable|exists:services,id',
-            'integration_protocol' => 'nullable|string|max:255',
-            'connection_configuration' => 'nullable|string',
-            'data_retrieval_method' => 'nullable|string|max:255',
-            'ip_address' => 'nullable|ip',
-        ]);
+        try {
+            $modality = $this->modalityService->updateModality($modality, $request->validated());
 
-        // $validatedData['operational_status'] = $validatedData['operational_status'] ? 'active' : 'inactive';
-
-        $modality->update($validatedData);
-
-        return response()->json([
-            'message' => 'Modality updated successfully.',
-            'data' => new ModalityResource($modality->load(['modalityType', 'service']))
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Modality and associated data updated successfully!',
+                'data' => new ModalityResource($modality->fresh(['modalityType', 'specialization', 'schedules', 'availableMonths',  ]))
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error updating modality: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating modality',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
-    
 
     /**
      * Remove the specified modality from storage.
-     *
-     * @param  \App\Models\CONFIGURATION\Modality  $modality
-     * @return \Illuminate\Http\JsonResponse
      */
     public function destroy(Modality $modality)
     {
-        $modality->delete();
+        try {
+            $this->modalityService->deleteModality($modality);
 
-        return response()->json(['message' => 'Modality deleted successfully.']);
+            return response()->json(['message' => 'Modality deleted successfully.']);
+        } catch (\Exception $e) {
+            \Log::error('Error deleting modality: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'message' => 'Error deleting modality',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
-     * Get a list of modality types for dropdowns.
-     *
-     * @return \Illuminate\Http\JsonResponse
+     * Bulk delete modalities.
      */
-    public function getModalityTypesForDropdown()
+    public function bulkDelete(Request $request)
     {
-        $modalityTypes = ModalityType::select('id', 'name')->get();
-        return response()->json($modalityTypes);
+        try {
+            $request->validate([
+                'ids' => 'required|array',
+                'ids.*' => 'exists:modalities,id',
+            ]);
+
+            $count = $this->modalityService->bulkDeleteModalities($request->ids);
+
+            return response()->json([
+                'message' => "$count modalities deleted successfully"
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error bulk deleting modalities: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'message' => 'Error deleting modalities',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
-     * Get a list of physical locations for dropdowns.
-     *
-     * @return \Illuminate\Http\JsonResponse
+     * Get modalities by specialization ID.
      */
-    public function getRoomsForDropdown()
+    public function getModalitiesBySpecialization($specializationId)
     {
-        $Rooms = Room::select('id', 'name')->get();
-        return response()->json($Rooms);
+        $modalities = Modality::where('specialization_id', $specializationId)
+            ->with(['modalityType', 'specialization', 'schedules', 'availableMonths'])
+            ->get();
+
+        return ModalityResource::collection($modalities);
     }
 
     /**
-     * Get a list of services for dropdowns.
-     *
-     * @return \Illuminate\Http\JsonResponse
+     * Search modalities.
      */
-    public function getServicesForDropdown()
+    public function search(Request $request)
     {
-        $services = Service::select('id', 'name')->get();
-        return response()->json($services);
-    }
+        $searchTerm = $request->query('query');
 
-    /**
-     * Export modalities based on current filters.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function export(Request $request)
-    {
-        // This would typically generate a CSV or Excel file
-        // For now, we'll return the data in JSON format
-        $query = Modality::with(['modalityType', 'service']);
+        if (empty($searchTerm)) {
+            return ModalityResource::collection(
+                Modality::with(['modalityType', 'specialization'])
+                    ->orderBy('created_at', 'desc')
+                    ->paginate()
+            );
+        }
 
-        // Apply the same filters as the index method
-        if ($request->filled('search')) {
-            $searchTerm = $request->search;
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('name', 'LIKE', "%{$searchTerm}%")
+        $modalities = Modality::where(function ($query) use ($searchTerm) {
+            $query->where('name', 'LIKE', "%{$searchTerm}%")
                   ->orWhere('internal_code', 'LIKE', "%{$searchTerm}%")
                   ->orWhere('dicom_ae_title', 'LIKE', "%{$searchTerm}%")
-                  ->orWhere('ip_address', 'LIKE', "%{$searchTerm}%");
-            });
-        }
+                  ->orWhere('ip_address', 'LIKE', "%{$searchTerm}%")
+                  ->orWhereHas('modalityType', function ($q) use ($searchTerm) {
+                      $q->where('name', 'LIKE', "%{$searchTerm}%");
+                  })
+                  ->orWhereHas('specialization', function ($q) use ($searchTerm) {
+                      $q->where('name', 'LIKE', "%{$searchTerm}%");
+                  });
+        })
+        ->with(['modalityType', 'specialization'])
+        ->orderBy('created_at', 'desc')
+        ->paginate();
 
-        // Apply other filters...
-        if ($request->filled('modality_type_id')) {
-            $query->where('modality_type_id', $request->modality_type_id);
-        }
-
-        if ($request->filled('service_id')) {
-            $query->where('service_id', $request->service_id);
-        }
-
-        if ($request->filled('operational_status')) {
-            $query->where('operational_status', $request->operational_status);
-        }
-
-        $modalities = $query->get();
-
-        return response()->json([
-            'message' => 'Export data retrieved successfully.',
-            'data' => ModalityResource::collection($modalities),
-            'total' => $modalities->count()
-        ]);
+        return ModalityResource::collection($modalities);
     }
 }

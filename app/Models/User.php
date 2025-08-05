@@ -82,6 +82,21 @@ class User extends Authenticatable
             'specialization_id' // Foreign key on doctors table
         );
     }
+      public function paymentAccesses()
+    {
+        return $this->hasMany(UserPaymentMethod::class);
+    }
+
+    // You can add an accessor if you want a simple array of allowed method keys (strings)
+    // similar to the previous setup, but derived from the pivot table.
+    public function getAllowedMethodsAttribute()
+    {
+        // This will return an array of the PaymentMethodEnum cases (objects)
+        return $this->paymentAccesses
+                    ->where('status', 'active') // Only get active ones, or whatever logic you need
+                    ->map(fn($access) => $access->payment_method_key->value)
+                    ->toArray();
+    }
 
     // public function role() : Attribute {
     //     return Attribute::make(

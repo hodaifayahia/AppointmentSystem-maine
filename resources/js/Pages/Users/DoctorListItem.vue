@@ -38,8 +38,8 @@ const userRole = ref(null); // Track user role
 const authStore = useAuthStore();
 // const { user, isLoading } = storeToRefs(authStore);
 
+userRole.value =authStore.user.role 
 onMounted( () => {
- userRole.value =authStore.user.role 
 });
 
 
@@ -134,9 +134,11 @@ const handleDelete = async (id) => {
     <td class="doctor-frequency">{{ doctor.frequency }}</td>
     <td class="doctor-patients">
       {{ `${doctor.time_slots} min slots`  }}
+      {{ userRole }}
     </td>
+    
     <td class="doctor-actions">
-      <div class="btn-group" v-if="userRole === 'admin' || userRole === 'SuperAdmin'">
+      <div>
         <button 
           class="btn btn-sm btn-outline-primary mx-1" 
           title="Edit"

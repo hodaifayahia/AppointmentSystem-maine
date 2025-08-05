@@ -230,7 +230,6 @@ const playNotificationSound = () => {
                             </router-link>
                         </li>
                     </template>
-
                     <template
                         v-if="user.data.role === 'admin' || user.data.role === 'receptionist' || user.data.role === 'SuperAdmin'">
                         <li class="nav-item">
@@ -258,6 +257,18 @@ const playNotificationSound = () => {
                                 <p>Waitlist</p>
                             </router-link>
                         </li>
+                    <li class="nav-item">
+                        <router-link to="/admin/appointments/modality-appointment" active-class="active" class="nav-link">
+                            <i class="nav-icon fas fa-calendar-check"></i>
+                            <p>Modality Appointment</p>
+                        </router-link>
+                    </li>
+                    <li class="nav-item">
+                        <router-link to="/admin/appointments/modality-appointment/forceAppointment" active-class="active" class="nav-link">
+                            <i class="nav-icon fas fa-user-shield"></i>
+                            <p>Modality Force Appointment</p>
+                        </router-link>
+                    </li>
                     </template>
                      <li class="nav-item">
                             <router-link to="/admin/appointments/patient" active-class="active" class="nav-link">

@@ -87,8 +87,7 @@ class PatientController extends Controller
     
         return new PatientResource($patient);
     }
-
- public function search(Request $request)
+public function search(Request $request)
 {
     $searchTerm = $request->query('query');
 
@@ -109,6 +108,8 @@ class PatientController extends Controller
     $patients = Patient::where(function($query) use ($searchTerm) {
         $query->where('Firstname', 'LIKE', "%{$searchTerm}%")
               ->orWhere('Lastname', 'LIKE', "%{$searchTerm}%")
+              // New line to search combined Firstname and Lastname
+              ->orWhereRaw("CONCAT(Firstname, ' ', Lastname) LIKE ?", ["%{$searchTerm}%"])
               ->orWhereRaw("DATE_FORMAT(dateOfBirth, '%Y-%m-%d') LIKE ?", ["%{$searchTerm}%"])
               ->orWhere('Idnum', 'LIKE', "%{$searchTerm}%")
               ->orWhere('phone', 'LIKE', "%{$searchTerm}%")

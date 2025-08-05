@@ -62,6 +62,21 @@ const configurationRoutes = [
                         name: 'admin.configuration.system-settings',
                         component: () => import('../Components/Apps/Configuration/SystemSettings/SystemSettings.vue'),
                     },
+                    //  {
+                    //     path: 'remise-types',
+                    //     name: 'admin.configuration.remise-types',
+                    //     component: () => import('../Components/Apps/Configuration/SystemSettings/RemiseTypes.vue'),
+                    // },
+                     {
+                        path: 'payment-methods',
+                        name: 'admin.configuration.payment-methods',
+                        component: () => import('../Pages/Apps/Configuration/RemiseMangement/PaymentMethod/PaymentMethodList.vue'),
+                    },
+                     {
+                        path: 'remise-management',
+                        name: 'admin.configuration.remise-management',
+                        component: () => import('../Pages/Apps/Configuration/RemiseMangement/Remise/RemiseList.vue'),
+                    },
                     // Add more config routes here as needed...
                 ],
             },

@@ -37,7 +37,7 @@ const allApps = ref([
     name: 'Reception', 
     icon: 'fas fa-concierge-bell',
     color: '#3B82F6',
-    route: '/admin/reception'
+    route: '/reception'
   },
   { 
     id: 7, 
@@ -233,13 +233,15 @@ const allApps = ref([
 
 const filteredApps = computed(() => {
   let filtered = allApps.value;
+  console.log('user role:', user.value?.data.role);
+  
   
   // Role-based filtering
-  if (user.value?.role?.toLowerCase() === 'doctor') {
+  if (user.value?.data.role.toLowerCase() === 'doctor') {
     filtered = filtered.filter(app => 
       app.name === 'Calendar' || app.name === 'Consultation' 
     );
-  } else if (user.value?.role?.toLowerCase() === 'receptionist') {
+  } else if (user.value?.data.role.toLowerCase() === 'receptionist') {
     filtered = filtered.filter(app => 
       app.name === 'Appointments'
     );

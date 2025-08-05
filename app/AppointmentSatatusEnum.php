@@ -36,4 +36,17 @@ enum AppointmentSatatusEnum:int
             default => 'fa fa-question-circle',
         };
     }
+    const STATUS_DETAILS = [
+        'scheduled' => ['name' => 'Scheduled', 'color' => 'blue', 'icon' => 'calendar'],
+        'confirmed' => ['name' => 'Confirmed', 'color' => 'green', 'icon' => 'check'],
+        'canceled' => ['name' => 'Canceled', 'color' => 'red', 'icon' => 'times'],
+        'pending' => ['name' => 'Pending', 'color' => 'orange', 'icon' => 'clock'],
+        'done' => ['name' => 'Done', 'color' => 'gray', 'icon' => 'check-circle'],
+        'on_working' => ['name' => 'On Working', 'color' => 'purple', 'icon' => 'tools'],
+    ];
+
+    public static function getStatusDetails($status)
+    {
+        return self::STATUS_DETAILS[$status] ?? ['name' => 'Unknown', 'color' => 'default', 'icon' => 'question'];
+    }
 }

@@ -34,6 +34,21 @@ class AppointmentStatus extends Controller
             ];
         });
     }
+    public function allAppointmentStatuses()  {
+        // Get all appointment statuses
+        $statuses = AppointmentSatatusEnum::cases();
+
+        // Map to a more usable format if needed
+        return collect($statuses)->map(function ($status) {
+            return [
+                'name' => $status->name,
+                'value' => $status->value,
+                'color' => $status->color(),
+                'icon' => $status->icon(),
+            ];
+        });
+        
+    }
     public function appointmentStatusPatient(Request $request, $patientid) {
         if (!$patientid) {
             return response()->json([

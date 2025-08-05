@@ -36,7 +36,10 @@ use App\Http\Controllers\WaitListController;
 use App\Http\Controllers\CONFIGURATION\ServiceController;
 use App\Http\Controllers\CONFIGURATION\ModalityTypeController;
 use App\Http\Controllers\CONFIGURATION\ModalityController;
+use App\Http\Controllers\CONFIGURATION\ModalityAppointmentController;
 use App\Http\Controllers\CONFIGURATION\PrestationController;
+use App\Http\Controllers\CONFIGURATION\UserPaymentMethodController;
+use App\Http\Controllers\CONFIGURATION\RemiseController;
 use App\Http\Controllers\CRM\OrganismeController;
 use App\Http\Controllers\INFRASTRUCTURE\PavilionController;
 use App\Http\Controllers\INFRASTRUCTURE\RoomTypeController;
@@ -52,7 +55,8 @@ use App\Http\Controllers\B2B\AvenantController;
 use App\Http\Controllers\CRM\OrganismeContactController;
 use App\Http\Controllers\Auth\LoginController; // Assuming you have a LoginController to handle the actual login process
 use App\Http\Controllers\B2B\ConvenctionDashborad; // Import the controller
-
+//ficheNavetteController
+use App\Http\Controllers\Reception\ficheNavetteController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -82,7 +86,6 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/logout', [LogoutController::class, 'logout'])->name('logout');
 
     // --- API Routes (Prefix all with '/api') ---
-    // All your existing API routes go here, as they were in the previous solution
     Route::prefix('/api')->group(function () {
         // User Routes
         Route::get('/users', [UserController::class, 'index']);
@@ -116,12 +119,12 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/specializations/{id}', [specializationsController::class, 'update']);
         Route::delete('/specializations/{id}', [specializationsController::class, 'destroy']);
 
-        // Appointment Routes
         Route::get('/appointments/search', [AppointmentController::class, 'search']);
         Route::get('/appointments/checkAvailability', [AppointmentController::class, 'checkAvailability']);
         Route::get('/appointments/canceledappointments', [AppointmentController::class, 'getAllCanceledAppointments']);
         Route::get('/appointments/available', [AppointmentController::class, 'AvailableAppointments']);
         Route::get('/appointmentStatus/{doctorid}', [AppointmentStatus::class, 'appointmentStatus']);
+        Route::get('/appointment-statuses', [AppointmentStatus::class, 'allAppointmentStatuses']);
         Route::get('/appointmentStatus/patient/{patientid}', [AppointmentStatus::class, 'appointmentStatusPatient']);
         Route::get('/todaysAppointments/{doctorid}', [AppointmentStatus::class, 'todaysAppointments']);
         Route::get('/appointments/ForceSlots', [AppointmentController::class, 'ForceAppointment']);
@@ -279,8 +282,46 @@ Route::middleware(['auth'])->group(function () {
         // Configuration Services
         Route::apiResource('/services', ServiceController::class);
         Route::apiResource('/modality-types', ModalityTypeController::class);
-        Route::apiResource('/modalities', ModalityController::class);
         Route::apiResource('/prestation', PrestationController::class);
+        // Route::apiResource('/modality-appointments', ModalityAppointmentController::class);
+
+      // Modality Appointment Routes - Ordered to prevent conflicts
+
+// Static routes first (most specific)
+
+        // Appointment Routes
+        Route::get('/modality-appointments/checkModalityAvailability', [ModalityAppointmentController::class, 'checkModalityAvailability']);
+        Route::get('/modality-appointments/search', [ModalityAppointmentController::class, 'search']);
+        Route::get('/modality-appointments/import-template', [ModalityAppointmentController::class, 'downloadImportTemplate']);
+Route::post('/modality-appointments/import', [ModalityAppointmentController::class, 'importAppointments']);
+Route::get('/modality-appointments/modalities', [ModalityAppointmentController::class, 'getAllModalities']);
+
+       Route::get('/modality-user-permissions/ability', [ModalityAppointmentController::class, 'getModalityUserPermissions']);
+        
+       Route::post('/modality-user-permissions', [ModalityAppointmentController::class, 'updateModalityUserPermission']);
+        Route::get('/modality-appointments/search', [ModalityAppointmentController::class, 'search']);
+           Route::get('/modality-appointments/force-ability', [ModalityAppointmentController::class, 'getModalityUserForceAbility']);
+            Route::get('/modality-appointments/modalities', [ModalityAppointmentController::class, 'getAllModalities']);
+            // POST routes (actions)
+            Route::post('/modality-appointments', [ModalityAppointmentController::class, 'store']);
+            Route::post('/modality-appointments/print-ticket', [ModalityAppointmentController::class, 'printModalityTicket']);
+            Route::post('/modality-appointments/print-confirmation-ticket', [ModalityAppointmentController::class, 'printModalityConfirmationTicket']);
+
+            // PUT/PATCH routes (updates)
+            Route::put('/modality-appointments/{id}', [ModalityAppointmentController::class, 'update']);
+            Route::patch('/modality-appointments/{id}/status', [ModalityAppointmentController::class, 'changeModalityAppointmentStatus']);
+
+            // DELETE routes
+            Route::delete('/modality-appointments/{id}', [ModalityAppointmentController::class, 'destroy']);
+
+            // GET routes with parameters - specific patterns first
+            Route::get('/modality-appointments/{modalityId}/available', [ModalityAppointmentController::class, 'availableModalityAppointments']);
+            Route::get('/modality-appointments/{modalityId}/pending', [ModalityAppointmentController::class, 'getPendingModalityAppointment']);
+            Route::get('/modality-appointments/{modalityId}/canceled', [ModalityAppointmentController::class, 'getAllCanceledModalityAppointments']);
+
+            // Most general GET routes last
+            Route::get('/modality-appointments/{modalityId}', [ModalityAppointmentController::class, 'index']);
+            Route::get('/modality-appointments/{modalityId}/{appointmentId}', [ModalityAppointmentController::class, 'getModalityAppointment']);
 
         // Annexes
         Route::get('/annex/contract/{contractId}', [AnnexController::class, 'getByContract']);
@@ -308,7 +349,13 @@ Route::middleware(['auth'])->group(function () {
         });
 
         // Modalities specific routes
+
         Route::prefix('modalities')->group(function () {
+            Route::get('/', [ModalityController::class, 'index']);
+            //show 
+
+            Route::get('/{id}', [ModalityController::class, 'show']);
+
             Route::get('filter-options', [ModalityController::class, 'getFilterOptions']);
             Route::post('advanced-search', [ModalityController::class, 'advancedSearch']);
             Route::get('export', [ModalityController::class, 'export']);
@@ -325,6 +372,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/organismes/settings', [OrganismeController::class, 'OrganismesSettings']);
         Route::apiResource('/organismes', OrganismeController::class);
         Route::apiResource('/organisme-contacts', OrganismeContactController::class);
+        Route::apiResource('/modalities', ModalityController::class);
 
         // Pavilions, Conventions, Rooms, Beds
         Route::get('/convention/dashboard', [ConvenctionDashborad::class, 'getDashboardData']);
@@ -338,6 +386,10 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/organismes/settings', [ConventionController::class, 'activateConvenation']);
         Route::apiResource('/agreements', AgreementsController::class);
         Route::apiResource('/rooms', RoomController::class); // This replaces duplicate entries for 'rooms'
+        
+        Route::apiResource('/user-payment-methods', UserPaymentMethodController::class); // This replaces duplicate entries for 'userPaymentAccess'
+        Route::apiResource('/remise', RemiseController::class); // This replaces duplicate entries for 'userPaymentAccess'
+        Route::get('/payment-methods', [UserPaymentMethodController::class, 'getPaymentMethods']);
 
         // ConventionDetailController
         Route::prefix('/convention/agreementdetails')->group(function () {
@@ -365,8 +417,8 @@ Route::middleware(['auth'])->group(function () {
         });
         Route::get('prestations/available-for-avenant/{avenantId}', [PrestationPricingController::class, 'getAvailablePrestations']);
         Route::get('/prestations/available-for-service-avenant/{serviceId}/{avenantId}', [PrestationPricingController::class, 'getAvailablePrestationsForServiceAndAvenant']);
-Route::get('/prestations/available-for-service-annex/{serviceId}/{annexId}', [PrestationPricingController::class, 'getAvailablePrestationsForServiceAndAnnex']);
-Route::get('/prestations/allavailable-for-service-annex/{serviceId}/{annexId}', [PrestationPricingController::class, 'getallAvailablePrestationsForServiceAndAnnex']);
+        Route::get('/prestations/available-for-service-annex/{serviceId}/{annexId}', [PrestationPricingController::class, 'getAvailablePrestationsForServiceAndAnnex']);
+        Route::get('/prestations/allavailable-for-service-annex/{serviceId}/{annexId}', [PrestationPricingController::class, 'getallAvailablePrestationsForServiceAndAnnex']);
 
         // Avenants
         Route::prefix('/avenants')->group(function () {
@@ -376,10 +428,17 @@ Route::get('/prestations/allavailable-for-service-annex/{serviceId}/{annexId}', 
             Route::get('/convention/{conventionId}/pending', [AvenantController::class, 'checkPendingAvenantByConventionId']);
             Route::get('/convention/{conventionId}', [AvenantController::class, 'getAvenantsByConventionId']);
         });
+
+        // Reception APIs - MOVE THIS INSIDE THE /api PREFIX GROUP
+    Route::prefix('/reception')->group(function () {
+            Route::apiResource('/fiche-navette', ficheNavetteController::class);
+            Route::patch('/fiche-navette/{ficheNavette}/status', [ficheNavetteController::class, 'changeStatus']);
+            Route::post('/fiche-navette/{ficheNavette}/prestations', [ficheNavetteController::class, 'addPrestation']);
+            Route::put('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteController::class, 'updatePrestation']);
+            Route::delete('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteController::class, 'removePrestation']);
+        });
     }); // End of /api group
 
     // The main application entry point for authenticated users
-    // This route will catch any non-API routes for your SPA
-    // IMPORTANT: This catch-all route MUST come AFTER all your specific /api routes
     Route::get('/{view}', [ApplicationController::class, '__invoke'])->where('view', '.*')->name('dashboard');
 }); // End of authenticated middleware group

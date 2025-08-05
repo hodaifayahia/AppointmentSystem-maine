@@ -507,6 +507,7 @@ onMounted(() => {
                             <th scope="col" class="text-nowrap">Phone</th>
                             <th scope="col" class="text-nowrap">Date Of Birth</th>
                             <th scope="col" class="text-nowrap">Date</th>
+                            <th v-if="userRole === 'admin' || userRole === 'SuperAdmin'" scope="col" class="text-nowrap">Consulation</th>
                             <th scope="col" class="text-nowrap">Time</th>
                             <th scope="col" class="text-nowrap">Description</th>
                             <th scope="col" class="text-nowrap">Status</th>
@@ -530,7 +531,7 @@ onMounted(() => {
                             <td>{{ appointment.phone }}</td>
                             <td>{{ formatDate(appointment.patient_Date_Of_Birth) }}</td>
                             <td>{{ formatDate(appointment.appointment_date) }}</td>
-                            <td>{{ formatTime(appointment.appointment_time) }}</td>
+                            <td><button class="btn btn-outline-info btn-lg" type="button">Consultation</button></td>                            <td>{{ formatTime(appointment.appointment_time) }}</td>
                             <td>{{ appointment.description ?? "Null" }}</td>
                             <td>
                                 <div class="dropdown" :class="{ 'show': dropdownStates[appointment.id] }">

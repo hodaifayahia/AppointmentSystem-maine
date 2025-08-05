@@ -308,6 +308,7 @@ const submitForm = async (values) => {
 .modal.show {
     display: block;
     background-color: rgba(0, 0, 0, 0.5);
+    
 }
 
 .invalid-feedback {

@@ -131,10 +131,12 @@ const handleDaysChange = (days) => {
 const handleDateSelected = (date) => {
   form.appointment_date = date;
   nextAppointmentDate.value = date;
+  console.log('Date selected:', date); // Debug log
 };
 
 const handleTimeSelected = (time) => {
   form.appointment_time = time;
+  console.log('Time selected:', time); // Debug log
 };
 
 const handleSubmit = async (values, { setErrors }) => {
@@ -225,14 +227,32 @@ onMounted(async () => {
   ]);
   await fetchAppointmentData();
 });
+
+// Add this method to format the date for display
+const formatDisplayDate = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+};
+
+// Add helper to capitalize names
+const capitalize = (str) => {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+};
 </script>
 
 <template>
-  <Form @submit="handleSubmit" v-slot="{ errors }">
-    <PatientSearch 
-      v-model="searchQuery" 
-      :patientId="form.patient_id" 
-      @patientSelected="handlePatientSelect" 
+  <Form @submit="handleSubmit.prevent" v-slot="{ errors }">
+    <PatientSearch
+      v-model="searchQuery"
+      :patientId="form.patient_id"
+      @patientSelected="handlePatientSelect"
     />
 
     <div class="mb-3" v-if="props.editMode && authStore.user.role !== 'doctor'">
@@ -308,8 +328,31 @@ onMounted(async () => {
       </label>
     </div>
 
+    <!-- Show selected appointment details -->
+    <div v-if="form.appointment_date && form.appointment_time" class="alert alert-success mb-4">
+      <h6><i class="fas fa-check-circle me-2"></i>Ready to Create Appointment</h6>
+      <div class="row">
+        <div class="col-md-6">
+          <strong>Patient:</strong> {{ form.first_name }} {{ form.last_name }}
+        </div>
+        <div class="col-md-6">
+          <strong>Date:</strong> {{ formatDisplayDate(form.appointment_date) }}
+        </div>
+        <div class="col-md-6">
+          <strong>Time:</strong> {{ form.appointment_time }}
+        </div>
+        <div class="col-md-6" v-if="form.doctor_id">
+          <strong>Doctor ID:</strong> {{ form.doctor_id }}
+        </div>
+      </div>
+    </div>
+
     <div class="form-group d-flex justify-content-between align-items-center">
-      <button type="submit" class="btn btn-primary rounded-pill">
+      <button 
+        type="submit" 
+        class="btn btn-primary rounded-pill"
+        :disabled="!form.patient_id || !form.appointment_date || !form.appointment_time"
+      >
         {{ props.NextAppointment ? 'Create Appointment' : props.editMode ? 'Update Appointment' : 'Create Appointment' }}
       </button>
 

@@ -1,279 +1,323 @@
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { debounce } from 'lodash';
 import axios from 'axios';
 import { useToastr } from '@/Components/toster';
-import PatientModel from '@/Components/PatientModel.vue';
+import PatientModel from '@/Components/PatientModel.vue'; // Assuming this component is designed to be a standalone modal
+
+// PrimeVue Components
+import InputText from 'primevue/inputtext';
+import Button from 'primevue/button';
+import ProgressSpinner from 'primevue/progressspinner';
+import OverlayPanel from 'primevue/overlaypanel';
+import Tag from 'primevue/tag';
 
 const props = defineProps({
-  modelValue: String,
-  patientId: Number,
-  onSelectPatient: Function
+    modelValue: String,
+    disabled: {
+        type: Boolean,
+        default: false
+    },
+    readonly: {
+        type: Boolean,
+        default: false
+    },
+    placeholder: String,
+    patientId: Number,
+    onSelectPatient: Function // This prop seems unused, consider removing if not needed
 });
 
 const emit = defineEmits(['update:modelValue', 'patientSelected']);
 
 const toastr = useToastr();
 const patients = ref([]);
-const showDropdown = ref(false);
 const isLoading = ref(false);
-const isModalOpen = ref(false);
+const isModalOpen = ref(false); // Controls the PatientModel visibility
 const selectedPatient = ref(null);
 const searchQuery = ref('');
 const isEditMode = ref(false);
 
+// Ref for the OverlayPanel (for search results dropdown)
+const op = ref();
+// Ref for the InputText element to anchor the OverlayPanel
+const searchInputRef = ref(null);
 
 
 // Watch for modelValue changes to update the input
 watch(() => props.modelValue, (newValue) => {
-  if (newValue && !searchQuery.value) {
-    searchQuery.value = newValue;
-  }
+    if (newValue && !searchQuery.value) {
+        searchQuery.value = newValue;
+    }
 }, { immediate: true });
 
 const resetSearch = () => {
-  searchQuery.value = '';
-  selectedPatient.value = null;
-  patients.value = [];
-  showDropdown.value = false;
-  emit('update:modelValue', '');
-  emit('patientSelected', null);
+    searchQuery.value = '';
+    selectedPatient.value = null;
+    patients.value = [];
+    if (op.value) { // Check if op.value exists before trying to hide
+        op.value.hide();
+    }
+    emit('update:modelValue', '');
+    emit('patientSelected', null);
 };
 
-const handleSearch = debounce(async (query) => {
-  searchQuery.value = query;
-  emit('update:modelValue', query);
+const handleSearch = debounce(async (event) => {
+    const query = event.target.value;
+    searchQuery.value = query;
+    emit('update:modelValue', query);
 
-  if (!query || query.length < 2) {
-    patients.value = [];
-    showDropdown.value = false;
-    return;
-  }
-
-  try {
-    isLoading.value = true;
-    showDropdown.value = true;
-    const response = await axios.get('/api/patients/search', {
-      params: { query }
-    });
-    patients.value = response.data.data || [];
-
-    // Auto-select if there's an exact match
-    const exactMatch = patients.value.find(p =>
-      `${p.first_name} ${p.last_name} ${p.dateOfBirth} ${p.phone}` === query
-    );
-    if (exactMatch) {
-      selectPatient(exactMatch);
+    if (!query || query.length < 2) {
+        patients.value = [];
+        if (op.value) {
+            op.value.hide();
+        }
+        return;
     }
-  } catch (error) {
-    console.error('Error searching patients:', error);
-    toastr.error('Failed to search patients');
-    patients.value = [];
-  } finally {
-    isLoading.value = false;
-  }
+
+    try {
+        isLoading.value = true;
+        const response = await axios.get('/api/patients/search', {
+            params: { query }
+        });
+        patients.value = response.data.data || [];
+
+        const exactMatch = patients.value.find(p =>
+            `${p.first_name} ${p.last_name} ${formatDateOfBirth(p.dateOfBirth)} ${p.phone}` === query
+        );
+        if (exactMatch) {
+            selectPatient(exactMatch);
+            if (op.value) {
+                op.value.hide();
+            }
+        } else if (patients.value.length > 0) {
+            if (op.value && searchInputRef.value && searchInputRef.value.$el) {
+                 op.value.show(event, searchInputRef.value.$el);
+            }
+        } else {
+            if (op.value && searchInputRef.value && searchInputRef.value.$el) {
+                op.value.show(event, searchInputRef.value.$el); // Show "No results"
+            }
+        }
+
+    } catch (error) {
+        console.error('Error searching patients:', error);
+        toastr.error('Failed to search patients');
+        patients.value = [];
+        if (op.value) {
+            op.value.hide();
+        }
+    } finally {
+        isLoading.value = false;
+    }
 }, 500);
 
 // Watch for changes in patientId to fetch and select patient
 watch(() => props.patientId, async (newId) => {
-  if (newId) {
-    await fetchPatientById(newId);
-  }
+    if (newId) {
+        await fetchPatientById(newId);
+    }
 }, { immediate: true });
 
 const fetchPatientById = async (id) => {
-  try {
-    const response = await axios.get(`/api/patients/${id}`);
-    if (response.data.data) {
-      const patient = response.data.data;
-      selectedPatient.value = patient;
-      searchQuery.value = `${patient.first_name} ${patient.last_name} ${patient.dateOfBirth} ${patient.phone}`;
-      emit('patientSelected', patient);
-    } else {
-      console.error('Patient not found:', response.data.message);
+    try {
+        const response = await axios.get(`/api/patients/${id}`);
+        if (response.data.data) {
+            const patient = response.data.data;
+            selectedPatient.value = patient;
+            searchQuery.value = `${patient.first_name} ${patient.last_name} ${formatDateOfBirth(patient.dateOfBirth)} ${patient.phone}`;
+            emit('patientSelected', patient);
+        } else {
+            console.error('Patient not found:', response.data.message);
+        }
+    } catch (error) {
+        console.error('Error fetching patient by ID:', error);
+        toastr.error('Could not find patient by ID');
     }
-  } catch (error) {
-    console.error('Error fetching patient by ID:', error);
-    toastr.error('Could not find patient by ID');
-  }
-};
-
-const closeDropdown = () => {
-  showDropdown.value = false;
 };
 
 const openModal = (edit = false) => {
-  isModalOpen.value = true;
-  isEditMode.value = edit;
-  if (!edit) {
-    selectedPatient.value = null;
-  }
+    isModalOpen.value = true;
+    isEditMode.value = edit;
+    if (!edit) {
+        selectedPatient.value = null; // Clear selected patient for "Add New"
+    }
 };
 
 const closeModal = () => {
-  isModalOpen.value = false;
-  isEditMode.value = false;
+    isModalOpen.value = false;
+    isEditMode.value = false;
 };
 
 const handlePatientAdded = (newPatient) => {
-  closeModal();
-  selectPatient(newPatient);
-  refreshPatients();
-  toastr.success(isEditMode.value ? 'Patient updated successfully' : 'Patient added successfully');
+    closeModal();
+    selectPatient(newPatient); // Select the newly added/updated patient
+    toastr.success(isEditMode.value ? 'Patient updated successfully' : 'Patient added successfully');
 };
 
-const refreshPatients = async () => {
-  if (searchQuery.value && searchQuery.value.length >= 2) {
-    await handleSearch(searchQuery.value);
-  }
-};
 const formatDateOfBirth = (date) => {
-  if (!date) return '';
-  const [year, month, day] = date.split('-');
-  return `${year}/${month}/${day}`;
+    if (!date) return '';
+    const [year, month, day] = date.split('-');
+    return `${year}/${month}/${day}`;
 };
-
-onMounted(() => {
-  document.addEventListener('click', (e) => {
-    const dropdown = document.querySelector('.patient-search-wrapper');
-    if (dropdown && !dropdown.contains(e.target)) {
-      closeDropdown();
-    }
-  });
-});
 
 const selectPatient = (patient) => {
-  selectedPatient.value = patient;
-  emit('patientSelected', patient);
-  const patientString = `${patient.first_name} ${patient.last_name} ${patient.dateOfBirth} ${patient.phone}`;
-  emit('update:modelValue', patientString);
-  searchQuery.value = patientString;
-  showDropdown.value = false;
+    selectedPatient.value = patient;
+    emit('patientSelected', patient);
+    const patientString = `${patient.first_name} ${patient.last_name} ${formatDateOfBirth(patient.dateOfBirth)} ${patient.phone}`;
+    emit('update:modelValue', patientString);
+    searchQuery.value = patientString;
+    if (op.value) {
+        op.value.hide(); // Hide the OverlayPanel after selection
+    }
 };
+
+// Handle focus to show/hide OverlayPanel
+const onInputFocus = (event) => {
+    // Only show if there's a query and results, or to show "No results" immediately
+    if (searchQuery.value && patients.value.length > 0 || (searchQuery.value && searchQuery.value.length >= 2 && patients.value.length === 0 && !isLoading.value)) {
+        if (op.value && searchInputRef.value && searchInputRef.value.$el) {
+            op.value.show(event, searchInputRef.value.$el);
+        }
+    }
+};
+
+// No longer using onInputBlur to hide directly, rely on OverlayPanel's auto-hide or manual hide
 </script>
+
 <template>
-  <div class="patient-search-wrapper">
-    <!-- Existing input and button code -->
-    <div class="row">
-      <div class="col-md-9 position-relative">
-        <input 
-          :value="searchQuery" 
-          @input="e => handleSearch(e.target.value)" 
-          type="text"
-          class="form-control form-control-lg rounded-lg mb-2" 
-          placeholder="Search patients by name or phone..."
-          @focus="showDropdown = searchQuery && searchQuery.length >= 2" 
-        />
-        <button 
-          v-if="searchQuery" 
-          type="button" 
-          style="position: absolute; top: 8px; right: 7px;"
-          class="btn btn-link translate-middle-y" 
-          @click="resetSearch"
-        >
-          <i class="fas fa-times fs-3"></i>
-        </button>
-      </div>
-
-      <div class="col-md-3 d-flex gap-2 mt-2">
-        <button 
-          v-if="selectedPatient" 
-          type="button" 
-          class="btn btn-secondary mr-2 rounded-pill custom-small-btn" 
-          @click="openModal(true)"
-        >
-          Edit Patient
-        </button>
-        <button 
-          type="button" 
-          class="btn btn-primary rounded-pill custom-small-btn" 
-          @click="openModal(false)"
-        >
-          Add New Patient
-        </button>
-      </div>
-    </div>
-
-    <!-- Dropdown with fixed height and scroll -->
-    <div v-if="showDropdown && (isLoading || (patients.length > 0 && searchQuery.length >= 2))" class="dropdown-container">
-      <div v-if="isLoading" class="loading-state">
-        <div class="spinner-border text-primary spinner-border-sm me-2" role="status">
-          <span class="visually-hidden"></span>
-        </div>
-        Searching
-      </div>
-      <template v-else>
-        <div class="dropdown-header">Search Results</div>
-        <div class="patient-list">
-          <div 
-            v-for="patient in patients" 
-            :key="patient.id" 
-            class="patient-item row" 
-            @click="selectPatient(patient)"
-          >
-            <div class="patient-info col-12 d-flex align-items-center p-3">
-              <span class="patient-name text-sm mr-2">{{ patient.first_name }} {{ patient.last_name }}</span>
-              <span class="patient-phone text-sm mr-2"><i class="fas fa-phone-alt text-danger mr-2"></i> {{ patient.phone }}</span>
-              <span class="patient-id text-sm mr-2">{{ patient.Idnum }}</span>
-              <strong>Date of Birth:</strong>{{ formatDateOfBirth(patient.dateOfBirth) }}
+    <div class="p-fluid">
+        <div class="p-grid p-align-center p-mb-2">
+            <div class="p-col-12 p-md-9 p-pr-md-2 p-overlay-panel-container">
+                <div class="p-inputgroup">
+                    <InputText
+                        ref="searchInputRef"
+                        v-model="searchQuery"
+                        @input="handleSearch"
+                        placeholder="Search patients by name or phone..."
+                        class="p-inputtext-lg"
+                        @focus="onInputFocus"
+                        :disabled="disabled"
+                        :readonly="readonly"
+                        :placeholder="placeholder"
+                    />
+                    <Button
+                        v-if="searchQuery"
+                        icon="pi pi-times"
+                        class="p-button-secondary p-button-text"
+                        @click="resetSearch"
+                    />
+                </div>
             </div>
-          </div>
-        </div>
-        <div v-if="patients.length === 0 && searchQuery.length >= 2" class="no-results text-center p-3">
-          <div class="no-results-icon">🔍</div>
-          <div class="no-results-text">No patients found</div>
-        </div>
-      </template>
-    </div>
-  </div>
 
-  <!-- Patient Modal -->
-  <PatientModel 
-    :show-modal="isModalOpen" 
-    :spec-data="selectedPatient" 
-    @close="closeModal"
-    @specUpdate="handlePatientAdded" 
-  />
+            <div class="p-col-12 p-md-3 p-d-flex p-jc-end p-gap-2">
+                <Button
+                    v-if="selectedPatient"
+                    label="Edit Patient"
+                    icon="pi pi-user-edit"
+                    class="p-button-secondary p-button-sm p-button-rounded"
+                    @click="openModal(true)"
+                />
+                <Button
+                    label="Add New Patient"
+                    icon="pi pi-user-plus"
+                    class="p-button-primary p-button-sm p-button-rounded"
+                    @click="openModal(false)"
+                />
+            </div>
+        </div>
+
+        <OverlayPanel ref="op" appendTo="body" :showCloseIcon="false" class="p-overlaypanel-fixed-width">
+            <div v-if="isLoading" class="p-d-flex p-ai-center p-jc-center p-py-3">
+                <ProgressSpinner style="width: 30px; height: 30px" strokeWidth="6" animationDuration=".8s" />
+                <span class="p-ml-2">Searching...</span>
+            </div>
+            <template v-else>
+                <div v-if="patients.length > 0" class="patient-list-container">
+                    <div class="p-text-bold p-mb-2">Search Results</div>
+                    <div v-for="patient in patients" :key="patient.id" class="patient-item p-d-flex p-ai-center p-py-2 p-px-1" @click="selectPatient(patient)">
+                        <span class="p-text-sm p-mr-2 p-text-bold">{{ patient.first_name }} {{ patient.last_name }}</span>
+                        <Tag icon="pi pi-phone" :value="patient.phone" severity="info" class="p-mr-2" />
+                        <Tag icon="pi pi-id-card" :value="patient.Idnum" severity="secondary" class="p-mr-2" />
+                        <Tag icon="pi pi-calendar" :value="formatDateOfBirth(patient.dateOfBirth)" severity="warning" />
+                    </div>
+                </div>
+                <div v-else class="p-d-flex p-flex-column p-ai-center p-py-3">
+                    <i class="pi pi-search" style="font-size: 2rem; color: var(--surface-400);"></i>
+                    <div class="p-text-secondary p-mt-2">No patients found</div>
+                </div>
+            </template>
+        </OverlayPanel>
+
+        <PatientModel
+            :show-modal="isModalOpen"
+            :spec-data="selectedPatient"
+            @close="closeModal"
+            @specUpdate="handlePatientAdded"
+        />
+    </div>
 </template>
+
 <style scoped>
-/* Existing styles */
-.patient-item {
-  cursor: pointer;
-  transition: background-color 0.3s ease;
+/* PrimeFlex classes handle most of the layout */
+/* p-inputgroup for input and clear button alignment */
+/* p-d-flex, p-jc-end, p-gap-2 for button layout */
+
+.p-inputgroup {
+    display: flex; /* Ensure proper grouping */
+    width: 100%; /* Take full width of its parent column */
 }
+
+/* Custom width for the OverlayPanel to ensure it aligns well with the input */
+.p-overlaypanel-fixed-width {
+    width: var(--inputtext-width, 100%); /* Use CSS variable if defined, or set a fixed width/max-width */
+    min-width: 300px; /* Example minimum width */
+    max-width: 600px; /* Example maximum width */
+}
+
+.patient-list-container {
+    max-height: 350px; /* Adjust height as needed */
+    overflow-y: auto;
+    border-radius: var(--border-radius);
+    background-color: var(--surface-card);
+    padding: 0.5rem;
+}
+
+.patient-item {
+    cursor: pointer;
+    font-size: 17px;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background-color 0.2s;
+    border-radius: var(--border-radius); /* Match PrimeVue style */
+}
+
 
 .patient-item:hover {
-  background-color: #f8f9fa; /* Light grey background on hover */
+    background-color: var(--surface-hover);
 }
 
-.patient-info {
-  border-bottom: 1px solid #e9ecef; /* Adds a separator line between items */
+.p-button-sm.p-button-rounded {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    border-radius: 2rem;
 }
 
-.no-results {
-  color: #6c757d;
-}
+/* Ensure PrimeVue components have adequate spacing */
+.p-mb-2 { margin-bottom: 0.5rem; }
+.p-pr-md-2 { padding-right: 0.5rem; }
+.p-ml-2 { margin-left: 0.5rem; }
+.p-mr-2 { margin-right: 0.5rem; }
+.p-py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.p-px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
+.p-py-3 { padding-top: 1rem; padding-bottom: 1rem; }
+.p-mt-2 { margin-top: 0.5rem; }
 
-/* New styles for fixed height dropdown with scroll */
-.patient-search-wrapper .dropdown-container {
-  max-height: 300px; /* Set your desired fixed height */
-  overflow-y: auto; /* Enable vertical scrolling */
-  overflow-x: hidden; /* Prevent horizontal scrolling */
-  border: 1px solid #e9ecef; /* Optional: Add border for clarity */
-  border-radius: 0.25rem; /* Optional: Match form-control border radius */
-  background-color: #fff; /* Ensure background is white */
-}
-
-/* Optional: Style the dropdown header */
-.dropdown-header {
-  background-color: #f8f9fa;
-  padding: 0.5rem 1rem;
-  font-weight: bold;
-  border-bottom: 1px solid #e9ecef;
-}
-
-/* Optional: Ensure patient list takes full width */
-.patient-list {
-  width: 100%;
+/* Additional styles for disabled and readonly states */
+.patient-search-disabled {
+    background-color: var(--surface-disabled);
+    color: var(--text-disabled);
+    cursor: not-allowed;
 }
 </style>

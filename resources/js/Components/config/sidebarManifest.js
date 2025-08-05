@@ -5,7 +5,7 @@ const sidebarManifest = {
   default: defineAsyncComponent(() => import('../../Pages/Dashborad/Sidebar.vue')),
 
   configuration: defineAsyncComponent(() => import('../../Pages/Dashborad/Sidebars/ConfigurationSidebar.vue')),
-  //   reception: defineAsyncComponent(() => import('../Dashborad/Sidebars/ReceptionSidebar.vue')),
+  reception: defineAsyncComponent(() => import('../../Pages/Dashborad/Sidebars/ReceptionSidebar.vue')),
   // App-specific sidebars
 //   appointments: defineAsyncComponent(() => import('../Dashborad/Sidebars/AppointmentsSidebar.vue')),
 //   consultation: defineAsyncComponent(() => import('../Dashborad/Sidebars/ConsultationSidebar.vue')),

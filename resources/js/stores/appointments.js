@@ -3,6 +3,8 @@ import axios from 'axios';
 
 export const useAppointmentStore = defineStore('appointment', {
   state: () => ({
+    appointments: [],
+    loading: false,
     availableAppointments: {}, // Stores appointment availability data by doctorId
     loadingAppointments: {},   // Stores loading status for each doctor's appointments
     doctors: [],               // You might want to store doctors here too if they are shared
@@ -90,6 +92,37 @@ export const useAppointmentStore = defineStore('appointment', {
       } finally {
         this.loadingAppointments[doctorId] = false;
       }
+    },
+
+    async getAppointments(doctorId, page = 1, status = null, filter = null, date = null) {
+      // Prevent duplicate calls
+      if (this.loading) {
+        console.log('Already loading, skipping duplicate call');
+        return;
+      }
+
+      this.loading = true;
+      this.error = null;
+
+      try {
+        const params = { page, status, filter, date };
+        const { data } = await axios.get(`/api/appointments/${doctorId}`, { params });
+
+        if (data.success) {
+          this.appointments = data.data;
+          this.pagination = data.meta;
+        }
+      } catch (err) {
+        console.error('Error fetching appointments:', err);
+        this.error = 'Failed to load appointments. Please try again.';
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // Add method to check if we should reload
+    shouldReload() {
+      return !this.loading && this.appointments.length === 0;
     },
 
     // Action to clear all stored appointment data (e.g., on logout or leaving a section)

@@ -1,32 +1,32 @@
 <script setup>
-import { ref, onMounted, watch, reactive, computed } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-// axios is still used inside the store, no need to import here unless directly used
 import AppointmentListItem from './AppointmentListItem.vue';
 import headerDoctorAppointment from '@/Components/Doctor/headerDoctorAppointment.vue';
 import DoctorWaitlist from '@/Components/Doctor/DoctorWaitlist.vue';
 import { Bootstrap5Pagination } from 'laravel-vue-pagination';
-import { useAuthStore } from '../../stores/auth'; // Assuming this store exists
-import { useAppointmentStore } from '../../stores/AppointmentStata'; // Your updated store
-import AddWaitlistModal from '../../Components/waitList/addWaitlistModel.vue'; // Import the modal
+import { useAuthStore } from '../../stores/auth';
+import { useAppointmentStore } from '../../stores/AppointmentStata';
+import AddWaitlistModal from '../../Components/waitList/addWaitlistModel.vue';
 import { storeToRefs } from 'pinia';
 
-// Local refs for UI state (not shared globally)
+// Local refs for UI state
 const selectedWaitlist = ref(null);
 const showAddModal = ref(false);
-const fileInput = ref(null); // Keep this local as it's a direct DOM reference
+const fileInput = ref(null);
+const initializationComplete = ref(false);
 
 // Reactive variables for route params
 const route = useRoute();
 const router = useRouter();
-const doctorId = ref(route.params.id); // Make reactive if route params can change
-const specializationId = ref(route.params.specializationId); // Make reactive
+const doctorId = ref(parseInt(route.params.id)); // Convert to number
+const specializationId = ref(route.params.specializationId ? parseInt(route.params.specializationId) : null);
 
 // Pinia Store Instances
 const appointmentStore = useAppointmentStore();
 const authStore = useAuthStore();
 
-// Destructure state from appointmentStore using storeToRefs to maintain reactivity
+// Destructure state from appointmentStore
 const {
   appointments,
   pagination,
@@ -49,89 +49,117 @@ const {
   getTodaysAppointments,
   getAppointmentsStatus,
   fetchWaitlists,
-  handleFileSelection: handleFileSelectionStore, // Rename to avoid conflict with local handler
+  handleFileSelection: handleFileSelectionStore,
   removeFile: removeFileStore,
-  uploadFiles: uploadFilesStore, // Rename to avoid conflict with local handler
+  uploadFiles: uploadFilesStore,
   exportAppointments,
-  handleSearchResults,
-  resetStore, // To clean up state if needed
+  handleSearchResults: handleSearchResultsStore,
+  resetStore,
 } = appointmentStore;
 
-// Destructure user role from authStore (assuming authStore.user is reactive)
+// Destructure user from authStore with proper fallback
 const { user } = storeToRefs(authStore);
-const userRole = computed(() => user.value?.role); // Safely get user role
+const userRole = computed(() => user.value?.role || 'guest');
 
-// Local UI state for waitlist modals (these don't necessarily need to be in Pinia)
+// Local UI state for waitlist modals
 const NotForYou = ref(false);
 const WaitlistDcotro = ref(false);
+const currentPage = ref(1);
 
 // --- Component Methods ---
 
-// Combined initialization logic
-const initializeComponent = async () => {
-  loading.value = true; // Set local loading, will be overwritten by store's loading
-  await authStore.getUser(); // Ensure user data is loaded first
+//Combined initialization logic with proper error handling
+// const initializeComponent = async () => {
+  
+//   try {
+//     loading.value = true;
+    
+//     // Get user data first
+//      authStore.getUser();
+    
+//     // Validate doctorId
+//     if (!doctorId.value || isNaN(doctorId.value)) {
+//       console.error('Invalid doctorId:', route.params.id);
+//       return;
+//     }
 
-  // Fetch all necessary data in parallel
-  await Promise.all([
-    getAppointments(doctorId.value, 1, currentFilter.value), // Initial load of appointments
-    getAppointmentsStatus(doctorId.value), // Get status counts
-    fetchWaitlists(doctorId.value, specializationId.value, NotForYou.value), // Get waitlist counts
-    // You might also want to call getTodaysAppointments if it's not covered by getAppointments
-  ]);
+//     // Fetch all necessary data in parallel
+//     await Promise.all([
+//       getAppointments(doctorId.value, currentPage.value, currentFilter.value),
+//       getAppointmentsStatus(doctorId.value),
+//     ]);
 
-  loading.value = false; // Reset local loading
-};
+//     initializationComplete.value = true;
+//   } catch (error) {
+//     console.error('Error during initialization:', error);
+//   } finally {
+//     loading.value = false;
+//   }
+// };
 
-// Handle file selection (calls store action)
+// Handle file selection
 const handleFileSelection = (event) => {
   handleFileSelectionStore(event.target.files);
 };
 
-// Handle removing file (calls store action)
+// Handle removing file
 const removeFile = (index) => {
   removeFileStore(index);
 };
 
-// Handle file upload (calls store action)
+// Handle file upload
 const uploadFiles = async () => {
   await uploadFilesStore(doctorId.value);
-  showUploadResults(); // Call local function to show results
+  showUploadResults();
 };
 
-// Function to display upload results (can use a notification library like `vue-toastification` or `sweetalert2`)
-const showUploadResults = () => {
-  let message = '';
-  if (uploadResults.value.success.length) {
-    message += `Successfully processed ${uploadResults.value.success.length} files.\n`;
-  }
-  if (uploadResults.value.errors.length) {
-    message += `\nFailed to process ${uploadResults.value.errors.length} files:\n`;
-    uploadResults.value.errors.forEach(error => {
-      message += `${error.filename}: ${error.error}\n`;
-    });
-  }
+// // Function to display upload results
+// const showUploadResults = () => {
+//   let message = '';
+//   if (uploadResults.value.success.length) {
+//     message += `Successfully processed ${uploadResults.value.success.length} files.\n`;
+//   }
+//   if (uploadResults.value.errors.length) {
+//     message += `\nFailed to process ${uploadResults.value.errors.length} files:\n`;
+//     uploadResults.value.errors.forEach(error => {
+//       message += `${error.filename}: ${error.error}\n`;
+//     });
+//   }
 
-  // Example using a hypothetical `notify` function (replace with your actual notification system)
-  if (typeof notify !== 'undefined') { // Check if notify function exists globally
-      notify({
-          title: 'Import Results',
-          message: message,
-          type: uploadResults.value.errors.length ? 'warning' : 'success'
-      });
-  } else {
-      alert(message); // Fallback to alert if no notification system
-  }
-};
+//   if (typeof notify !== 'undefined') {
+//     notify({
+//       title: 'Import Results',
+//       message: message,
+//       type: uploadResults.value.errors.length ? 'warning' : 'success'
+//     });
+//   } else {
+//     alert(message);
+//   }
+// };
 
-// Update the status filter handler (calls store action)
+// Update the status filter handler
 const handleStatusFilter = (statusValue) => {
-  getAppointments(doctorId.value, 1, statusValue); // Reset to page 1
+  currentPage.value = 1;
+  getAppointments(doctorId.value, currentPage.value, statusValue);
 };
 
-// Update other methods to use store actions
+// Handle search results
+const handleSearchResults = (searchData) => {
+  handleSearchResultsStore(searchData);
+  if (searchData?.meta?.current_page) {
+    currentPage.value = searchData.meta.current_page;
+  }
+};
+
+// Handle update appointment (called when appointments need to be refreshed)
+const handleUpdateAppointment = () => {
+  getAppointments(doctorId.value, pagination.value?.current_page || currentPage.value, currentFilter.value);
+};
+
+// Handle filter by date
 const handleFilterByDate = (date) => {
-  getAppointments(doctorId.value, 1, currentFilter.value, date);
+  // Handle date filtering if needed
+  getAppointments(doctorId.value, 1, currentFilter.value, null, date);
 };
 
 // Navigate to create appointment page
@@ -142,35 +170,32 @@ const goToAddAppointmentPage = () => {
   });
 };
 
-// Open/Close Waitlist Modals
+// Waitlist modal handlers
 const openWaitlistForYouModal = () => {
   NotForYou.value = false;
   WaitlistDcotro.value = true;
-  // Re-fetch waitlists specific for the doctor just before opening
   fetchWaitlists(doctorId.value, specializationId.value, NotForYou.value);
 };
 
 const openWaitlistNotForYouModal = () => {
   NotForYou.value = true;
   WaitlistDcotro.value = true;
-  // Re-fetch waitlists for specialization just before opening
   fetchWaitlists(doctorId.value, specializationId.value, NotForYou.value);
 };
 
 const closeWaitlistModal = () => {
   WaitlistDcotro.value = false;
-  // Re-fetch waitlist counts after closing in case changes were made
   fetchWaitlists(doctorId.value, specializationId.value, NotForYou.value);
 };
 
 const handleSave = () => {
   closeAddModal();
-  fetchWaitlists(doctorId.value, specializationId.value, NotForYou.value); // Refresh waitlist counts
+  fetchWaitlists(doctorId.value, specializationId.value, NotForYou.value);
 };
 
 const handleUpdate = () => {
   closeAddModal();
-  fetchWaitlists(doctorId.value, specializationId.value, NotForYou.value); // Refresh waitlist counts
+  fetchWaitlists(doctorId.value, specializationId.value, NotForYou.value);
 };
 
 const openAddModal = () => {
@@ -183,7 +208,7 @@ const closeAddModal = () => {
 
 // --- Lifecycle Hooks and Watchers ---
 
-// Initial component setup
+// Initial component setup - only call once
 onMounted(() => {
   initializeComponent();
 });
@@ -192,9 +217,14 @@ onMounted(() => {
 watch(
   () => route.params.id,
   (newDoctorId) => {
-    if (newDoctorId && newDoctorId !== doctorId.value) {
-      doctorId.value = newDoctorId; // Update local reactive doctorId
-      initializeComponent(); // Re-initialize component
+    const newId = parseInt(newDoctorId);
+    if (newId && newId !== doctorId.value) {
+      doctorId.value = newId;
+      specializationId.value = route.params.specializationId ? parseInt(route.params.specializationId) : null;
+      currentPage.value = 1;
+      initializationComplete.value = false; // Reset initialization flag
+      resetStore(); // Clear existing data
+      initializeComponent();
     }
   }
 );
@@ -204,7 +234,7 @@ watch(
   <div class="appointment-page">
     <div class="pb-2">
       <header-doctor-appointment v-if="doctorId" :isDcotro="false" :doctor-id="doctorId" />
-      </div>
+    </div>
 
     <div class="content">
       <div class="container-fluid">
@@ -278,7 +308,6 @@ watch(
               </div>
             </div>
 
-
             <div v-if="loading && uploadProgress > 0" class="mb-4">
               <div class="progress">
                 <div class="progress-bar" :style="{ width: `${uploadProgress}%` }">
@@ -295,14 +324,22 @@ watch(
               :userRole="userRole"
               :error="error"
               :doctor-id="doctorId"
-              @update-appointment="getAppointments(doctorId, 1, currentFilter)"
+              :totalPages="pagination?.last_page || 1"
+              :currentPage="pagination?.current_page || 1"
+              @update-appointment="handleUpdateAppointment"
               @update-status="getAppointmentsStatus(doctorId)"
               @get-appointments="handleSearchResults"
               @filterByDate="handleFilterByDate"
+              @page-changed="(page) => getAppointments(doctorId, page, currentFilter)" 
             />
 
             <div class="mt-4 d-flex justify-content-center">
-              <Bootstrap5Pagination :data="pagination" :limit="5" @pagination-change-page="(page) => getAppointments(doctorId, page, currentFilter)" />
+              <Bootstrap5Pagination 
+                v-if="pagination?.last_page > 1"
+                :data="pagination" 
+                :limit="5" 
+                @pagination-change-page="(page) => getAppointments(doctorId, page, currentFilter)" 
+              />
             </div>
           </div>
         </div>
@@ -342,14 +379,13 @@ watch(
   height: 20px;
   color: white;
 }
-/* Ensure buttons and inputs are touch-friendly */
+
 .btn,
 .custom-file-label {
   padding: 0.5rem 0.75rem;
   font-size: 1rem;
 }
 
-/* Adjust spacing for mobile */
 @media (max-width: 768px) {
   .btn-group {
     flex-direction: column;

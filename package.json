@@ -47,6 +47,7 @@
         "mammoth": "^1.9.0",
         "pinia": "^2.3.1",
         "pizzip": "^3.1.0",
+        "primeflex": "^4.0.0",
         "primeicons": "^7.0.0",
         "primevue": "^3.53.1",
         "puppeteer": "^24.10.0",

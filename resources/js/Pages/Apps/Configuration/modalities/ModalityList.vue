@@ -1,13 +1,26 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
-import axios from 'axios';
+import { modalityService } from '../../../../Components/Apps/services/modality/modalityService'; // Adjust path as needed
 import { useToastr } from '../../../../Components/toster';
 import { useSweetAlert } from '../../../../Components/useSweetAlert';
 import ModalityModel from '../../../../Components/Apps/Configuration/modalities/ModalityModel.vue';
-import ModalityListItem from './ModalityListItem.vue';
+import ModalityListItem from './ModalityListItem.vue'; // Might be removed if DataTable handles all rendering
+
+// PrimeVue Components
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import Paginator from 'primevue/paginator';
+import ProgressSpinner from 'primevue/progressspinner';
+import Tag from 'primevue/tag';
+import Toast from 'primevue/toast';
+import { useToast } from 'primevue/usetoast'; // For PrimeVue Toast
 
 const swal = useSweetAlert();
-const toaster = useToastr();
+const customToastr = useToastr(); // Renamed to avoid conflict if using PrimeVue Toast
+const toast = useToast(); // PrimeVue Toast instance
 
 // Data
 const modalities = ref([]);
@@ -16,33 +29,25 @@ const error = ref(null);
 const isModalOpen = ref(false);
 const selectedModality = ref(null);
 
-// Filter options
+// Filter options (will be fetched from API)
 const filterOptions = ref({
     modality_types: [],
-    services: [],
-    physical_locations: [],
-    protocols: [],
-    data_retrieval_methods: [],
+    specializations: [],
     operational_statuses: []
 });
 
 // Search and Filter states
 const searchQuery = ref('');
 const filters = ref({
-    modality_type_id: '',
-    service_id: '',
-    operational_status: '',
-    physical_location_id: '',
-    integration_protocol: '',
-    data_retrieval_method: '',
-    created_from: '',
-    created_to: ''
+    modality_type_id: null,
+    specialization_id: null,
+    operational_status: null,
 });
 
 // Pagination
 const pagination = ref({
     current_page: 1,
-    per_page: 10,
+    per_page: 30, // Matches backend default
     total: 0,
     last_page: 1
 });
@@ -53,14 +58,13 @@ const sortDirection = ref('desc');
 
 // UI States
 const showFilters = ref(false);
-const showAdvancedSearch = ref(false);
 
-const primaryColor = '#2563eb';
+const primaryColor = '#2563eb'; // Tailwind blue-600
 
 // Computed
 const hasActiveFilters = computed(() => {
-    return searchQuery.value || 
-           Object.values(filters.value).some(filter => filter !== '');
+    return searchQuery.value ||
+           Object.values(filters.value).some(filter => filter !== '' && filter !== null);
 });
 
 const totalFilteredResults = computed(() => {
@@ -68,67 +72,99 @@ const totalFilteredResults = computed(() => {
 });
 
 // Watch for changes in search and filters
-watch([searchQuery, filters, sortBy, sortDirection], () => {
-    if (pagination.value.current_page > 1) {
-        pagination.value.current_page = 1;
-    }
-    getModalities();
-}, { deep: true });
+watch(
+    [searchQuery, filters, sortBy, sortDirection, () => pagination.value.per_page],
+    (newValues, oldValues) => {
+        // Only call getModalities if the values actually changed
+        if (JSON.stringify(newValues) !== JSON.stringify(oldValues)) {
+            pagination.value.current_page = 1; // Reset to the first page
+            getModalities();
+        }
+    },
+    { deep: true }
+);
 
 /**
- * Fetches the list of modalities from the API with search and filter parameters.
+ * Fetches the list of modalities using modalityService.
  */
 const getModalities = async () => {
-    loading.value = true;
+    loading.value = true; // Set loading to true at the start
     error.value = null;
-    
+
     try {
         const params = {
             page: pagination.value.current_page,
             per_page: pagination.value.per_page,
             sort_by: sortBy.value,
             sort_direction: sortDirection.value,
-            search: searchQuery.value,
-            ...filters.value
+            query: searchQuery.value,
+            modality_type_id: filters.value.modality_type_id,
+            specialization_id: filters.value.specialization_id,
+            operational_status: filters.value.operational_status,
         };
 
-        // Remove empty filters
-        Object.keys(params).forEach(key => {
+        // Remove empty filters before sending to service
+        Object.keys(params).forEach((key) => {
             if (params[key] === '' || params[key] === null || params[key] === undefined) {
                 delete params[key];
             }
         });
 
-        const response = await axios.get('/api/modalities', { params });
+        const result = await modalityService.getAll(params);
+
         
-        modalities.value = response.data.data;
-        pagination.value = {
-            current_page: response.data.current_page,
-            per_page: response.data.per_page,
-            total: response.data.total,
-            last_page: response.data.last_page
-        };
+
+        if (result.success) {
+            modalities.value = result.data;
+            if (result.meta) {
+                pagination.value = {
+                    current_page: result.meta.current_page,
+                    per_page: result.meta.per_page,
+                    total: result.meta.total,
+                    last_page: result.meta.last_page,
+                };
+            } else {
+                pagination.value = {
+                    current_page: 1,
+                    per_page: result.data.length,
+                    total: result.data.length,
+                    last_page: 1,
+                };
+            }
+        } else {
+            error.value = result.message || 'Failed to load modalities.';
+            customToastr.error(error.value);
+        }
     } catch (err) {
-        console.error('Error fetching modalities:', err);
-        error.value = err.response?.data?.message || 'Failed to load modalities. Please try again.';
-        toaster.error(error.value);
+        console.error('Unexpected error in getModalities:', err);
+        error.value = err.response?.data?.message || 'An unexpected error occurred.';
+        customToastr.error(error.value);
     } finally {
-        loading.value = false;
+        loading.value = false; // Ensure loading is set to false in all cases
     }
 };
 
 /**
- * Fetches filter options for dropdowns.
+ * Fetches filter options for dropdowns using modalityService.
  */
-// const getFilterOptions = async () => {
-//     try {
-//         // const response = await axios.get('/api/modalities/filter-options');
-//         filterOptions.value = response.data;
-//     } catch (err) {
-//         console.error('Error fetching filter options:', err);
-//         toaster.error('Failed to load filter options.');
-//     }
-// };
+const getFilterOptions = async () => {
+    try {
+        // Assuming your backend route for filter options is now /api/modalities/filter-options
+        const result = await modalityService.getFilterOptions(); // Use the service
+
+        if (result.success) {
+            filterOptions.value.modality_types = result.data.modality_types || [];
+            filterOptions.value.specializations = result.data.specializations || [];
+            filterOptions.value.operational_statuses = result.data.operational_statuses || [];
+        } else {
+            customToastr.error(result.message);
+        }
+    } catch (err) {
+        console.error('Unexpected error in getFilterOptions:', err);
+        customToastr.error('An unexpected error occurred while loading filter options.');
+    }
+};
+
 
 /**
  * Clears all filters and search.
@@ -136,79 +172,34 @@ const getModalities = async () => {
 const clearFilters = () => {
     searchQuery.value = '';
     filters.value = {
-        modality_type_id: '',
-        service_id: '',
-        operational_status: '',
-        physical_location_id: '',
-        integration_protocol: '',
-        data_retrieval_method: '',
-        created_from: '',
-        created_to: ''
+        modality_type_id: null,
+        specialization_id: null,
+        operational_status: null,
     };
     pagination.value.current_page = 1;
+    // The watch effect will trigger getModalities()
+};
+
+/**
+ * Handles pagination change for PrimeVue Paginator.
+ */
+const onPageChange = (event) => {
+    pagination.value.current_page = event.page + 1; // PrimeVue pages are 0-indexed
+    pagination.value.per_page = event.rows;
     getModalities();
 };
 
 /**
- * Handles sorting change.
+ * Helper to get severity for status tag.
  */
-const handleSort = (field) => {
-    if (sortBy.value === field) {
-        sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
-    } else {
-        sortBy.value = field;
-        sortDirection.value = 'asc';
+const getStatusSeverity = (status) => {
+    switch (status) {
+        case 'Working': return 'success';
+        case 'Not Working': return 'danger';
+        case 'In Maintenance': return 'warning';
+        default: return null;
     }
 };
-
-/**
- * Handles pagination change.
- */
-const changePage = (page) => {
-    pagination.value.current_page = page;
-    getModalities();
-};
-
-/**
- * Changes items per page.
- */
-const changePerPage = (perPage) => {
-    pagination.value.per_page = perPage;
-    pagination.value.current_page = 1;
-    getModalities();
-};
-
-const getPaginationPages = () => {
-            const pages = [];
-            const current = this.pagination.current_page;
-            const total = this.pagination.last_page;
-            
-            // Always show first page
-            if (current > 3) {
-                pages.push(1);
-                if (current > 4) {
-                    pages.push('...');
-                }
-            }
-            
-            // Show pages around current page
-            for (let i = Math.max(1, current - 2); i <= Math.min(total, current + 2); i++) {
-                pages.push(i);
-            }
-            
-            // Always show last page
-            if (current < total - 2) {
-                if (current < total - 3) {
-                    pages.push('...');
-                }
-                pages.push(total);
-            }
-            
-            return pages;
-        }
-      
-    
-
 
 /**
  * Opens the ModalityModel for adding a new modality or editing an existing one.
@@ -221,12 +212,24 @@ const openModal = (modality = null) => {
         dicom_ae_title: '',
         port: null,
         physical_location_id: null,
-        operational_status: true,
-        service_id: null,
+        operational_status: 'Working',
+        specialization_id: null,
         integration_protocol: '',
         connection_configuration: '',
         data_retrieval_method: '',
         ip_address: '',
+        frequency: 'Daily',
+        time_slot_duration: null,
+        slot_type: 'minutes',
+        booking_window: null,
+        is_active: true,
+        notes: '',
+        schedules: [],
+        customDates: [],
+        availability_months: [],
+        start_time_force: null,
+        end_time_force: null,
+        number_of_patients: null,
     };
     isModalOpen.value = true;
 };
@@ -248,7 +251,7 @@ const refreshModalities = () => {
 };
 
 /**
- * Handles the deletion of a modality.
+ * Handles the deletion of a modality using modalityService.
  */
 const deleteModality = async (id) => {
     const result = await swal.fire({
@@ -263,16 +266,24 @@ const deleteModality = async (id) => {
     });
 
     if (result.isConfirmed) {
+        loading.value = true;
         try {
-            await axios.delete(`/api/modalities/${id}`);
-            toaster.success('Modality deleted successfully!');
-            await getModalities();
-            swal.fire('Deleted!', 'Your modality has been deleted.', 'success');
+            const deleteResult = await modalityService.delete(id); // Use the service
+            if (deleteResult.success) {
+                customToastr.success(deleteResult.message);
+                await getModalities();
+                swal.fire('Deleted!', 'Your modality has been deleted.', 'success');
+            } else {
+                customToastr.error(deleteResult.message);
+                swal.fire('Error!', deleteResult.message, 'error');
+            }
         } catch (err) {
-            console.error('Error deleting modality:', err);
-            const errorMessage = err.response?.data?.message || 'Failed to delete modality.';
-            toaster.error(errorMessage);
+            console.error('Unexpected error deleting modality:', err);
+            const errorMessage = err.message || 'An unexpected error occurred during deletion.';
+            customToastr.error(errorMessage);
             swal.fire('Error!', errorMessage, 'error');
+        } finally {
+            loading.value = false;
         }
     }
 };
@@ -280,6 +291,7 @@ const deleteModality = async (id) => {
 // Initialize component
 onMounted(() => {
     getModalities();
+    getFilterOptions();
 });
 </script>
 
@@ -300,162 +312,186 @@ onMounted(() => {
 
         <div class="content">
             <div class="container">
-                <div class="card">
-                    <div class="card-header">
-                        <h2 class="card-title">Modality List</h2>
-                        <div class="header-actions">
-                            <button @click="openModal()" class="add-modality-button">
-                                <i class="fas fa-plus-circle button-icon"></i>
+                <div class="card p-card">
+                    <div class="card-header ">
+                        <h2 class="">Modality List</h2>
+                        <div class="">
+                            <Button @click="openModal()" class="p-button-primary p-button-sm">
+                                <i class="pi pi-plus button-icon"></i>
                                 Add New Modality
-                            </button>
+                            </Button>
                         </div>
                     </div>
 
-                    <!-- Search and Filter Section -->
                     <div class="search-filter-section">
-                        <!-- Search Bar -->
-                        <div class="search-bar">
-                            <div class="search-input-container">
-                                <i class="fas fa-search search-icon"></i>
-                                <input
-                                    v-model="searchQuery"
-                                    type="text"
-                                    placeholder="Search modalities..."
-                                    class="search-input"
-                                />
-                                <button 
-                                    v-if="searchQuery"
-                                    @click="searchQuery = ''"
-                                    class="clear-search-button"
-                                >
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
+                        <div class="search-bar p-inputgroup">
+                            <span class="p-inputgroup-addon">
+                                <i class="pi pi-search"></i>
+                            </span>
+                            <InputText
+                                v-model="searchQuery"
+                                placeholder="Search by name or internal code..."
+                            />
+                            <Button
+                                v-if="searchQuery"
+                                icon="pi pi-times"
+                                class="p-button-secondary"
+                                @click="searchQuery = ''"
+                            />
                         </div>
 
-                        <!-- Filter Toggle and Actions -->
                         <div class="filter-actions">
-                            
-                            <button 
+                            <Button
+                                @click="showFilters = !showFilters"
+                                :class="{'p-button-secondary': !showFilters, 'p-button-primary': showFilters}"
+                                icon="pi pi-filter"
+                                label="Toggle Filters"
+                            >
+                            </Button>
+
+                            <Button
                                 v-if="hasActiveFilters"
                                 @click="clearFilters"
-                                class="clear-filters-button"
-                            >
-                                <i class="fas fa-eraser"></i>
-                                Clear All
-                            </button>
+                                icon="pi pi-eraser"
+                                label="Clear All Filters"
+                                class="p-button-danger p-button-outlined"
+                            />
 
-                            <div class="results-info">
-                                <span class="results-count">
-                                    {{ totalFilteredResults }} results found
-                                </span>
-                            </div>
+                            <span class="results-count ml-auto">{{ totalFilteredResults }} results found</span>
                         </div>
 
-                 
+                        <div v-if="showFilters" class="filters-panel p-card mt-3">
+                            <div class="p-grid p-fluid">
+                                <div class="p-col-12 p-md-4">
+                                    <div class="p-field">
+                                        <label for="modalityType">Modality Type</label>
+                                        <Dropdown
+                                            id="modalityType"
+                                            v-model="filters.modality_type_id"
+                                            :options="filterOptions.modality_types"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Select a type"
+                                            showClear
+                                        />
+                                    </div>
+                                </div>
+                                <div class="p-col-12 p-md-4">
+                                    <div class="p-field">
+                                        <label for="specialization">Specialization</label>
+                                        <Dropdown
+                                            id="specialization"
+                                            v-model="filters.specialization_id"
+                                            :options="filterOptions.specializations"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Select a specialization"
+                                            showClear
+                                        />
+                                    </div>
+                                </div>
+                                <div class="p-col-12 p-md-4">
+                                    <div class="p-field">
+                                        <label for="operationalStatus">Operational Status</label>
+                                        <Dropdown
+                                            id="operationalStatus"
+                                            v-model="filters.operational_status"
+                                            :options="filterOptions.operational_statuses"
+                                            optionLabel="label"
+                                            optionValue="value"
+                                            placeholder="Select status"
+                                            showClear
+                                        />
+                                    </div>
+                                </div>
+                                </div>
+                        </div>
                     </div>
 
-                    <!-- Sorting and Pagination Controls -->
-                    <div class="table-controls">
-                        <div class="sort-controls">
-                            <label class="sort-label">Sort by:</label>
-                            <select v-model="sortBy" class="sort-select">
-                                <option value="name">Name</option>
-                                <option value="internal_code">Internal Code</option>
-                                <option value="created_at">Created Date</option>
-                                <option value="updated_at">Updated Date</option>
-                                <option value="operational_status">Status</option>
-                            </select>
-                            <button 
-                                @click="sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'"
-                                class="sort-direction-button"
-                            >
-                                <i class="fas" :class="sortDirection === 'asc' ? 'fa-sort-up' : 'fa-sort-down'"></i>
-                            </button>
-                        </div>
-
-                        <div class="pagination-controls">
-                            <label class="per-page-label">Show:</label>
-                            <select v-model="pagination.per_page" @change="changePerPage(pagination.per_page)" class="per-page-select">
-                                <option value="10">10</option>
-                                <option value="25">25</option>
-                                <option value="50">50</option>
-                                <option value="100">100</option>
-                            </select>
-                            <span class="per-page-text">per page</span>
-                        </div>
-                    </div>
-
-                    <!-- Loading State -->
                     <div v-if="loading" class="loading-state">
-                        <div class="spinner" role="status">
-                            <span class="sr-only">Loading...</span>
-                        </div>
+                        <ProgressSpinner style="width:50px; height:50px" strokeWidth="8" animationDuration=".8s" aria-label="Loading" />
                         <p class="loading-text">Loading modalities...</p>
                     </div>
 
-                    <!-- Error State -->
-                    <div v-else-if="error" class="error-message" role="alert">
+                    <div v-else-if="error" class="error-message p-message p-message-error" role="alert">
                         <strong class="error-bold">Error!</strong>
                         <span class="error-text">{{ error }}</span>
                     </div>
 
-                    <!-- Table with Data -->
-                    <div v-else-if="modalities.length > 0" class="table-responsive">
-                        <table class="modality-table">
-                            <thead>
-                                <tr class="table-header-row">
-                                    <th class="table-header">#</th>
-                                    <th class="table-header">Image</th>
-                                    <th class="table-header sortable" @click="handleSort('name')">
-                                        Name
-                                        <i 
-                                            v-if="sortBy === 'name'"
-                                            class="fas sort-icon"
-                                            :class="sortDirection === 'asc' ? 'fa-sort-up' : 'fa-sort-down'"
-                                        ></i>
-                                    </th>
-                                    <th class="table-header sortable" @click="handleSort('internal_code')">
-                                        Internal Code
-                                        <i 
-                                            v-if="sortBy === 'internal_code'"
-                                            class="fas sort-icon"
-                                            :class="sortDirection === 'asc' ? 'fa-sort-up' : 'fa-sort-down'"
-                                        ></i>
-                                    </th>
-                                    <th class="table-header">Service</th>
-                                    <th class="table-header">Protocol</th>
-                                    <th class="table-header">Config</th>
-                                    <th class="table-header">Data Method</th>
-                                    <th class="table-header">IP Address</th>
-                                    <th class="table-header sortable" @click="handleSort('operational_status')">
-                                        Status
-                                        <i 
-                                            v-if="sortBy === 'operational_status'"
-                                            class="fas sort-icon"
-                                            :class="sortDirection === 'asc' ? 'fa-sort-up' : 'fa-sort-down'"
-                                        ></i>
-                                    </th>
-                                    <th class="table-header actions-header">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="table-body">
-                                <ModalityListItem
-                                    v-for="(modality, index) in modalities"
-                                    :key="modality.id"
-                                    :modality="modality"
-                                    :index="index + ((pagination.current_page - 1) * pagination.per_page)"
-                                    @edit="openModal"
-                                    @delete="deleteModality"
-                                />
-                            </tbody>
-                        </table>
+                    <div v-else-if="modalities.length > 0" class="card">
+                        <DataTable
+                            :value="modalities"
+                            :rows="pagination.per_page"
+                            :totalRecords="pagination.total"
+                            lazy
+                            :first="(pagination.current_page - 1) * pagination.per_page"
+                            @page="onPageChange"
+                            stripedRows
+                            tableStyle="min-width: 50rem"
+                        >
+                            <Column field="id" header="#">
+                                <template #body="slotProps">
+                                    {{ slotProps.index + 1 + ((pagination.current_page - 1) * pagination.per_page) }}
+                                </template>
+                            </Column>
+                            <!-- <Column header="Image">
+                                <template #body>
+                                    <i class="pi pi-image" style="font-size: 2rem"></i>
+                                </template>
+                            </Column> -->
+                            <Column field="name" header="Name" sortable></Column>
+                            <Column field="internal_code" header="Internal Code" sortable></Column>
+                            <Column header="Type">
+                                <template #body="slotProps">
+                                    {{ slotProps.data.modality_type ? slotProps.data.modality_type.name : 'N/A' }}
+                                </template>
+                            </Column>
+                            <Column header="Specialization">
+                                <template #body="slotProps">
+                                    {{ slotProps.data.specialization ? slotProps.data.specialization.name : 'N/A' }}
+                                </template>
+                            </Column>
+                            <Column field="integration_protocol" header="Protocol"></Column>
+                            <Column field="connection_configuration" header="Config"></Column>
+                            <Column field="data_retrieval_method" header="Data Method"></Column>
+                            <Column field="ip_address" header="IP Address"></Column>
+                            <Column field="operational_status" header="Status" sortable>
+                                <template #body="slotProps">
+                                    <Tag :value="slotProps.data.operational_status" :severity="getStatusSeverity(slotProps.data.operational_status)" />
+                                </template>
+                            </Column>
+                            <Column header="Actions" style="width: 100%;">
+                                <template #body="slotProps">
+                                    <Button
+                                        icon="pi pi-pencil"
+                                        class="p-button-rounded p-button-info p-button-text"
+                                        @click="openModal(slotProps.data)"
+                                        v-tooltip.top="'Edit Modality'"
+                                    />
+                                    <Button
+                                        icon="pi pi-trash"
+                                        class="p-button-rounded p-button-danger p-button-text ml-2"
+                                        @click="deleteModality(slotProps.data.id)"
+                                        v-tooltip.top="'Delete Modality'"
+                                    />
+                                </template>
+                            </Column>
+                        </DataTable>
+
+                        <Paginator
+                            v-if="pagination.total > pagination.per_page"
+                            :rows="pagination.per_page"
+                            :totalRecords="pagination.total"
+                            :rowsPerPageOptions="[10, 25, 50, 100]"
+                            @page="onPageChange"
+                            template="RowsPerPageDropdown FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport"
+                            :currentPageReportTemplate="`Showing {first}-{last} of {totalRecords} modalities`"
+                        />
                     </div>
 
-                    <!-- No Results Found -->
                     <div v-else class="no-modalities">
                         <div class="no-results-content">
-                            <i class="fas fa-search no-results-icon"></i>
+                            <i class="pi pi-search no-results-icon"></i>
                             <p class="no-results-text">
                                 <span v-if="hasActiveFilters">
                                     No modalities found matching your search criteria.
@@ -464,63 +500,19 @@ onMounted(() => {
                                     No modalities found. Click "Add New Modality" to get started!
                                 </span>
                             </p>
-                            <button 
+                            <Button
                                 v-if="hasActiveFilters"
                                 @click="clearFilters"
-                                class="clear-filters-button"
-                            >
-                                <i class="fas fa-eraser"></i>
-                                Clear Filters
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Pagination -->
-                    <div v-if="pagination.last_page > 1" class="pagination-section">
-                        <div class="pagination-info">
-                            <span class="pagination-text">
-                                Showing {{ ((pagination.current_page - 1) * pagination.per_page) + 1 }} to 
-                                {{ Math.min(pagination.current_page * pagination.per_page, pagination.total) }} of 
-                                {{ pagination.total }} results
-                            </span>
-                        </div>
-                        
-                        <div class="pagination-buttons">
-                            <button 
-                                @click="changePage(pagination.current_page - 1)"
-                                :disabled="pagination.current_page === 1"
-                                class="pagination-button"
-                            >
-                                <i class="fas fa-chevron-left"></i>
-                                Previous
-                            </button>
-
-                            <div class="pagination-numbers">
-                                <button
-                                    v-for="page in getPaginationPages()"
-                                    :key="page"
-                                    @click="changePage(page)"
-                                    :class="['pagination-number', { active: page === pagination.current_page }]"
-                                >
-                                    {{ page }}
-                                </button>
-                            </div>
-
-                            <button 
-                                @click="changePage(pagination.current_page + 1)"
-                                :disabled="pagination.current_page === pagination.last_page"
-                                class="pagination-button"
-                            >
-                                Next
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
+                                icon="pi pi-eraser"
+                                label="Clear Filters"
+                                class="p-button-secondary mt-3"
+                            />
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Modal -->
         <ModalityModel
             :show-modal="isModalOpen"
             :modality-data="selectedModality"
@@ -528,20 +520,20 @@ onMounted(() => {
             @modality-updated="refreshModalities"
             @modality-added="refreshModalities"
         />
-    </div>
+
+        <Toast /> </div>
 </template>
 
-
-
 <style scoped>
-/* Base Page Layout */
+/* Keep much of your existing CSS, and adapt for PrimeVue class names. */
+/* PrimeVue components often have their own styling and responsive behavior. */
+
 .modality-page {
     padding: 1rem;
     background-color: #f3f4f6;
     min-height: 100vh;
 }
 
-/* Content Header */
 .content-header {
     margin-bottom: 1.5rem;
 }
@@ -625,33 +617,6 @@ onMounted(() => {
     gap: 0.5rem;
 }
 
-.add-modality-button, .export-button {
-    display: inline-flex;
-    align-items: center;
-    margin-left: 800px;
-    padding: 0.5rem 1rem;
-    background-color: v-bind(primaryColor);
-    color: #ffffff;
-    font-weight: 600;
-    border-radius: 0.375rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-    border: none;
-    cursor: pointer;
-}
-
-.export-button {
-    background-color: #10b981;
-}
-
-.add-modality-button:hover {
-    background-color: #1d4ed8;
-}
-
-.export-button:hover {
-    background-color: #059669;
-}
-
 .button-icon {
     margin-right: 0.5rem;
 }
@@ -665,49 +630,16 @@ onMounted(() => {
     margin-bottom: 1rem;
 }
 
-.search-input-container {
-    position: relative;
-    max-width: 500px;
+/* PrimeVue's p-inputgroup handles the positioning of icon */
+.p-inputgroup .p-inputgroup-addon {
+    background-color: #f3f4f6;
+    border-right: none;
 }
-
-.search-icon {
-    position: absolute;
-    left: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #6b7280;
+.p-inputgroup .p-inputtext {
+    border-left: none;
 }
-
-.search-input {
-    width: 100%;
-    padding: 0.75rem 0.75rem 0.75rem 2.5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    background-color: #ffffff;
-    transition: border-color 0.3s ease;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: v-bind(primaryColor);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.clear-search-button {
-    position: absolute;
-    right: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: #6b7280;
-    cursor: pointer;
-    padding: 0.25rem;
-}
-
-.clear-search-button:hover {
-    color: #374151;
+.p-inputgroup .p-button-secondary {
+    border-left: none;
 }
 
 .filter-actions {
@@ -715,54 +647,6 @@ onMounted(() => {
     align-items: center;
     gap: 1rem;
     margin-bottom: 1rem;
-}
-
-.filter-toggle-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background-color: #f3f4f6;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.filter-toggle-button.active {
-    background-color: v-bind(primaryColor);
-    color: #ffffff;
-    border-color: v-bind(primaryColor);
-}
-
-.filter-count {
-    background-color: #ef4444;
-    color: #ffffff;
-    border-radius: 9999px;
-    padding: 0.125rem 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.clear-filters-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background-color: #ef4444;
-    color: #ffffff;
-    border: none;
-    border-radius: 0.375rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.clear-filters-button:hover {
-    background-color: #dc2626;
-}
-
-.results-info {
-    margin-left: auto;
 }
 
 .results-count {
@@ -778,124 +662,22 @@ onMounted(() => {
     margin-bottom: 1rem;
 }
 
-.filters-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
+/* PrimeVue Field styling */
+.p-field {
+    margin-bottom: 1rem; /* Adjust spacing between fields */
 }
-
-.filter-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.filter-label {
+.p-field label {
+    display: block;
+    margin-bottom: 0.5rem;
     font-size: 0.875rem;
     font-weight: 500;
     color: #374151;
-}
-
-.filter-select, .filter-input {
-    padding: 0.5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.25rem;
-    font-size: 0.875rem;
-    background-color: #ffffff;
-    transition: border-color 0.3s ease;
-}
-
-.filter-select:focus, .filter-input:focus {
-    outline: none;
-    border-color: v-bind(primaryColor);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-/* Table Controls */
-.table-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    padding: 0.75rem;
-    background-color: #f9fafb;
-    border-radius: 0.375rem;
-}
-
-.sort-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.sort-label, .per-page-label {
-    font-size: 0.875rem;
-    color: #374151;
-    font-weight: 500;
-}
-
-.sort-select, .per-page-select {
-    padding: 0.25rem 0.5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.25rem;
-    font-size: 0.875rem;
-    background-color: #ffffff;
-}
-
-.sort-direction-button {
-    padding: 0.25rem 0.5rem;
-    background-color: #ffffff;
-    border: 1px solid #d1d5db;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.sort-direction-button:hover {
-    background-color: #f3f4f6;
-}
-
-.pagination-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.per-page-text {
-    font-size: 0.875rem;
-    color: #6b7280;
 }
 
 /* Loading State */
 .loading-state {
     text-align: center;
     padding: 2rem;
-}
-
-.spinner {
-    display: inline-block;
-    width: 2rem;
-    height: 2rem;
-    border: 4px solid rgba(37, 99, 235, 0.3);
-    border-top-color: v-bind(primaryColor);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
 }
 
 .loading-text {
@@ -905,9 +687,7 @@ onMounted(() => {
 
 /* Error Message */
 .error-message {
-    background-color: #fee2e2;
-    border: 1px solid #ef4444;
-    color: #b91c1c;
+    /* PrimeVue p-message classes will handle most styling */
     padding: 0.75rem 1rem;
     border-radius: 0.25rem;
     margin-bottom: 1rem;
@@ -919,52 +699,6 @@ onMounted(() => {
 
 .error-text {
     margin-left: 0.5rem;
-}
-
-/* Table Styles */
-.table-responsive {
-    overflow-x: auto;
-}
-
-.modality-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.table-header-row {
-    background-color: #e5e7eb;
-    color: #374151;
-    text-transform: uppercase;
-    font-size: 0.875rem;
-}
-
-.table-header {
-    padding: 0.75rem 1rem;
-    text-align: left;
-    font-weight: 600;
-}
-
-.table-header.sortable {
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-}
-
-.table-header.sortable:hover {
-    background-color: #d1d5db;
-}
-
-.sort-icon {
-    margin-left: 0.5rem;
-    font-size: 0.75rem;
-}
-
-.actions-header {
-    text-align: center;
-}
-
-.table-body {
-    color: #4b5563;
-    font-size: 0.875rem;
 }
 
 /* No Results */
@@ -991,70 +725,18 @@ onMounted(() => {
     margin: 0;
 }
 
-/* Pagination */
-.pagination-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 1.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid #e5e7eb;
+/* Custom Tag styling for operational status */
+.p-tag.p-tag-success {
+    background-color: #28a745; /* Green for Working */
+    color: #fff;
 }
-
-.pagination-info {
-    font-size: 0.875rem;
-    color: #6b7280;
+.p-tag.p-tag-warning {
+    background-color: #ffc107; /* Yellow for In Maintenance */
+    color: #212529; /* Darker text for better contrast */
 }
-
-.pagination-buttons {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.pagination-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background-color: #ffffff;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.pagination-button:hover:not(:disabled) {
-    background-color: #f3f4f6;
-}
-
-.pagination-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.pagination-numbers {
-    display: flex;
-    gap: 0.25rem;
-}
-
-.pagination-number {
-    padding: 0.5rem 0.75rem;
-    background-color: #ffffff;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.pagination-number:hover {
-    background-color: #f3f4f6;
-}
-
-.pagination-number.active {
-    background-color: v-bind(primaryColor);
-    color: #ffffff;
-    border-color: v-bind(primaryColor);
+.p-tag.p-tag-danger {
+    background-color: #dc3545; /* Red for Not Working */
+    color: #fff;
 }
 
 /* Responsive Design */
@@ -1081,19 +763,13 @@ onMounted(() => {
         gap: 0.5rem;
     }
     
-    .table-controls {
-        flex-direction: column;
-        gap: 1rem;
+    /* PrimeVue DataTable handles responsiveness well, often with horizontal scroll */
+    .p-datatable {
+        overflow-x: auto;
     }
-    
-    .pagination-section {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .filters-grid {
-        grid-template-columns: 1fr;
+    .p-col-12.p-md-4 {
+        flex: 0 0 100%; /* Ensure full width on small screens */
+        max-width: 100%;
     }
 }
 </style>
-

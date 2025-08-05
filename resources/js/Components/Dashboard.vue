@@ -42,28 +42,22 @@ const initializeRole = async () => {
 
 
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
 const getAppointments = async (status = null, filter = null, date = null) => {
   try {
     loading.value = true;
     error.value = null;
 
-    currentFilter.value = status || 'ALL';
-
     const params = {
       status: status === 'ALL' ? null : status,
-      filter: filter,
+      filter: filter || filters.value, // Use the filters object
       date: date || filters.value.date,
       doctorName: filters.value.doctorName,
-      // Add doctor_id to params if it exists
       ...(doctor_id.value && { doctor_id: doctor_id.value })
-
     };
-
 
     const response = await axios.get(`/api/appointments`, { params });
     console.log(response.data);
-    
+
     pagination.value = response.data.meta;
 
     if (response.data.success) {
@@ -307,17 +301,14 @@ const formattedDate = computed(() => {
 
 const selectDate = (date) => {
   selectedDate.value = date;
-  filters.value.date = formattedDate.value;
-  filters.value.doctorName = "";
-  getAppointments(null, null, formattedDate.value); // Pass the selected date
+  filters.value.date = formatLocalDate(date); // Update the filters object with the selected date
+  getAppointments(null, filters.value); // Pass the filters object to retain the applied filters
 };
 
 
-
-// Filter by doctor name
 const filterByDoctor = (doctorName) => {
-  filters.value.doctorName = doctorName;
-  getAppointments(null, null, filters.value.date); // Pass the selected date
+  filters.value.doctorName = doctorName; // Update the filters object with the selected doctor name
+  getAppointments(null, filters.value); // Pass the filters object to retain the applied filters
 };
 
 const formattedSelectedDate = computed(() => {

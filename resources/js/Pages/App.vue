@@ -44,10 +44,10 @@ onMounted(async () => {
 <template>
   <div v-if="!isLoading" class="wrapper" id="app" >
     <template v-if="!shouldHideLayout">
-      <Navbar  />
+      <Navbar />
       <component :is="currentSidebarComponent" :user="user" /> 
       
-      <div class="content-wrapper" style="margin-top: 60px;">
+      <div class="content-wrapper" >
         <router-view></router-view>
       </div>
       <Footer />

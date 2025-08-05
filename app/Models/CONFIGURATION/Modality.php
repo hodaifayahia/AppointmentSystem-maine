@@ -1,11 +1,12 @@
 <?php
 
-namespace App\Models\CONFIGURATION; // Corrected namespace from CONFIGURATIONC to CONFIGURATION
+namespace App\Models\CONFIGURATION; // Correct namespace
 
 use Illuminate\Database\Eloquent\Model;
-use App\Models\CONFIGURATION\ModalityType; // Ensure this is correctly imported
-use App\Models\INFRASTRUCTURE\Room; // Ensure this is correctly imported
-use App\Models\CONFIGURATION\Service; // NEW: Import the Service model
+use Illuminate\Database\Eloquent\Builder; // THIS IS THE CRUCIAL IMPORT: Use Laravel's Eloquent Builder
+use App\Models\CONFIGURATION\ModalityType;
+use App\Models\INFRASTRUCTURE\Room; // Assuming Room is still in CONFIGURATION or adjust if in INFRASTRUCTURE
+use App\Models\Specialization; // Ensure this is correctly imported
 
 class Modality extends Model
 {
@@ -24,18 +25,26 @@ class Modality extends Model
     protected $fillable = [
         'name',
         'internal_code',
+        'image_path',
         'modality_type_id',
         'dicom_ae_title',
         'port',
         'physical_location_id',
         'operational_status',
-        // --- New Fields Added ---
-        'service_id',
+        'specialization_id',
         'integration_protocol',
         'connection_configuration',
         'data_retrieval_method',
         'ip_address',
-        // --- End New Fields ---
+        'consumption_type',
+        'consumption_unit',
+        'frequency',
+        'time_slot_duration',
+        'slot_type',
+        'booking_window',
+        'availability_months',
+        'is_active',
+        'notes'
     ];
 
     /**
@@ -44,11 +53,10 @@ class Modality extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        // If 'operational_status' is stored as a string ('active', 'inactive')
-        // and you want to cast it to a boolean when retrieved, you can do:
-        // 'operational_status' => 'boolean',
-        // However, your controller already handles this conversion, so it might not be strictly necessary here
-        // unless you want it to be a boolean directly from the model instance.
+        'is_active' => 'boolean',
+        'availability_months' => 'array',
+        'time_slot_duration' => 'integer',
+        'booking_window' => 'integer'
     ];
 
     /**
@@ -64,14 +72,143 @@ class Modality extends Model
      */
     public function physicalLocation()
     {
+        // Assuming Room is in App\Models\CONFIGURATION. If it's App\Models\INFRASTRUCTURE\Room,
+        // you need to either import it as `use App\Models\INFRASTRUCTURE\Room;`
+        // or use its full namespace: `return $this->belongsTo(\App\Models\INFRASTRUCTURE\Room::class, 'physical_location_id');`
         return $this->belongsTo(Room::class, 'physical_location_id');
     }
 
+
     /**
-     * NEW: Get the service/department that owns the Modality.
+     * Get the specialization that owns the Modality.
      */
-    public function service()
+    public function specialization()
     {
-        return $this->belongsTo(Service::class);
+        return $this->belongsTo(Specialization::class);
+    }
+
+    /**
+     * Get the AppointmentModalityForce associated with the Modality.
+     */
+    public function appointmentModalityForce()
+    {
+        return $this->hasOne(AppointmentModalityForce::class);
+    }
+
+    /**
+     * Get the schedules for the modality.
+     */
+    public function schedules()
+    {
+        return $this->hasMany(ModalitySchedule::class);
+    }
+    /**
+     * Get the available slots for the modality.
+     */
+
+    /**
+     * Get the available months for the modality.
+     */
+    public function availableMonths()
+    {
+        return $this->hasMany(ModalityAvailableMonth::class);
+    }
+
+    // --- Local Scopes for Filtering ---
+
+    /**
+     * Scope a query to search for a term in various fields.
+     */
+    public function scopeSearch(Builder $query, ?string $searchTerm) // Changed type hint to Illuminate\Database\Eloquent\Builder
+    {
+        if ($searchTerm) {
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('internal_code', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('dicom_ae_title', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('ip_address', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('integration_protocol', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('data_retrieval_method', 'LIKE', "%{$searchTerm}%")
+                  ->orWhereHas('modalityType', function ($q) use ($searchTerm) {
+                      $q->where('name', 'LIKE', "%{$searchTerm}%");
+                  })
+                  ->orWhereHas('specialization', function ($q) use ($searchTerm) {
+                      $q->where('name', 'LIKE', "%{$searchTerm}%");
+                  });
+            });
+        }
+    }
+
+    /**
+     * Scope a query to filter by modality type ID.
+     */
+    public function scopeModalityType(Builder $query, $modalityTypeId) // Changed type hint
+    {
+        if ($modalityTypeId) {
+            $query->where('modality_type_id', $modalityTypeId);
+        }
+    }
+
+    /**
+     * Scope a query to filter by specialization ID.
+     */
+    public function scopeSpecialization(Builder $query, $specializationId) // Changed type hint
+    {
+        if ($specializationId) {
+            $query->where('specialization_id', $specializationId);
+        }
+    }
+
+    /**
+     * Scope a query to filter by operational status.
+     */
+    public function scopeOperationalStatus(Builder $query, ?string $status) // Changed type hint
+    {
+        if ($status) {
+            $query->where('operational_status', $status);
+        }
+    }
+
+    /**
+     * Scope a query to filter by physical location ID.
+     */
+    public function scopePhysicalLocation(Builder $query, $locationId) // Changed type hint
+    {
+        if ($locationId) {
+            $query->where('physical_location_id', $locationId);
+        }
+    }
+
+    /**
+     * Scope a query to filter by integration protocol.
+     */
+    public function scopeIntegrationProtocol(Builder $query, ?string $protocol) // Changed type hint
+    {
+        if ($protocol) {
+            $query->where('integration_protocol', 'LIKE', "%{$protocol}%");
+        }
+    }
+
+    /**
+     * Scope a query to filter by data retrieval method.
+     */
+    public function scopeDataRetrievalMethod(Builder $query, ?string $method) // Changed type hint
+    {
+        if ($method) {
+            $query->where('data_retrieval_method', 'LIKE', "%{$method}%");
+        }
+    }
+
+    /**
+     * Scope a query to filter by creation date range.
+     */
+    public function scopeCreatedAtRange(Builder $query, ?string $from, ?string $to) // Changed type hint
+    {
+        if ($from) {
+            $query->where('created_at', '>=', $from);
+        }
+        if ($to) {
+            $query->where('created_at', '<=', $to . ' 23:59:59');
+        }
     }
 }

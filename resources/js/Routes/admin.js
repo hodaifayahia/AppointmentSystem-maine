@@ -9,8 +9,6 @@ const adminRoutes = [{
     // component: () => import('./Layouts/AdminLayout.vue'),
     meta: { requiresAuth: true, role: ['admin', 'SuperAdmin'] }, // All admin children will inherit this
     children: [
-
-
         {
             path: 'appointments',
             children: [
@@ -23,6 +21,28 @@ const adminRoutes = [{
             path: 'patient/appointments/:id',
             name: 'admin.patient.appointments',
             component: () => import('../Pages/Patient/PatientAppointmentList.vue'),
+        },
+         {
+            path: 'modality-appointment',
+            name: 'admin.modality-appointment',
+            component: () => import('../Pages/Apps/Appointments/ModalityAppointment/ModalityAppointmentSpecilazationList.vue'),
+        },
+         {
+            path: 'modality-appointment/forceAppointment',
+            name: 'admin.modality-appointment.forceAppointment',
+            component: () => import('../Pages/Apps/Appointments/ModalityAppointment/ForceAppointments/CanFroceList.vue'),
+        },
+         {
+            path: 'modality-appointment/specialization/:id',
+            name: 'admin.modality-appointment.specialization',
+            component: () => import('../Pages/Apps/Appointments/ModalityAppointment/ModalityAppointmentModalityList.vue'),
+            props: true,
+        },
+         {
+            path: 'modality-appointment/details/:id/:specializationId',
+            name: 'admin.modality-appointment.details',
+            component: () => import('../Pages/Apps/Appointments/ModalityAppointment/ModalityAppointmentDetails.vue'),
+            props: true,
         },
         {
             path: 'users',

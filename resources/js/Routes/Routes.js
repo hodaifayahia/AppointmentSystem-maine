@@ -9,6 +9,7 @@ import infrastructureRoutes from './infrastructure'; // 👈 NEW IMPORT
 import convenationRoutes from './convenation'; // 👈 NEW IMPORT
 import crmRoutes from './crm'; // 👈 NEW IMPORT
 import TicketManagementRoutes from './ticket-management'; // 👈 NEW IMPORT
+import receptionRoutes from './Reception'; // 👈 NEW IMPORT
 
 
 
@@ -17,6 +18,7 @@ export const allRoutes = [
     ...publicRoutes,
     ...adminRoutes,
     ...doctorRoutes,
+    ...receptionRoutes,
     ...configurationRoutes, // 👈 ADDED HERE
     ...infrastructureRoutes,
     ...convenationRoutes,

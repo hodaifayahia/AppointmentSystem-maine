@@ -479,10 +479,10 @@ const loadPrescriptionTemplate = () => {
             flex: 0 0 auto;
         }
         
-        .meta-info-date {
-            flex: 0 0 auto;
-            margin-left: 90mm;
-        }
+      .meta-info-date {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
         
         .patient-details {
             display: flex;

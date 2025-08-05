@@ -94,6 +94,16 @@ const handleDateSelected = (date) => {
   emit('dateSelected', date);
 };
 
+const handleForceTimeSelected = (time) => {
+  console.log('Force time selected:', time);
+  emit('timeSelected', time);
+};
+
+const handleForceDateSelected = (date) => {
+  console.log('Force date selected:', date);
+  emit('dateSelected', date);
+};
+
 const resetDateSelection = () => {
   selectedDate.value = null;
   availableSlots.value = [];
@@ -125,37 +135,63 @@ watch(selectedDate, checkDateAvailability);
     <div class="mb-3">
       <label for="datepicker" class="form-label">Select Date</label>
       <Datepicker 
-      v-model="selectedDate"
-       id="datepicker"
+        v-model="selectedDate"
+        id="datepicker"
         :enable-time-picker="false" 
         :disabled-dates="isDateDisabled"
         :format="(date) => formatDate(date)"
         :format-locale="{ code: 'en-GB', monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] }"
-        :min-date="new Date()" style="display: block; width: 100%;" />
+        :min-date="new Date()" 
+        style="display: block; width: 100%;" 
+      />
     </div>
 
     <div v-if="selectedDate && showTimeSlots" class="card mb-3 shadow-sm">
       <div class="card-body">
-        <TimeSlotSelector :date="formattedDate" :doctorid="props.doctorId" @timeSelected="handleTimeSelected"
-          @availabilityChecked="handleAvailabilityChecked" class="mt-3" />
+        <TimeSlotSelector 
+          :date="formattedDate" 
+          :doctorid="props.doctorId" 
+          @timeSelected="handleTimeSelected"
+          @availabilityChecked="handleAvailabilityChecked" 
+          class="mt-3" 
+        />
         <button @click="resetDateSelection" class="btn btn-outline-secondary btn-sm mt-3">
           Reset Selection
         </button>
       </div>
     </div>
 
-    <!-- Updated condition to show force appointment option -->
+    <!-- Updated force appointment section -->
     <div v-else-if="selectedDate && !showTimeSlots" class="mt-2 text-center">
-      <div v-if="(is_able_tO_force || authStore.user.role === 'admin' || authStore.user.role === 'doctor' || authStore.user.role === 'SuperAdmin' )">
-        <button @click="forceAppointment" class="btn btn-outline-secondary mt-2 mb-2">Force Appointment</button>
+      <div v-if="(is_able_tO_force || authStore.user.role === 'admin' || authStore.user.role === 'doctor' || authStore.user.role === 'SuperAdmin')">
+        <div class="alert alert-warning mb-3">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          No available time slots for this date. You can force an appointment.
+        </div>
+        <button 
+          type="button"
+          @click="forceAppointment" 
+          class="btn btn-outline-warning mt-2 mb-2"
+        >
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          Force Appointment
+        </button>
         <div v-if="isForcingAppointment">
-          <SimpleCalendar :date="formattedDate" :doctorId="props.doctorId" @timeSelected="handleTimeSelected"
-            @dateSelected="handleDateSelected" />
+          <div class="alert alert-info mt-3 mb-3">
+            <i class="fas fa-info-circle me-2"></i>
+            Select a date and time below, then click "Create Appointment" to finalize.
+          </div>
+        <SimpleCalendar 
+  :date="selectedDate" 
+  :doctorId="props.doctorId" 
+  @timeSelected="handleForceTimeSelected"
+  @dateSelected="handleForceDateSelected"
+/>
         </div>
       </div>
-      <div v-else class="alert-info text-center"
-        style="background-color: #5bc0de; padding: 10px; border-radius: 4px; color: white;">
-        <span class="text-md">No appointments available on this date.</span>
+      <div v-else class="alert alert-info text-center">
+        <i class="fas fa-info-circle me-2"></i>
+        <span>No appointments available on this date.</span>
       </div>
     </div>
   </div>

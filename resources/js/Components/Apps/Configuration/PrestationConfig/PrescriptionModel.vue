@@ -114,6 +114,7 @@ const formOptions = ref({
     services: [],
     specializations: [], // This will hold ALL specializations
     modality_types: [],
+    available_prestations: [],
     payment_types: [
         { value: 'Pré-paiement', label: 'Pré-paiement' },
         { value: 'Post-paiement', label: 'Post-paiement' },
@@ -366,6 +367,10 @@ const prestationApiService = {
         const response = await axios.get('/api/modality-types');
         return response.data.data;
     },
+    async getPrestation() {
+        const response = await axios.get(`/api/prestation`);
+        return response.data.data;
+    },
 
     async createPrestation(data) {
         const response = await axios.post('/api/prestation', data);
@@ -385,6 +390,7 @@ const getFormOptions = async () => {
         // Fetch ALL specializations initially
         formOptions.value.specializations = await prestationApiService.getSpecializations();
         formOptions.value.modality_types = await prestationApiService.getModalityTypes();
+        formOptions.value.available_prestations = await prestationApiService.getPrestation();
     } catch (err) {
         console.error('Error fetching form options:', err);
         toaster.error('Failed to load form options.');

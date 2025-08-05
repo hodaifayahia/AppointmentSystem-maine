@@ -83,14 +83,14 @@ class PrestationService
             $prestationData = $this->preparePrestationData($request);
             $prestation->update($prestationData);
 
-            // Handle medications update if they exist in the request
-            if ($request->has('medications')) {
-                $this->updatePrestationMedications($prestation, $request->medications);
-            }
+            // // Handle medications update if they exist in the request
+            // if ($request->has('medications')) {
+            //     $this->updatePrestationMedications($prestation, $request->medications);
+            // }
 
             DB::commit();
 
-            return $prestation->fresh(['service', 'specialization', 'modalityType', 'medications.medication']);
+            return $prestation->fresh(['service', 'specialization', 'modalityType']);
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -183,7 +183,7 @@ class PrestationService
      */
     private function updatePrestationMedications($prestation, $medications)
     {
-        $currentMedicationIds = $prestation->medications->pluck('id')->toArray();
+        // $currentMedicationIds = $prestation->medications->pluck('id')->toArray();
         $incomingMedicationIds = [];
 
         foreach ($medications as $medicationData) {

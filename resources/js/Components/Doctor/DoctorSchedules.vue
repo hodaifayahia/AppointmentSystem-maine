@@ -204,8 +204,8 @@ const handlePatientsChange = (day, shift, event) => {
 };
 </script>
 
-<template>
-  <div class="card">
+<template class="">
+  <div class="card width ">
     <div class="card-header">
       <h2 class="card-title">
         <i class="fas fa-clock me-2"></i>

@@ -237,6 +237,7 @@ watch(
 
 <template>
   <div class="custom-dates">
+    
     <div v-for="(dateInfo, index) in dates" 
          :key="index" 
          class="mb-4 border p-3 rounded">
