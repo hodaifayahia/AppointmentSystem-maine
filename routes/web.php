@@ -40,6 +40,7 @@ use App\Http\Controllers\CONFIGURATION\ModalityAppointmentController;
 use App\Http\Controllers\CONFIGURATION\PrestationController;
 use App\Http\Controllers\CONFIGURATION\UserPaymentMethodController;
 use App\Http\Controllers\CONFIGURATION\RemiseController;
+use App\Http\Controllers\CONFIGURATION\PrestationPackageController;
 use App\Http\Controllers\CRM\OrganismeController;
 use App\Http\Controllers\INFRASTRUCTURE\PavilionController;
 use App\Http\Controllers\INFRASTRUCTURE\RoomTypeController;
@@ -57,6 +58,7 @@ use App\Http\Controllers\Auth\LoginController; // Assuming you have a LoginContr
 use App\Http\Controllers\B2B\ConvenctionDashborad; // Import the controller
 //ficheNavetteController
 use App\Http\Controllers\Reception\ficheNavetteController;
+use App\Http\Controllers\Reception\ficheNavetteItemController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -283,6 +285,9 @@ Route::middleware(['auth'])->group(function () {
         Route::apiResource('/services', ServiceController::class);
         Route::apiResource('/modality-types', ModalityTypeController::class);
         Route::apiResource('/prestation', PrestationController::class);
+        Route::apiResource('/prestation-packages', PrestationPackageController::class)->except(['create', 'edit']);
+        Route::post('/prestation-packages/{prestationPackage}/clone', [PrestationPackageController::class, 'clone']);
+
         // Route::apiResource('/modality-appointments', ModalityAppointmentController::class);
 
       // Modality Appointment Routes - Ordered to prevent conflicts
@@ -293,8 +298,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/modality-appointments/checkModalityAvailability', [ModalityAppointmentController::class, 'checkModalityAvailability']);
         Route::get('/modality-appointments/search', [ModalityAppointmentController::class, 'search']);
         Route::get('/modality-appointments/import-template', [ModalityAppointmentController::class, 'downloadImportTemplate']);
-Route::post('/modality-appointments/import', [ModalityAppointmentController::class, 'importAppointments']);
-Route::get('/modality-appointments/modalities', [ModalityAppointmentController::class, 'getAllModalities']);
+        Route::post('/modality-appointments/import', [ModalityAppointmentController::class, 'importAppointments']);
+        Route::get('/modality-appointments/modalities', [ModalityAppointmentController::class, 'getAllModalities']);
 
        Route::get('/modality-user-permissions/ability', [ModalityAppointmentController::class, 'getModalityUserPermissions']);
         
@@ -430,13 +435,32 @@ Route::get('/modality-appointments/modalities', [ModalityAppointmentController::
         });
 
         // Reception APIs - MOVE THIS INSIDE THE /api PREFIX GROUP
-    Route::prefix('/reception')->group(function () {
+        Route::prefix('/reception')->group(function () {
+            Route::post('/fiche-navette/{ficheNavetteId}/items', [ficheNavetteItemController::class, 'store']);
+            Route::get('/fiche-navette/{ficheNavetteId}/items', [ficheNavetteItemController::class, 'index']);
+            Route::put('/fiche-navette/{ficheNavetteId}/items/{itemId}', [ficheNavetteItemController::class, 'update']);
+            Route::delete('/fiche-navette/{ficheNavetteId}/items/{itemId}', [ficheNavetteItemController::class, 'destroy']);
             Route::apiResource('/fiche-navette', ficheNavetteController::class);
             Route::patch('/fiche-navette/{ficheNavette}/status', [ficheNavetteController::class, 'changeStatus']);
             Route::post('/fiche-navette/{ficheNavette}/prestations', [ficheNavetteController::class, 'addPrestation']);
             Route::put('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteController::class, 'updatePrestation']);
             Route::delete('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteController::class, 'removePrestation']);
+            
+            // Services and doctors
+            Route::get('/prestations/by-service/{serviceId}', [ficheNavetteController::class, 'getPrestationsByService']);
+            Route::get('/packages/by-service/{serviceId}', [ficheNavetteController::class, 'getPackagesByService']);
+                // Specialization-based routes
+            Route::get('/prestations/by-specialization/{specializationId}', [ficheNavetteController::class, 'getPrestationsBySpecialization']);
+            Route::get('/packages/by-specialization/{specializationId}', [ficheNavetteController::class, 'getPackagesBySpecialization']);
+            Route::post('/prestations/dependencies', [ficheNavetteController::class, 'getPrestationsDependencies']);
+            Route::get('/prestations/dependencies', [ficheNavetteController::class, 'getPrestationsDependencies']);
+            // Dependencies and search
+            Route::get('/prestations/with-packages', [ficheNavetteController::class, 'getAllPrestationsWithPackages']);
+            Route::get('/prestations/dependencies', [ficheNavetteController::class, 'getPrestationsDependencies']);
+            Route::get('/prestations/search', [ficheNavetteController::class, 'searchPrestations']);
+            Route::get('/specializations/all', [ficheNavetteController::class, 'getAllSpecializations']);
         });
+
     }); // End of /api group
 
     // The main application entry point for authenticated users

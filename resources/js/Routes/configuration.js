@@ -43,6 +43,11 @@ const configurationRoutes = [
                         component: () => import('../Pages/Apps/Configuration/PrestationConfig/PrestationsList.vue'),
                     },
                     {
+                        path: 'prestations-packages',
+                        name: 'admin.configuration.prestations-packages',
+                        component: () => import('../Pages/Apps/Configuration/PrestationPackges/PrestationsPackagesList.vue'),
+                    },
+                    {
                         path: 'prescriptionscreate',
                         name: 'admin.configuration.create',
                         component: () => import('../Components/Apps/Configuration/PrestationConfig/PrescriptionModel.vue'),

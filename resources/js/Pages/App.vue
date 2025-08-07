@@ -47,7 +47,7 @@ onMounted(async () => {
       <Navbar />
       <component :is="currentSidebarComponent" :user="user" /> 
       
-      <div class="content-wrapper" >
+      <div class="content-wrapper" style="margin-top: 60px;" >
         <router-view></router-view>
       </div>
       <Footer />

@@ -121,20 +121,20 @@ const hasPermission = (requiredRoles) => {
                         <i class="right fas fa-angle-left"></i>
                     </p>
                 </a>
-               <ul class="nav nav-treeview" v-show="isPrestationConfigOpen">
-                    <li class="nav-item">
-                        <router-link to="/admin/configuration/prestations" active-class="active" class="nav-link">
-                            <i class="fas fa-hand-holding-medical nav-icon"></i>
-                            <p>Prestation Catalog</p>
-                        </router-link>
-                    </li>
-                    <li class="nav-item">
-                        <router-link to="/admin/configuration/prestations-packages" active-class="active" class="nav-link">
-                            <i class="fas fa-box-open nav-icon"></i>
-                            <p>Prestations Packages</p>
-                        </router-link>
-                    </li>
-                </ul>
+              <ul class="nav nav-treeview" v-show="isPrestationConfigOpen">
+    <li class="nav-item">
+        <router-link to="/admin/configuration/prestations" active-class="active" class="nav-link">
+            <i class="fas fa-hand-holding-medical nav-icon"></i>
+            <p>Prestation Catalog</p>
+        </router-link>
+    </li>
+    <li class="nav-item">
+        <router-link to="/admin/configuration/prestations-packages" active-class="active" class="nav-link">
+            <i class="fas fa-box-open nav-icon"></i>
+            <p>Prestations Packages</p>
+        </router-link>
+    </li>
+</ul>
             </li>
 
             <!-- Remise Management Section -->

@@ -1,6 +1,3 @@
-
-    
-
 // src/router/routes/reception.js
 
 const receptionRoutes = [
@@ -20,6 +17,25 @@ const receptionRoutes = [
         name: 'reception.fiche-navette',
         component: () => import('../Pages/Apps/reception/FicheNavatte/ficheNavetteList.vue'),
       },
+      {
+        path: '/reception/fiche-navette/:id/items',
+        name: 'reception.FicheNavetteItems',
+        component: () => import('../Pages/Apps/reception/FicheNavatte/FicheNavetteItemsList.vue'),
+        meta: {
+          requiresAuth: true,
+          title: 'Fiche Navette Items'
+        }
+      },
+      {
+        path: '/reception/fiche-navette/:id/items/create',
+        name: 'reception.FicheNavetteItems.create',
+        component: () => import('../Components/Apps/reception/FicheNavatteItem/FicheNavetteItemCreate.vue'),
+        meta: {
+          requiresAuth: true,
+          title: 'Fiche Navette Items'
+        }
+      },
+     
     ],
   },
 ];

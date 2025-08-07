@@ -15,6 +15,8 @@ import App from '../js/Pages/App.vue';
 import PrimeVue from 'primevue/config';
 import Aura from '@primevue/themes/aura';
 import ToastService from 'primevue/toastservice';
+import ConfirmDialog from 'primevue/confirmdialog'
+
 import ConfirmationService from 'primevue/confirmationservice';
 
 // ✅ Initialize Pinia
@@ -23,6 +25,7 @@ const pinia = createPinia();
 // ✅ Create app instance
 const app = createApp(App);
 app.use(pinia);
+    app.component('ConfirmDialog', ConfirmDialog)
 
 // ✅ Configure PrimeVue with custom theme
 app.use(PrimeVue, {

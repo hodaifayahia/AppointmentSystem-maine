@@ -11,8 +11,6 @@ class Specialization extends Model
 {
     use SoftDeletes;
 
-
-
     protected $fillable = [
         'id',
         'name',
@@ -22,11 +20,16 @@ class Specialization extends Model
         'is_active'
     ];
 
+    /**
+     * One-to-Many relationship: Specialization has many doctors.
+     */
     public function doctors()
     {
-        return $this->belongsToMany(Doctor::class);
+        return $this->hasMany(Doctor::class, 'specialization_id', 'id');
     }
- public function service() {
-   return $this->belongsTo(Service::class, 'service_id', 'id');
-}
+
+    public function service() 
+    {
+        return $this->belongsTo(Service::class, 'service_id', 'id');
+    }
 }

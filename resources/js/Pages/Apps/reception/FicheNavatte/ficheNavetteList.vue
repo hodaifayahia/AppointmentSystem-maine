@@ -19,7 +19,7 @@ import Toolbar from 'primevue/toolbar'
 import Divider from 'primevue/divider'
 
 import FicheNavetteModal from '../../../../Components/Apps/reception/FicheNavatte/ficheNavetteModal.vue'
-import FicheNavetteItemsModal from './FicheNavetteItemsModalList.vue'
+import FicheNavetteItemsModal from './FicheNavetteItemsList.vue'
 import {ficheNavetteService} from '../../../../Components/Apps/services/Recption/ficheNavetteService'
 
 // Composables
@@ -99,9 +99,15 @@ const openCreateModal = () => {
   showModal.value = true
 }
 
-const openItemsModal = (fiche) => {
-  selectedFiche.value = fiche
-  showItemsModal.value = true
+const openItemsPage = (fiche) => {
+  // Navigate to separate page instead of modal
+  router.push(`/reception/fiche-navette/${fiche.id}/items`,
+    {
+      params: {
+        // Pass any necessary query parameters here
+      }
+    }
+  )
 }
 
 const editFiche = (fiche) => {
@@ -279,7 +285,7 @@ onMounted(() => {
           :rowHover="true"
           stripedRows
           dataKey="id"
-          @row-click="(event) => openItemsModal(event.data)"
+          @row-click="(event) => openItemsPage(event.data)"
         >
           <Column field="id" header="ID" sortable class="id-column">
             <template #body="{ data }">
@@ -354,8 +360,8 @@ onMounted(() => {
                 <Button 
                   icon="pi pi-list" 
                   class="p-button-rounded p-button-text p-button-sm p-button-info"
-                  v-tooltip.top="'Voir les prestations'"
-                  @click="openItemsModal(data)"
+                  v-tooltip.top="'View items'"
+                  @click="openItemsPage(data)"
                 />
                 <Button 
                   icon="pi pi-pencil" 

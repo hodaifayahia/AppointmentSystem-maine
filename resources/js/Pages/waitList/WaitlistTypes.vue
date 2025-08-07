@@ -1,73 +1,63 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import axios from 'axios';
-import AddWaitlistModal from '../../Components/waitList/addWaitlistModel.vue'; // Import the modal
+import AddPrestationModal from '../../Components/prestation/addPrestationModal.vue'; 
+
+// PrimeVue Components
+import Button from 'primevue/button';
+import Card from 'primevue/card';
+import Dialog from 'primevue/dialog';
+import Toolbar from 'primevue/toolbar';
 
 const searchQuery = ref('');
 const loading = ref(false);
-const selectedOption = ref('daily'); // Default selected option
+const selectedOption = ref('prestation');
 const router = useRouter();
 const route = useRoute();
 
-// State for the AddWaitlistModal
 const showAddModal = ref(false);
 const isEditMode = ref(false);
-const selectedWaitlist = ref(null);
-const specializationId = parseInt(route.params.id); // Convert to integer
+const selectedPrestation = ref(null);
+const specializationId = parseInt(route.params.id);
 
-
-
-// Function to handle option change
 const handleOptionChange = (option) => {
   selectedOption.value = option;
+  const isPrestation = option === 'prestation' ? 1 : 0;
 
-  // Determine the value of isDaily based on the selected option
-  const isDaily = option === 'daily' ? 1 : 0;
-
-  // Navigate to the Waitlist route with the isDaily and specialization_id query parameters
-  if (isDaily) {
+  if (isPrestation) {
     router.push({
-      name: 'admin.Waitlist.Daily',
-      query: { isDaily, specialization_id: specializationId },
+      name: 'admin.Prestation.Single',
+      query: { isPrestation, specialization_id: specializationId },
     });
   } else {
     router.push({
-      name: 'admin.Waitlist.General',
-      query: { isDaily, specialization_id: specializationId },
+      name: 'admin.Prestation.Group',
+      query: { isPrestation, specialization_id: specializationId },
     });
   }
- 
 };
 
-// Open modal for adding a new waitlist
 const openAddModal = () => {
-  selectedWaitlist.value = specializationId; // Pass specialization_id
+  selectedPrestation.value = specializationId;
   showAddModal.value = true;
 };
 
-// Close modal
 const closeAddModal = () => {
   showAddModal.value = false;
   isEditMode.value = false;
-  selectedWaitlist.value = null;
+  selectedPrestation.value = null;
 };
 
-// Handle save event (for adding)
-const handleSave = (newWaitlist) => {
-  console.log('New Waitlist:', newWaitlist);
-  // Add logic to save the new waitlist
+const handleSave = (newPrestation) => {
+  console.log('New Prestation:', newPrestation);
   closeAddModal();
 };
 
-// Handle update event (for editing)
-const handleUpdate = (updatedWaitlist) => {
-  console.log('Updated Waitlist:', updatedWaitlist);
-  // Add logic to update the waitlist
+const handleUpdate = (updatedPrestation) => {
+  console.log('Updated Prestation:', updatedPrestation);
   closeAddModal();
 };
 
-// Debounced search function
 const debouncedSearch = (() => {
   let timeout;
   return () => {
@@ -78,7 +68,6 @@ const debouncedSearch = (() => {
   };
 })();
 
-// Watch for search query changes
 watch(searchQuery, debouncedSearch);
 
 onMounted(() => {
@@ -87,159 +76,75 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
-    <!-- Content Header -->
-    <div class="content-header">
-      <div class="container-fluid">
-        <div class="row mb-2">
-          <div class="col-sm-6">
-            <h1 class="m-0"></h1>
-          </div>
-          <div class="col-sm-12">
-            <button class=" float-left btn btn-ligh bg-primary rounded-pill " @click="router.go(-1)">
-              <i class="fas fa-arrow-left"></i> Back
-            </button>
-            <ol class="breadcrumb float-sm-right">
-              <li class="breadcrumb-item">
-                <!-- Back Arrow Button -->
-              </li>
-              <li class="breadcrumb-item"><a href="#">Home</a></li>
-              <li class="breadcrumb-item active">Doctors</li>
-            </ol>
-          </div>
+  <div class="p-4 surface-ground min-h-screen">
+    <Toolbar class="mb-4 surface-card shadow-1 border-round">
+      <template #start>
+        <Button 
+          icon="pi pi-arrow-left" 
+          label="Back" 
+          class="p-button-text p-button-primary p-button-rounded" 
+          @click="router.go(-1)" 
+        />
+      </template>
+      <template #center>
+        <h1 class="text-2xl font-bold m-0">Prestations</h1>
+      </template>
+      <template #end>
+        <Button 
+          label="Add Prestation" 
+          icon="pi pi-plus" 
+          class="p-button-primary p-button-rounded" 
+          @click="openAddModal"
+        />
+      </template>
+    </Toolbar>
+
+    <div class="p-fluid">
+      <div class="p-text-center mb-5">
+        <h2 class="text-4xl font-semibold text-color">Select a Prestation Type</h2>
+        <p class="text-lg text-color-secondary">Choose between a single prestation or a group of prestations.</p>
+      </div>
+
+      <div class="grid p-nogutter">
+        <div class="col-12 md:col-6 p-4 flex justify-content-center">
+          <Card 
+            class="surface-card shadow-4 hover:shadow-6 transition-all transition-duration-300 w-full max-w-25rem cursor-pointer text-center"
+            @click="handleOptionChange('prestation')"
+          >
+            <template #content>
+              <i class="pi pi-briefcase text-5xl text-yellow-500 mb-3 block"></i>
+              <h3 class="text-2xl font-medium text-color">Prestation</h3>
+              <p class="text-color-secondary">Add or manage individual services.</p>
+            </template>
+          </Card>
+        </div>
+
+        <div class="col-12 md:col-6 p-4 flex justify-content-center">
+          <Card 
+            class="surface-card shadow-4 hover:shadow-6 transition-all transition-duration-300 w-full max-w-25rem cursor-pointer text-center"
+            @click="handleOptionChange('group')"
+          >
+            <template #content>
+              <i class="pi pi-objects-column text-5xl text-blue-500 mb-3 block"></i>
+              <h3 class="text-2xl font-medium text-color">Group of Prestation</h3>
+              <p class="text-color-secondary">Create and manage collections of services.</p>
+            </template>
+          </Card>
         </div>
       </div>
     </div>
-
-    <!-- Main Content -->
-    <div class="content">
-      <div class="container">
-        <h2 class="text-center mb-4">Daily or Not Daily</h2>
-
-        <!-- Add to WaitList Button -->
-        <div class="mb-4 d-flex justify-content-end">
-          <button class="btn btn-primary" @click="openAddModal">
-            <i class="fas fa-plus"></i> Add to WaitList
-          </button>
-        </div>
-
-        <!-- Waitlist Cards -->
-        <div class="row">
-          <!-- Daily Waitlist Card -->
-          <div class="col-md-6 mb-4 d-flex justify-content-center">
-            <div
-              class="card text-center shadow-lg"
-              style="width: 100%; max-width: 350px; border-radius: 15px; cursor: pointer"
-              @click="handleOptionChange('daily')"
-            >
-              <div class="card-body">
-                <i class="fas fa-calendar-day fa-3x text-warning mb-3 d-block"></i>
-                <h3 class="text-center">Daily Waitlist</h3>
-              </div>
-            </div>
-          </div>
-
-          <!-- General Waitlist Card -->
-          <div class="col-md-6 mb-4 d-flex justify-content-center">
-            <div
-              class="card text-center shadow-lg"
-              style="width: 100%; max-width: 350px; border-radius: 15px; cursor: pointer"
-              @click="handleOptionChange('general')"
-            >
-              <div class="card-body">
-                <i class="fas fa-calendar-alt fa-3x text-primary mb-3 d-block"></i>
-                <h3 class="text-center">General Waitlist</h3>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Add/Edit Waitlist Modal -->
-     
-    <AddWaitlistModal
-      :show="showAddModal"
-      :editMode="false"
-      :specializationId="specializationId"
-      @close="closeAddModal"
-      @save="handleSave"
-      @update="handleUpdate"
-    />
+    
+    
   </div>
 </template>
 
 <style scoped>
-.card {
-  transition: transform 0.2s;
-}
-
-.card:hover {
-  transform: scale(1.05);
-}
-
-.search-container {
-  width: 100%;
-  position: relative;
-}
-
-.search-wrapper {
-  display: flex;
-  align-items: center;
-  border: 2px solid #007bff;
-  border-radius: 50px;
-  overflow: hidden;
-  transition: all 0.3s ease;
-}
-
-.premium-search {
-  border: none;
-  border-radius: 50px 0 0 50px;
-  flex-grow: 1;
-  padding: 10px 15px;
-  font-size: 16px;
-  outline: none;
-}
-
-.premium-search:focus {
-  box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
-}
-
-.search-button {
-  border: none;
-  background: #007bff;
-  color: white;
-  padding: 10px 20px;
-  border-radius: 0 50px 50px 0;
-  cursor: pointer;
-  font-size: 16px;
-  transition: background 0.3s ease;
-}
-
-.search-button:hover {
-  background: #0056b3;
-}
-
-.search-button i {
-  margin-right: 5px;
-}
-
-/* Optional: Animation for focus */
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.7);
-  }
-
-  70% {
-    box-shadow: 0 0 0 10px rgba(0, 123, 255, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(0, 123, 255, 0);
-  }
-}
-
-.search-wrapper:focus-within {
-  animation: pulse 1s;
+/*
+  The scoped styles can be minimal or removed entirely
+  as PrimeVue handles most of the styling.
+  Customizations can still be added here if needed.
+*/
+.p-card-content {
+  padding: 1rem;
 }
 </style>

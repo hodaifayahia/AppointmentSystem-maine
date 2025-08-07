@@ -67,6 +67,12 @@ class Doctor extends Model
         return $this->hasOne(AppointmentForcer::class, 'doctor_id');
     }
     // doctorname
+    //specialization function
+  public function doctors()
+  {
+      return $this->belongsToMany(Doctor::class, 'doctor_specialization', 'specialization_id', 'doctor_id');
+  }
+
 
     
 
@@ -89,6 +95,16 @@ class Doctor extends Model
         return $this->belongsTo(User::class, 'user_id', 'id');
     }
 
+
+    /**
+     * Get the specialization of the doctor.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function specialization(): BelongsTo
+    {
+        return $this->belongsTo(Specialization::class, 'specialization_id', 'id');
+    }
 
     /**
      * Get the available days for appointments.
@@ -130,16 +146,6 @@ public function appointmentAvailableMonths()
     public function receivedOpinionRequests()
     {
         return $this->hasMany(OpinionRequest::class, 'reciver_doctor_id');
-    }
-
-    /**
-     * Get the specialization of the doctor.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
-     */
-    public function specialization(): BelongsTo
-    {
-        return $this->belongsTo(Specialization::class);
     }
 
     /**
