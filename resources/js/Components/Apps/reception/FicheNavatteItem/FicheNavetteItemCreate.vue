@@ -1,4 +1,6 @@
 <script setup>
+// filepath: d:\Projects\AppointmentSystem\AppointmentSystem-main\resources\js\Components\Apps\reception\FicheNavatteItem\FicheNavetteItemCreate.vue
+
 import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
@@ -9,17 +11,20 @@ import MultiSelect from 'primevue/multiselect'
 import Checkbox from 'primevue/checkbox'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-import IconField from 'primevue/iconfield'
-import InputIcon from 'primevue/inputicon'
+import ToggleButton from 'primevue/togglebutton'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
-// Fix the import path - changed from 'Recption' to 'Reception'
+import Badge from 'primevue/badge'
+import Dialog from 'primevue/dialog'
+
+
+// Components
+import ConventionModal from './ConventionManagement.vue'
+
 import { ficheNavetteService } from '../../../../Components/Apps/services/Reception/ficheNavetteService.js'
 
 const emit = defineEmits(['cancel', 'created'])
-
-// Updated props to support both create and add modes
 const props = defineProps({
   patientId: {
     type: Number,
@@ -27,13 +32,8 @@ const props = defineProps({
   },
   ficheNavetteId: {
     type: Number,
-    default: null // null means create new fiche, otherwise add to existing
-  },
-  // mode: {
-  //   type: String,
-  //   default: 'create', // 'create' or 'add'
-  //   validator: (value) => ['create', 'add'].includes(value)
-  // }
+    required: false
+  }
 })
 
 const toast = useToast()
@@ -43,6 +43,10 @@ const activeTab = ref(0)
 const loading = ref(false)
 const creating = ref(false)
 const hasSelectedItems = ref(false)
+
+// Convention Modal
+const showConventionModal = ref(false)
+const enableConventionMode = ref(false)
 
 // Common data
 const selectedSpecialization = ref(null)
@@ -68,20 +72,30 @@ const searchTerm = ref('')
 const selectedSpecializationsFilter = ref([])
 const doctorsBySpecialization = ref([])
 const customSelectedPrestations = ref([])
-const customPrestationName = ref('')
 
-const customNameOptions = [
+// Custom name options
+const customNameOptions = ref([
   { label: 'Laboratory', value: 'Laboratory' },
   { label: 'Consultation', value: 'Consultation' },
   { label: 'Radiology', value: 'Radiology' },
+  { label: 'Cardiology', value: 'Cardiology' },
+  { label: 'Neurology', value: 'Neurology' },
+  { label: 'Dermatology', value: 'Dermatology' },
   { label: 'Pharmacy', value: 'Pharmacy' },
+  { label: 'Emergency', value: 'Emergency' },
+  { label: 'Surgery', value: 'Surgery' },
+  { label: 'Physiotherapy', value: 'Physiotherapy' },
   { label: 'Other', value: 'other' }
-]
+])
 const selectedCustomNameOption = ref(null)
+const customPrestationName = ref('')
 
-// Prestation tab computed properties
-const enhancedSpecializations = computed(() => {
-  return [...specializations.value]
+// Computed properties
+const filteredDoctors = computed(() => {
+  if (selectedSpecialization.value) {
+    return allDoctors.value.filter(doctor => doctor.specialization_id === selectedSpecialization.value)
+  }
+  return allDoctors.value
 })
 
 const nameToUse = computed(() => {
@@ -90,19 +104,6 @@ const nameToUse = computed(() => {
   }
   return selectedCustomNameOption.value
 })
-const filteredDoctors = computed(() => {
-  if (selectedSpecialization.value) {
-    return allDoctors.value.filter(doctor => doctor.specialization_id === selectedSpecialization.value)
-  }
-  return allDoctors.value
-})
-const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'DZD'
-  }).format(amount || 0)
-}
-
 
 const filteredPrestations = computed(() => {
   if (!availablePrestations.value.length) return []
@@ -122,35 +123,6 @@ const filteredPrestations = computed(() => {
   }
 
   return filtered
-})
-
-const filteredPackages = computed(() => {
-  if (!availablePackages.value.length) return []
-
-  let filtered = availablePackages.value
-
-  if (prestationSearch.value) {
-    const search = prestationSearch.value.toLowerCase()
-    filtered = filtered.filter(p =>
-      (p.name && p.name.toLowerCase().includes(search)) ||
-      (p.internal_code && p.internal_code.toLowerCase().includes(search))
-    )
-  }
-
-  if (selectedSpecialization.value) {
-    filtered = filtered.filter(p => p.specialization_id === selectedSpecialization.value);
-  }
-  
-  return filtered
-})
-
-// Custom tab computed properties
-const filteredDoctorsBySpecialization = computed(() => {
-  if (selectedSpecializationsFilter.value.length === 0) return allDoctors.value
-  return allDoctors.value.filter(doctor => 
-    doctor.specialization_id && 
-    selectedSpecializationsFilter.value.includes(doctor.specialization_id)
-  )
 })
 
 const filteredCustomPrestations = computed(() => {
@@ -188,32 +160,56 @@ const canSwitchTabs = computed(() => {
   return !hasSelectedItems.value
 })
 
-const currentSelectedItems = computed(() => {
-  if (activeTab.value === 0) {
-    const items = []
-    if (selectedPrestation.value) {
-      items.push({
-        type: 'prestation',
-        item: selectedPrestation.value,
-        dependencies: selectedDependencies.value
+// Convention Mode Methods
+const onConventionModeToggle = () => {
+  if (enableConventionMode.value) {
+    // Ensure we have a ficheNavetteId before showing the modal
+    if (!props.ficheNavetteId) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Warning',
+        detail: 'Please create a Fiche Navette first before using Convention Mode',
+        life: 3000
       })
+      enableConventionMode.value = false
+      return
     }
-    if (selectedPackage.value) {
-      items.push({
-        type: 'package',
-        item: selectedPackage.value
-      })
-    }
-    return items
+    
+    // Load convention companies when enabling convention mode
+    loadConventionCompanies()
+    showConventionModal.value = true
   } else {
-    return customSelectedPrestations.value.map(p => ({
-      type: 'custom',
-      item: p
-    }))
+    showConventionModal.value = false
   }
-})
+}
 
-// Methods
+const onConventionItemsAdded = (data) => {
+  enableConventionMode.value = false
+  showConventionModal.value = false
+  
+  toast.add({
+    severity: 'success',
+    summary: 'Convention Items Added',
+    detail: 'Convention prestations have been added successfully',
+    life: 3000
+  })
+  
+  emit('created', data)
+}
+
+const onConventionModalHide = () => {
+  enableConventionMode.value = false
+  showConventionModal.value = false
+}
+
+// Existing methods (keep all your existing methods)
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'DZD'
+  }).format(amount || 0)
+}
+
 const onSpecializationChange = async () => {
   selectedDoctor.value = null
   selectedPrestation.value = null
@@ -241,9 +237,6 @@ const onPrestationSelect = async (event) => {
   dependencies.value = []
   selectedDependencies.value = []
 
-  console.log('Selected prestation:', prestation);
-  console.log('Required prestations info:', prestation);
-
   if (prestation && prestation.required_prestations_info) {
     try {
       let dependencyIds = prestation.required_prestations_info;
@@ -258,11 +251,7 @@ const onPrestationSelect = async (event) => {
       }
       
       if (Array.isArray(dependencyIds) && dependencyIds.length > 0) {
-        console.log('Fetching dependencies for IDs:', dependencyIds);
-        
         const deps = await fetchPrestationsByIds(dependencyIds);
-        console.log('Received dependencies:', deps);
-        
         dependencies.value = deps;
         selectedDependencies.value = [...deps];
       }
@@ -344,79 +333,70 @@ const onTabChange = (event) => {
   resetSelections()
 }
 
-// Updated createFicheNavette method to handle both modes properly
+// Create regular fiche navette (existing method)
 const createFicheNavette = async () => {
   creating.value = true
-  console.log('FicheNavetteItemCreate props:', props);
-
+  
   try {
     const data = {
       patient_id: props.patientId,
       selectedDoctor: selectedDoctor.value,
       selectedSpecialization: selectedSpecialization.value,
+      enableConventionMode: false, // Regular mode
       type: activeTab.value === 0 ? 'prestation' : 'custom'
     }
 
-    // Handle prestation tab
     if (activeTab.value === 0) {
       if (selectedPrestation.value) {
         data.prestations = [selectedPrestation.value]
         data.dependencies = selectedDependencies.value
-        data.ficheNavetteId = props.ficheNavetteId
       }
       if (selectedPackage.value) {
         data.packages = [selectedPackage.value]
       }
-    } 
-    // Handle custom tab
-    else {
+    } else {
       const nameValue = nameToUse.value
       data.customPrestations = customSelectedPrestations.value.map(p => ({
         ...p,
         display_name: nameValue || p.name,
         type: nameValue ? 'custom' : 'predefined',
-        patient_id: props.patientId,
-        selected_doctor_id: p.selected_doctor_id,
-        ficheNavetteId: props.ficheNavetteId
-
+        selected_doctor_id: p.selected_doctor_id
       }))
     }
 
-    let result;
-
+    let result
+    if (props.ficheNavetteId) {
       result = await ficheNavetteService.addItemsToFiche(props.ficheNavetteId, data)
-   
+    } else {
+      result = await ficheNavetteService.createFicheNavette(data)
+    }
     
     if (result.success) {
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: props.mode === 'add' ? 'Items added successfully' : 'Fiche Navette created successfully',
-        life: 3000
+      toast.add({ 
+        severity: 'success', 
+        summary: 'Success', 
+        detail: props.ficheNavetteId ? 'Items added successfully' : 'Fiche Navette created successfully', 
+        life: 3000 
       })
-      
       resetSelections()
-      selectedSpecialization.value = null
-      selectedDoctor.value = null
-      
       emit('created', result.data)
     } else {
       throw new Error(result.message)
     }
   } catch (error) {
-    console.error('Error:', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.message || (props.mode === 'add' ? 'Failed to add items' : 'Failed to create Fiche Navette'),
-      life: 3000
+    console.error('Error creating/adding to fiche navette:', error)
+    toast.add({ 
+      severity: 'error', 
+      summary: 'Error', 
+      detail: error.response?.data?.message || error.message || (props.ficheNavetteId ? 'Failed to add items' : 'Failed to create Fiche Navette'), 
+      life: 5000 
     })
   } finally {
     creating.value = false
   }
 }
 
-// API Functions
+// API Functions (keep existing)
 const fetchSpecializations = async () => {
   try {
     const result = await ficheNavetteService.getAllSpecializations()
@@ -441,8 +421,6 @@ const fetchAllDoctors = async () => {
 }
 
 const fetchPrestationsByIds = async (ids) => {
-  console.log('Fetching prestations for IDs:', ids);
-  
   try {
     const result = await ficheNavetteService.getPrestationsDependencies(ids)
     if (result.success) {
@@ -483,31 +461,6 @@ const fetchAllPrestations = async () => {
   }
 }
 
-onMounted(async () => {
-  loading.value = true
-  try {
-    await Promise.all([
-      fetchSpecializations(),
-      fetchAllDoctors(),
-      fetchAllPrestations()
-    ])
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load data',
-      life: 3000
-    })
-  } finally {
-    loading.value = false
-  }
-})
-
-// Watchers
-watch(customSelectedPrestations, (newSelection) => {
-  hasSelectedItems.value = newSelection.length > 0
-}, { deep: true })
-
 const onSpecializationFilterChange = async () => {
   doctorsBySpecialization.value = []
   
@@ -545,27 +498,215 @@ const getDoctorsForPrestation = (prestation) => {
   return allDoctors.value.filter(d => d.specialization_id === prestation.specialization_id)
 }
 
+// Add these helper methods
+const getDoctorName = (doctorId) => {
+  const doctor = allDoctors.value.find(d => d.id === doctorId)
+  return doctor ? doctor.name : 'Not assigned'
+}
+
+const getSpecializationName = (specializationId) => {
+  const spec = specializations.value.find(s => s.id === specializationId)
+  return spec ? spec.name : 'Unknown'
+}
+
+// Watchers (keep existing)
+watch(selectedDoctor, () => {
+  selectedPrestation.value = null
+  selectedPackage.value = null
+  dependencies.value = []
+  selectedDependencies.value = []
+  packagePrestations.value = []
+  updateHasSelectedItems()
+});
+
+watch(customSelectedPrestations, (newSelection) => {
+  hasSelectedItems.value = newSelection.length > 0
+}, { deep: true })
+
 watch(selectedCustomNameOption, (val) => {
   if (val !== 'other') {
     customPrestationName.value = ''
   }
 })
+
+// Lifecycle
+onMounted(async () => {
+  loading.value = true
+  try {
+    await Promise.all([
+      fetchSpecializations(),
+      fetchAllDoctors(),
+      fetchAllPrestations(),
+      loadConventionCompanies() // Add this
+    ])
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load data',
+      life: 3000
+    })
+  } finally {
+    loading.value = false
+  }
+})
+
+
+// Add these reactive variables
+const conventionOrganismes = ref([])
+const loadingConventions = ref(false)
+const showConventionDetailsModal = ref(false)
+const showAllConventionsModal = ref(false)
+const selectedConventionOrganisme = ref(null)
+
+// Add this computed property
+const totalConventions = computed(() => {
+  return conventionOrganismes.value.reduce((total, organisme) => {
+    return total + (organisme.conventions?.length || 0)
+  }, 0)
+})
+
+// Add these methods
+const loadConventionCompanies = async () => {
+  if (!props.patientId) return
+  
+  try {
+    loadingConventions.value = true
+    const result = await ficheNavetteService.getPatientConventions(props.patientId , props.ficheNavetteId)
+    
+    if (result.success) {
+      console.log('Loaded convention organismes:', result.data);
+      conventionOrganismes.value = result.data || []
+    }
+  } catch (error) {
+    console.error('Error loading convention organismes:', error)
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load convention organismes',
+      life: 3000
+    })
+  } finally {
+    loadingConventions.value = false
+  }
+}
+
+const showOrganismeDetails = (organisme) => {
+  selectedConventionOrganisme.value = organisme
+  showConventionDetailsModal.value = true
+  showAllConventionsModal.value = false
+}
+
+const showAllConventions = () => {
+  showAllConventionsModal.value = true
+}
+
+const selectConvention = (convention) => {
+  showConventionDetailsModal.value = false
+  showAllConventionsModal.value = false
+  
+  // Set the convention mode and show the modal
+  enableConventionMode.value = true
+  showConventionModal.value = true
+  
+  toast.add({
+    severity: 'info',
+    summary: 'Convention Selected',
+    detail: `Selected ${convention.contract_name} from ${selectedConventionCompany.value.company_name}`,
+    life: 3000
+  })
+}
+
+const getConventionStatusSeverity = (status) => {
+  const statusMap = {
+    'active': 'success',
+    'pending': 'warning',
+    'expired': 'danger',
+    'suspended': 'secondary'
+  }
+  return statusMap[status] || 'info'
+}
+
+const formatDate = (date) => {
+  if (!date) return 'No end date'
+  return new Date(date).toLocaleDateString('fr-FR')
+}
 </script>
 
 <template>
   <div class="add-items-container">
     <Card class="main-card">
       <template #content>
+        <!-- Convention Mode Toggle -->
+        <Card class="convention-toggle-card mb-4">
+          <template #content>
+            <div class="convention-toggle">
+              <div class="toggle-info">
+                <h5>Convention Mode</h5>
+                <p>Enable to add prestations through conventions with special pricing</p>
+                
+                <!-- Add Convention Companies Display here -->
+                <div v-if="conventionOrganismes.length > 0" class="convention-organismes-preview">
+                  <small class="organismes-label">Available Convention Organismes:</small>
+                  <div class="organismes-tags">
+                    <Tag
+                      v-for="organisme in conventionOrganismes.slice(0, 3)"
+                      :key="organisme.id"
+                      :value="organisme.organisme_name || organisme.company_name"
+                      severity="info"
+                      class="organisme-tag"
+                      @click="showOrganismeDetails(organisme)"
+                    >
+                      <template #default>
+                        <div class="tag-content">
+                          <i class="pi pi-building"></i>
+                          <span>{{ organisme.organisme_name || organisme.company_name }}</span>
+                          <Badge v-if="organisme.conventions_count" :value="organisme.conventions_count" severity="secondary" />
+                        </div>
+                      </template>
+                    </Tag>
+                    <Tag
+                      v-if="conventionOrganismes.length > 3"
+                      :value="`+${conventionOrganismes.length - 3} more`"
+                      severity="secondary"
+                      class="more-organismes-tag"
+                      @click="showAllConventions"
+                    />
+                  </div>
+                </div>
+                
+                <!-- Show message if no conventions -->
+                <div v-else-if="!loadingConventions && enableConventionMode" class="no-conventions-message">
+                  <small class="text-muted">
+                    <i class="pi pi-info-circle"></i>
+                    No conventions available for this patient
+                  </small>
+                </div>
+              </div>
+              <ToggleButton
+                v-model="enableConventionMode"
+                onLabel="Convention Mode"
+                offLabel="Regular Mode"
+                onIcon="pi pi-building"
+                offIcon="pi pi-list"
+                @change="onConventionModeToggle"
+                class="convention-mode-toggle"
+              />
+            </div>
+          </template>
+        </Card>
+
+        <!-- Regular Prestation Tabs -->
         <TabView v-model:activeIndex="activeTab" @tab-change="onTabChange" class="custom-tabview">
-          <!-- Prestation Tab -->
-          <TabPanel header="Prestations">
+          <!-- Prestation Tab (keep existing) -->
+          <TabPanel header="Prestations" :disabled="!canSwitchTabs && activeTab !== 0">
             <div class="prestation-tab">
               <div class="steps-row">
                 <div class="step-field">
                   <label>Specialization</label>
                   <Dropdown
                     v-model="selectedSpecialization"
-                    :options="enhancedSpecializations"
+                    :options="specializations"
                     optionLabel="name"
                     optionValue="id"
                     placeholder="Select specialization"
@@ -623,7 +764,7 @@ watch(selectedCustomNameOption, (val) => {
                           <span class="option-name">{{ option.name }}</span>
                           <span class="option-code">{{ option.internal_code }}</span>
                         </div>
-                        <span class="option-price">{{ formatCurrency(option.price || option.public_price) }}</span>
+                        <span class="option-price">{{ formatCurrency(option.public_price) }}</span>
                       </div>
                     </template>
                   </Dropdown>
@@ -631,7 +772,7 @@ watch(selectedCustomNameOption, (val) => {
                   <Dropdown
                     v-else
                     v-model="selectedPackage"
-                    :options="filteredPackages"
+                    :options="availablePackages"
                     optionLabel="name"
                     placeholder="Select package"
                     :disabled="!selectedSpecialization"
@@ -647,13 +788,14 @@ watch(selectedCustomNameOption, (val) => {
                           <span class="option-name">{{ option.name }}</span>
                           <Tag value="Package" severity="success" size="small" />
                         </div>
-                        <span class="option-price">${{ option.price }}</span>
+                        <span class="option-price">{{ formatCurrency(option.price) }}</span>
                       </div>
                     </template>
                   </Dropdown>
                 </div>
               </div>
 
+              <!-- Dependencies section (keep existing) -->
               <div class="dependencies-section" v-if="selectedPrestation && dependencies.length > 0">
                 <h4>
                   <i class="pi pi-link"></i>
@@ -682,6 +824,7 @@ watch(selectedCustomNameOption, (val) => {
                 </div>
               </div>
 
+              <!-- Package contents section (keep existing) -->
               <div class="dependencies-section" v-if="selectedPackage && packagePrestations.length > 0">
                 <h4>
                   <i class="pi pi-box"></i>
@@ -704,6 +847,7 @@ watch(selectedCustomNameOption, (val) => {
                 </div>
               </div>
 
+              <!-- Selected summary (keep existing) -->
               <div class="selected-summary small-summary" v-if="hasSelectedItems">
                 <h4>
                   <i class="pi pi-check-circle"></i>
@@ -738,127 +882,246 @@ watch(selectedCustomNameOption, (val) => {
             </div>
           </TabPanel>
 
-          <!-- Custom Tab -->
-          <TabPanel header="Custom">
+          <!-- Custom Tab - Complete Implementation -->
+          <TabPanel header="Custom" :disabled="!canSwitchTabs && activeTab !== 1">
             <div class="custom-tab">
-              <div class="search-section">
-                <div class="search-row">
-                  <div class="search-field">
-                    <IconField iconPosition="left" class="search-input-container">
-                      <InputIcon class="pi pi-search" />
+              <!-- Filters Section -->
+              <Card class="filters-card mb-4">
+                <template #header>
+                  <h4>
+                    <i class="pi pi-filter"></i>
+                    Filters
+                  </h4>
+                </template>
+                <template #content>
+                  <div class="filters-row">
+                    <div class="filter-field">
+                      <label>Search Prestations</label>
                       <InputText
                         v-model="searchTerm"
-                        placeholder="Search prestations..."
+                        placeholder="Search by name or code..."
+                        icon="pi pi-search"
                         class="full-width"
                       />
-                    </IconField>
-                  </div>
-                  
-                  <div class="filter-field">
-                    <MultiSelect
-                      v-model="selectedSpecializationsFilter"
-                      :options="specializations"
-                      optionLabel="name"
-                      optionValue="id"
-                      placeholder="Filter by Specializations"
-                      class="full-width"
-                      @change="onSpecializationFilterChange"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div class="custom-name-section" v-if="shouldShowCustomNameInput">
-                <label for="customName">Custom Order Name</label>
-                <Dropdown
-                  id="customNameDropdown"
-                  v-model="selectedCustomNameOption"
-                  :options="customNameOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Select or type custom name"
-                  class="full-width"
-                />
-                <InputText
-                  v-if="selectedCustomNameOption === 'other'"
-                  v-model="customPrestationName"
-                  placeholder="Enter custom name"
-                  class="full-width"
-                  style="margin-top: 0.5rem"
-                />
-              </div>
-
-              <DataTable
-                v-model:selection="customSelectedPrestations"
-                :value="filteredCustomPrestations"
-                selectionMode="multiple"
-                :metaKeySelection="false"
-                dataKey="id"
-                :paginator="true"
-                :rows="10"
-                :loading="loading"
-                class="custom-datatable"
-              >
-                <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
-                
-                <Column field="name" header="Name" sortable>
-                  <template #body="{ data }">
-                    <div class="prestation-name">
-                      <strong>{{ data.name }}</strong>
-                      <small class="prestation-code">{{ data.internal_code }}</small>
                     </div>
-                  </template>
-                </Column>
-                
-                <Column field="specialization_name" header="Specialization" sortable></Column>
-                
-                <Column field="package_name" header="Package Name" sortable>
-                  <template #body="{ data }">
-                    <span v-if="data.package_name">{{ data.package_name }}</span>
-                    <Tag value="No Package" severity="secondary" v-else />
-                  </template>
-                </Column>
-                
-                <Column header="Doctors">
-                  <template #body="{ data }">
-                    <Dropdown
-                      v-model="data.selected_doctor_id"
-                      :options="getDoctorsForPrestation(data)"
-                      optionLabel="name"
-                      optionValue="id"
-                      placeholder="Select doctor"
-                      class="full-width"
-                    />
-                  </template>
-                </Column>
-                
-                <Column field="price" header="Price" sortable>
-                  <template #body="{ data }">
-                    <span class="price-tag">{{ formatCurrency(data.price || data.public_price) }}</span>
-                  </template>
-                </Column>
-                
-                <Column field="duration" header="Duration" sortable>
-                  <template #body="{ data }">
-                    <span v-if="data.default_duration_minutes">
-                      {{ data.default_duration_minutes }}min
-                    </span>
-                  </template>
-                </Column>
-              </DataTable>
+                    
+                    <div class="filter-field">
+                      <label>Filter by Specializations</label>
+                      <MultiSelect
+                        v-model="selectedSpecializationsFilter"
+                        :options="specializations"
+                        optionLabel="name"
+                        optionValue="id"
+                        placeholder="Select specializations"
+                        @change="onSpecializationFilterChange"
+                        class="full-width"
+                        :loading="loading"
+                      />
+                    </div>
+                  </div>
+                </template>
+              </Card>
+
+              <!-- Custom Name Section -->
+              <Card v-if="shouldShowCustomNameInput" class="custom-name-card mb-4">
+                <template #header>
+                  <h4>
+                    <i class="pi pi-tag"></i>
+                    Custom Grouping Name
+                  </h4>
+                </template>
+                <template #content>
+                  <div class="custom-name-section">
+                    <div class="name-field">
+                      <label>Choose a name for this group</label>
+                      <Dropdown
+                        v-model="selectedCustomNameOption"
+                        :options="customNameOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="Select a name"
+                        class="full-width"
+                      />
+                    </div>
+                    
+                    <div v-if="selectedCustomNameOption === 'other'" class="name-field">
+                      <label>Custom Name</label>
+                      <InputText
+                        v-model="customPrestationName"
+                        placeholder="Enter custom name..."
+                        class="full-width"
+                      />
+                    </div>
+                  </div>
+                </template>
+              </Card>
+
+              <!-- Prestations Selection Table -->
+              <Card class="prestations-table-card">
+                <template #header>
+                  <div class="table-header">
+                    <h4>
+                      <i class="pi pi-list"></i>
+                      Available Prestations ({{ filteredCustomPrestations.length }})
+                    </h4>
+                    <div class="table-actions">
+                      <Button
+                        icon="pi pi-times"
+                        label="Clear Selection"
+                        class="p-button-text p-button-secondary"
+                        @click="customSelectedPrestations = []"
+                        :disabled="customSelectedPrestations.length === 0"
+                      />
+                    </div>
+                  </div>
+                </template>
+                <template #content>
+                  <DataTable
+                    :value="filteredCustomPrestations"
+                    v-model:selection="customSelectedPrestations"
+                    dataKey="id"
+                    :loading="loading"
+                    :paginator="true"
+                    :rows="10"
+                    :rowsPerPageOptions="[5, 10, 20, 50]"
+                    responsiveLayout="scroll"
+                    selectionMode="multiple"
+                    class="custom-datatable"
+                  >
+                    <template #empty>
+                      <div class="empty-message">
+                        <i class="pi pi-search"></i>
+                        <p>No prestations found with current filters</p>
+                      </div>
+                    </template>
+
+                    <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
+                    
+                    <Column field="name" header="Prestation" sortable style="min-width: 200px">
+                      <template #body="{ data }">
+                        <div class="prestation-name">
+                          <strong>{{ data.name }}</strong>
+                          <small class="prestation-code">{{ data.internal_code }}</small>
+                        </div>
+                      </template>
+                    </Column>
+                    
+                    <Column field="specialization" header="Specialization" sortable>
+                      <template #body="{ data }">
+                        <Tag
+                          v-if="data.specialization"
+                          :value="data.specialization.name"
+                          severity="info"
+                        />
+                        <span v-else>-</span>
+                      </template>
+                    </Column>
+                    
+                    <Column field="public_price" header="Price" sortable>
+                      <template #body="{ data }">
+                        <span class="price-tag">{{ formatCurrency(data.public_price) }}</span>
+                      </template>
+                    </Column>
+                    
+                    <Column field="doctor" header="Assign Doctor" style="min-width: 200px">
+                      <template #body="{ data }">
+                        <Dropdown
+                          v-model="data.selected_doctor_id"
+                          :options="getDoctorsForPrestation(data)"
+                          optionLabel="name"
+                          optionValue="id"
+                          placeholder="Select doctor"
+                          class="doctor-dropdown"
+                          :disabled="!customSelectedPrestations.includes(data)"
+                        />
+                      </template>
+                    </Column>
+                  </DataTable>
+                </template>
+              </Card>
+
+              <!-- Selected Summary -->
+              <Card v-if="customSelectedPrestations.length > 0" class="selected-summary-card mt-4">
+                <template #header>
+                  <h4>
+                    <i class="pi pi-check-circle"></i>
+                    Selected Prestations ({{ customSelectedPrestations.length }})
+                  </h4>
+                </template>
+                <template #content>
+                  <div class="selected-summary">
+                    <div class="summary-items">
+                      <div
+                        v-for="prestation in customSelectedPrestations"
+                        :key="prestation.id"
+                        class="summary-card"
+                      >
+                        <div class="summary-info">
+                          <span class="summary-name">{{ prestation.name }}</span>
+                          <small class="summary-code">{{ prestation.internal_code }}</small>
+                          <Tag
+                            v-if="prestation.specialization"
+                            :value="prestation.specialization.name"
+                            severity="info"
+                            size="small"
+                          />
+                        </div>
+                        <div class="summary-details">
+                          <span class="summary-price">{{ formatCurrency(prestation.public_price) }}</span>
+                          <small v-if="prestation.selected_doctor_id" class="assigned-doctor">
+                            Assigned to: {{ getDoctorName(prestation.selected_doctor_id) }}
+                          </small>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div class="summary-total">
+                      <div class="total-calculation">
+                        <span class="total-label">Total Amount:</span>
+                        <span class="total-amount">
+                          {{ formatCurrency(customSelectedPrestations.reduce((sum, p) => sum + parseFloat(p.public_price || 0), 0)) }}
+                        </span>
+                      </div>
+                      <div class="total-items">
+                        <span>{{ customSelectedPrestations.length }} item{{ customSelectedPrestations.length > 1 ? 's' : '' }} selected</span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </Card>
+
+              <!-- Doctors by Specialization (if filtered) -->
+              <Card v-if="doctorsBySpecialization.length > 0" class="doctors-info-card mt-4">
+                <template #header>
+                  <h4>
+                    <i class="pi pi-users"></i>
+                    Available Doctors
+                  </h4>
+                </template>
+                <template #content>
+                  <div class="doctors-grid">
+                    <div
+                      v-for="doctor in doctorsBySpecialization"
+                      :key="doctor.id"
+                      class="doctor-card"
+                    >
+                      <Avatar icon="pi pi-user" class="doctor-avatar" />
+                      <div class="doctor-info">
+                        <span class="doctor-name">{{ doctor.name }}</span>
+                        <small class="doctor-specialization">{{ getSpecializationName(doctor.specialization_id) }}</small>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </Card>
             </div>
           </TabPanel>
         </TabView>
 
         <div class="action-buttons">
           <Button
-            label="Cancel"
-            severity="secondary"
-            @click="emit('cancel')"
-            :disabled="creating"
-          />
-          <Button 
-            :label="props.mode === 'add' ? 'Add Items' : 'Create Fiche Navette'"
+            :label="props.ficheNavetteId ? 'Add Items' : 'Create Fiche Navette'"
+            icon="pi pi-check"
             @click="createFicheNavette"
             :loading="creating"
             :disabled="!hasSelectedItems"
@@ -866,11 +1129,459 @@ watch(selectedCustomNameOption, (val) => {
         </div>
       </template>
     </Card>
+
+    <!-- Convention Modal -->
+    <ConventionModal
+      v-model:visible="showConventionModal"
+      :ficheNavetteId="props.ficheNavetteId"
+      @convention-items-added="onConventionItemsAdded"
+      @update:visible="onConventionModalHide"
+    />
+
+    <!-- Convention Details Modal -->
+    <Dialog
+      v-model:visible="showConventionDetailsModal"
+      :header="selectedConventionOrganisme?.organisme_name || selectedConventionOrganisme?.company_name || 'Organisme Details'"
+      modal
+      class="convention-details-modal"
+      :style="{ width: '70vw', maxWidth: '800px' }"
+    >
+      <div v-if="selectedConventionOrganisme" class="organisme-details-content">
+        <div class="organisme-info">
+          <h4>
+            <i class="pi pi-building"></i>
+            {{ selectedConventionOrganisme.organisme_name || selectedConventionOrganisme.company_name }}
+          </h4>
+          <p v-if="selectedConventionOrganisme.description" class="organisme-description">
+            {{ selectedConventionOrganisme.description }}
+          </p>
+          <div v-if="selectedConventionOrganisme.industry" class="organisme-meta">
+            <small><strong>Industry:</strong> {{ selectedConventionOrganisme.industry }}</small>
+          </div>
+          <div v-if="selectedConventionOrganisme.address" class="organisme-meta">
+            <small><strong>Address:</strong> {{ selectedConventionOrganisme.address }}</small>
+          </div>
+        </div>
+
+      <div class="prestations-list">
+  <h5>Prestations Used in This Fiche Navette</h5>
+  <div class="prestations-grid">
+    <Card
+      v-for="prestation in (selectedConventionOrganisme.conventions[0]?.prestations || [])"
+      :key="prestation.id"
+      class="prestation-card"
+    >
+      <template #content>
+        <div class="prestation-info">
+          <div class="prestation-header">
+            <strong class="prestation-title">{{ prestation.name }}</strong>
+            <Tag
+              v-if="prestation.specialization && prestation.specialization !== 'Unknown'"
+              :value="prestation.specialization"
+              severity="info"
+              size="small"
+              class="ml-2"
+            />
+          </div>
+          <div class="prestation-details">
+            <span v-if="prestation.price" class="prestation-price">
+              <i class="pi pi-money-bill"></i>
+              {{ formatCurrency(prestation.price) }}
+            </span>
+            <span v-else class="prestation-price">
+              <i class="pi pi-money-bill"></i>
+              N/Af
+            </span>
+          </div>
+        </div>
+      </template>
+    </Card>
+  </div>
+</div>
+      </div>
+    </Dialog>
+
+    <!-- All Conventions Modal -->
+    <Dialog
+      v-model:visible="showAllConventionsModal"
+      header="All Available Conventions"
+      modal
+      class="all-conventions-modal"
+      :style="{ width: '80vw', maxWidth: '1000px' }"
+    >
+      <div class="all-conventions-content">
+        <div class="conventions-summary">
+          <div class="summary-stats">
+            <div class="stat-item">
+              <span class="stat-number">{{ conventionOrganismes.length }}</span>
+              <span class="stat-label">Companies</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number">{{ totalConventions }}</span>
+              <span class="stat-label">Total Conventions</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="companies-list">
+          <Card
+            v-for="company in conventionOrganismes"
+            :key="company.id"
+            class="company-card"
+            @click="showOrganismeDetails(company)"
+          >
+            <template #content>
+              <div class="company-card-content">
+                <div class="company-header">
+                  <div class="company-title">
+                    <i class="pi pi-building"></i>
+                    <strong>{{ company.company_name }}</strong>
+                  </div>
+                  <Badge :value="company.conventions_count" severity="info" />
+                </div>
+                <div class="company-conventions">
+                  <div
+                    v-for="convention in company.conventions.slice(0, 2)"
+                    :key="convention.id"
+                    class="convention-preview"
+                  >
+                    <span class="convention-name">{{ convention.contract_name }}</span>
+                    <Tag
+                      :value="convention.status"
+                      :severity="getConventionStatusSeverity(convention.status)"
+                      size="small"
+                    />
+                  </div>
+                  <small v-if="company.conventions.length > 2" class="more-conventions">
+                    +{{ company.conventions.length - 2 }} more
+                  </small>
+                </div>
+              </div>
+            </template>
+          </Card>
+        </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
 <style scoped>
-/* Main container and card styling */
+/* Add these new styles to your existing styles */
+.prestations-list {
+  margin-top: 1.5rem;
+}
+.prestations-list h5 {
+  margin-bottom: 1rem;
+  color: #2563eb;
+  font-weight: 600;
+}
+.prestations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+}
+.prestation-card {
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fafc;
+  transition: box-shadow 0.2s;
+}
+.prestation-card:hover {
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08);
+}
+.prestation-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.prestation-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.prestation-title {
+  font-size: 1.1rem;
+  color: #1e293b;
+}
+.prestation-details {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  color: #64748b;
+}
+.prestation-price {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+.convention-organismes-preview {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.organismes-label {
+  display: block;
+  color: var(--text-color-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.organismes-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.organisme-tag {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.organisme-tag:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.tag-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.more-organismes-tag {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.more-organismes-tag:hover {
+  background: var(--primary-100);
+}
+
+.no-conventions-message {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(156, 163, 175, 0.1);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.no-conventions-message i {
+  margin-right: 0.25rem;
+}
+
+/* Convention Details Modal Styles */
+.convention-details-modal .company-info {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--surface-200);
+}
+
+.company-info h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem 0;
+  color: var(--primary-color);
+}
+
+.company-description {
+  color: var(--text-color-secondary);
+  margin: 0;
+}
+
+.conventions-list h5 {
+  margin: 0 0 1rem 0;
+  color: var(--text-color);
+}
+
+.conventions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.convention-card {
+  border: 1px solid var(--surface-200);
+  transition: all 0.2s ease;
+}
+
+.convention-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.convention-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.convention-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.convention-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-color-secondary);
+}
+
+.convention-actions {
+  margin-top: 0.5rem;
+}
+
+/* All Conventions Modal Styles */
+.all-conventions-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.conventions-summary {
+  padding: 1rem;
+  background: var(--surface-50);
+  border-radius: 8px;
+  border: 1px solid var(--surface-200);
+}
+
+.summary-stats {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.stat-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.companies-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1rem;
+}
+
+.company-card {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid var(--surface-200);
+}
+
+.company-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.company-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.company-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.company-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-color);
+}
+
+.company-conventions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.convention-preview {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--surface-50);
+  border-radius: 4px;
+  border: 1px solid var(--surface-200);
+}
+
+.convention-name {
+  font-size: 0.875rem;
+  color: var(--text-color);
+}
+
+.more-conventions {
+  color: var(--text-color-secondary);
+  font-style: italic;
+  text-align: center;
+  padding: 0.25rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .companies-tags {
+    flex-direction: column;
+  }
+  
+  .conventions-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .companies-list {
+    grid-template-columns: 1fr;
+  }
+  
+  .summary-stats {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .convention-details-modal,
+  .all-conventions-modal {
+    width: 95vw !important;
+  }
+}
+
+/* Keep all your existing styles */
 .add-items-container {
   padding: 1rem;
 }
@@ -884,7 +1595,6 @@ watch(selectedCustomNameOption, (val) => {
   min-height: 600px;
 }
 
-/* Steps in one row (flexbox for layout) */
 .steps-row {
   display: flex;
   flex-wrap: wrap;
@@ -900,7 +1610,7 @@ watch(selectedCustomNameOption, (val) => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  flex: 1 1 200px; /* Allows fields to grow and shrink */
+  flex: 1 1 200px;
 }
 
 .step-field label {
@@ -910,8 +1620,8 @@ watch(selectedCustomNameOption, (val) => {
 }
 
 .checkbox-field {
-  flex-basis: auto; /* Take up only as much space as needed */
-  align-self: flex-end; /* Align to the bottom of the row */
+  flex-basis: auto;
+  align-self: flex-end;
   padding-bottom: 0.5rem;
 }
 
@@ -922,24 +1632,13 @@ watch(selectedCustomNameOption, (val) => {
 }
 
 .prestation-field {
-  flex: 1 1 300px; /* Make this field larger */
-}
-
-.prestation-dropdown-container {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex: 1 1 300px;
 }
 
 .full-width {
   width: 100%;
 }
 
-.search-input-container {
-  display: flex;
-}
-
-/* Dropdown options styling */
 .dropdown-option {
   display: flex;
   justify-content: space-between;
@@ -1142,27 +1841,149 @@ watch(selectedCustomNameOption, (val) => {
   border-radius: 4px;
   font-size: 0.875rem;
   font-weight: 500;
+  display: inline-block;
 }
 
-.action-buttons {
+.doctor-dropdown {
+  width: 100%;
+}
+
+.selected-summary-card {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  border: 1px solid #10b981;
+}
+
+.selected-summary {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
   gap: 1rem;
-  margin-top: 2rem;
-  padding-top: 2rem;
-  border-top: 1px solid #e5e7eb;
 }
 
-/* Responsive adjustments */
-@media (max-width: 1200px) {
-  .steps-row {
-    flex-direction: column;
-  }
+.summary-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
-@media (max-width: 768px) {
-  .prestation-field {
-    min-width: unset;
-  }
+.summary-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #d1fae5;
+}
+
+.summary-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.summary-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.summary-code {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.summary-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.summary-price {
+  background: #10b981;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.assigned-doctor {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.summary-total {
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #10b981;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.total-calculation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.total-label {
+  font-weight: 500;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+.total-amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #059669;
+}
+
+.total-items {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.doctors-info-card {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 1px solid #3b82f6;
+}
+
+.doctors-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.doctor-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #bfdbfe;
+}
+
+.doctor-avatar {
+  background: #3b82f6;
+}
+
+.doctor-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.doctor-name {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.doctor-specialization {
+  color: #6b7280;
+  font-size: 0.75rem;
 }
 </style>

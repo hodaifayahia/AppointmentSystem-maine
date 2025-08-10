@@ -7,7 +7,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\B2B\ConventionDetail;
+use App\Models\CONFIGURATION\Prestation;
+
 use App\Models\CRM\Organisme;
+
 
 
 
@@ -34,6 +37,7 @@ class Convention extends Model
     {
         return $this->hasMany(Avenant::class, 'convention_id'); // Changed to convention_id
     }
+
 
     public function annexes(): HasMany
     {

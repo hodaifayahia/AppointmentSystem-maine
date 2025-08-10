@@ -59,6 +59,7 @@ use App\Http\Controllers\B2B\ConvenctionDashborad; // Import the controller
 //ficheNavetteController
 use App\Http\Controllers\Reception\ficheNavetteController;
 use App\Http\Controllers\Reception\ficheNavetteItemController;
+use App\Http\Controllers\Reception\FicheNavetteCustomPackageController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -382,8 +383,8 @@ Route::middleware(['auth'])->group(function () {
         // Pavilions, Conventions, Rooms, Beds
         Route::get('/convention/dashboard', [ConvenctionDashborad::class, 'getDashboardData']);
 
+        Route::get('/conventions/family-authorization', [ConventionController::class, 'getFamilyAuthorization']);        Route::apiResource('/pavilions', PavilionController::class);
         Route::apiResource('/conventions', ConventionController::class);
-        Route::apiResource('/pavilions', PavilionController::class);
         Route::patch('/conventions/{conventionId}/activate', [ConventionController::class, 'activate']);
         Route::patch('/conventions/{conventionId}/expire', [ConventionController::class, 'expire']);
         Route::get('/prestation/annex/price', [PrescriptionController::class, 'getAnnexPrestation']);
@@ -417,6 +418,7 @@ Route::middleware(['auth'])->group(function () {
             Route::patch('/{id}', [PrestationPricingController::class, 'update']);
             Route::delete('/{id}', [PrestationPricingController::class, 'destroy']);
             Route::post('/bulk-delete', [PrestationPricingController::class, 'bulkDelete']);
+            Route::get('/convention/{conventionId}', [PrestationPricingController::class, 'getPrestationsByConvention']);
 
             Route::get('/avenant/{avenantId}', [PrestationPricingController::class, 'getPrestationsByAvenantId']);
         });
@@ -434,17 +436,25 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/convention/{conventionId}', [AvenantController::class, 'getAvenantsByConventionId']);
         });
 
+
         // Reception APIs - MOVE THIS INSIDE THE /api PREFIX GROUP
+        Route::apiResource('/fiche-navette-custom-packages', FicheNavetteCustomPackageController::class);
+
         Route::prefix('/reception')->group(function () {
             Route::post('/fiche-navette/{ficheNavetteId}/items', [ficheNavetteItemController::class, 'store']);
             Route::get('/fiche-navette/{ficheNavetteId}/items', [ficheNavetteItemController::class, 'index']);
             Route::put('/fiche-navette/{ficheNavetteId}/items/{itemId}', [ficheNavetteItemController::class, 'update']);
             Route::delete('/fiche-navette/{ficheNavetteId}/items/{itemId}', [ficheNavetteItemController::class, 'destroy']);
             Route::apiResource('/fiche-navette', ficheNavetteController::class);
+                    
+            // Add these new routes for convention pricing
+            Route::get('/prestations/with-convention-pricing', [ficheNavetteItemController::class, 'getPrestationsWithConventionPricing']);
+            Route::get('/prestations/by-convention/{conventionId}', [ficheNavetteItemController::class, 'getPrestationsByConvention']);
+
             Route::patch('/fiche-navette/{ficheNavette}/status', [ficheNavetteController::class, 'changeStatus']);
             Route::post('/fiche-navette/{ficheNavette}/prestations', [ficheNavetteController::class, 'addPrestation']);
             Route::put('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteController::class, 'updatePrestation']);
-            Route::delete('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteController::class, 'removePrestation']);
+            Route::delete('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteItemController::class, 'removePrestation']);
             
             // Services and doctors
             Route::get('/prestations/by-service/{serviceId}', [ficheNavetteController::class, 'getPrestationsByService']);
@@ -455,13 +465,25 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/prestations/dependencies', [ficheNavetteController::class, 'getPrestationsDependencies']);
             Route::get('/prestations/dependencies', [ficheNavetteController::class, 'getPrestationsDependencies']);
             // Dependencies and search
+            Route::get('/patients/{patientId}/conventions', [ficheNavetteItemController::class, 'getPatientConventions']);
+            Route::delete('/dependencies/{dependencyId}', [ficheNavetteItemController::class, 'removeDependency']);
             Route::get('/prestations/with-packages', [ficheNavetteController::class, 'getAllPrestationsWithPackages']);
             Route::get('/prestations/dependencies', [ficheNavetteController::class, 'getPrestationsDependencies']);
             Route::get('/prestations/search', [ficheNavetteController::class, 'searchPrestations']);
             Route::get('/specializations/all', [ficheNavetteController::class, 'getAllSpecializations']);
+            Route::get('/fiche-navette/{ficheNavetteId}/grouped-items', [ficheNavetteItemController::class, 'getGroupedByInsured']);
         });
 
+        // Add this new route for grouped items
+
+        // Convention prescription routes
+        Route::post('/fiche-navette/{ficheNavetteId}/convention-prescription', [ficheNavetteItemController::class, 'storeConventionPrescription']);
     }); // End of /api group
+    Route::prefix('fiche-navette-items')->group(function () {
+        // File upload routes
+        Route::post('/upload-convention-files', [FicheNavetteItemController::class, 'uploadConventionFiles']);
+        Route::get('/download-convention-file/{fileId}', [FicheNavetteItemController::class, 'downloadConventionFile']);
+    });
 
     // The main application entry point for authenticated users
     Route::get('/{view}', [ApplicationController::class, '__invoke'])->where('view', '.*')->name('dashboard');

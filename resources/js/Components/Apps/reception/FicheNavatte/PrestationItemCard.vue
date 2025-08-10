@@ -59,16 +59,18 @@ const cardSubtitle = computed(() => {
 // Get all dependencies from all items in the group
 const allDependencies = computed(() => {
   const dependencies = []
-  props.group.items.forEach(item => {
-    if (item.dependencies && Array.isArray(item.dependencies)) {
-      item.dependencies.forEach(dep => {
-        dependencies.push({
-          ...dep,
-          parentItem: item
+  if (props.group.items) {
+    props.group.items.forEach(item => {
+      if (item.dependencies && Array.isArray(item.dependencies)) {
+        item.dependencies.forEach(dep => {
+          dependencies.push({
+            ...dep,
+            parentItem: item
+          })
         })
-      })
-    }
-  })
+      }
+    })
+  }
   return dependencies
 })
 
@@ -105,9 +107,7 @@ const getItemTypeBadge = (item) => {
 }
 
 const updateItemStatus = async (item, newStatus) => {
-  // Implement status update logic here
   console.log('Updating item status:', item.id, newStatus)
-  // You can emit an event to the parent component to handle the update
   emit('item-updated', { itemId: item.id, status: newStatus })
 }
 
@@ -150,7 +150,7 @@ const removeItem = (itemId) => {
           <div class="info-item">
             <span class="info-label">Items:</span>
             <Chip 
-              :label="`${group.items.length} item${group.items.length !== 1 ? 's' : ''}`"
+              :label="`${group.items?.length || 0} item${(group.items?.length || 0) !== 1 ? 's' : ''}`"
               severity="secondary"
             />
           </div>
@@ -172,11 +172,11 @@ const removeItem = (itemId) => {
           <div class="dependencies-preview">
             <div 
               v-for="(dependency, index) in allDependencies.slice(0, 3)" 
-              :key="dependency.id"
+              :key="index"
               class="dependency-chip"
             >
               <Chip 
-                :label="dependency.dependency_prestation?.name || 'Unknown'"
+                :label="dependency.dependencyPrestation?.name || dependency.dependency_prestation?.name || 'Unknown'"
                 severity="secondary"
                 class="dependency-item"
               />
@@ -204,7 +204,7 @@ const removeItem = (itemId) => {
           icon="pi pi-trash"
           label="Remove"
           class="p-button-outlined p-button-danger p-button-sm"
-          @click="removeItem(group.items[0].id)"
+          @click="removeItem(group.items?.[0]?.id)"
         />
       </div>
     </template>
@@ -252,25 +252,26 @@ const removeItem = (itemId) => {
       <!-- Main Items Table -->
       <Card class="mb-4">
         <template #title>
-          <div class="d-flex align-items-center gap-2">
+          <div class="table-title">
             <i class="pi pi-list"></i>
-            Main Items ({{ group.items.length }})
+            Main Items ({{ group.items?.length || 0 }})
           </div>
         </template>
         <template #content>
           <DataTable 
+            v-if="group.items && group.items.length > 0"
             :value="group.items"
             class="items-table"
             responsiveLayout="scroll"
             :rowHover="true"
           >
-            <Column field="prestation.name" header="Name">
+            <Column field="name" header="Name">
               <template #body="{ data }">
                 <div class="item-name-cell">
-                  <i :class="getItemTypeIcon(data)" class="mr-2"></i>
-                  <div>
-                    <div class="item-name">{{ data.prestation?.name || data.package?.name }}</div>
-                    <small class="item-code">{{ data.prestation?.internal_code }}</small>
+                  <i :class="getItemTypeIcon(data)" class="item-icon"></i>
+                  <div class="item-details">
+                    <div class="item-name">{{ data.prestation?.name || data.package?.name || 'Unknown' }}</div>
+                    <small class="item-code">{{ data.prestation?.internal_code || data.package?.internal_code || 'N/A' }}</small>
                   </div>
                 </div>
               </template>
@@ -325,13 +326,16 @@ const removeItem = (itemId) => {
               </template>
             </Column>
           </DataTable>
+          <div v-else class="no-items">
+            <p>No items found in this group.</p>
+          </div>
         </template>
       </Card>
 
       <!-- Dependencies Table -->
       <Card v-if="allDependencies.length > 0">
         <template #title>
-          <div class="d-flex align-items-center gap-2">
+          <div class="table-title">
             <i class="pi pi-sitemap"></i>
             All Dependencies ({{ allDependencies.length }})
           </div>
@@ -343,13 +347,17 @@ const removeItem = (itemId) => {
             responsiveLayout="scroll"
             :rowHover="true"
           >
-            <Column field="dependency_prestation.name" header="Dependency Name">
+            <Column field="dependency_name" header="Dependency Name">
               <template #body="{ data }">
                 <div class="dependency-name-cell">
-                  <i class="pi pi-arrow-right mr-2 text-primary"></i>
-                  <div>
-                    <div class="dependency-name">{{ data.dependency_prestation?.name }}</div>
-                    <small class="dependency-code">{{ data.dependency_prestation?.internal_code }}</small>
+                  <i class="pi pi-arrow-right dependency-arrow"></i>
+                  <div class="dependency-details">
+                    <div class="dependency-name">
+                      {{ data.dependencyPrestation?.name || data.dependency_prestation?.name || 'Unknown' }}
+                    </div>
+                    <small class="dependency-code">
+                      {{ data.dependencyPrestation?.internal_code || data.dependency_prestation?.internal_code || 'N/A' }}
+                    </small>
                   </div>
                 </div>
               </template>
@@ -358,24 +366,24 @@ const removeItem = (itemId) => {
             <Column field="dependency_type" header="Type">
               <template #body="{ data }">
                 <Tag 
-                  :value="data.dependency_type"
+                  :value="data.dependency_type || 'standard'"
                   :severity="data.dependency_type === 'required' ? 'danger' : 'info'"
                 />
               </template>
             </Column>
 
-            <Column field="dependency_prestation.specialization_name" header="Specialization">
+            <Column field="specialization" header="Specialization">
               <template #body="{ data }">
                 <Chip 
-                  :label="data.dependency_prestation?.specialization_name || 'N/A'"
+                  :label="data.dependencyPrestation?.specialization_name || data.dependency_prestation?.specialization_name || 'N/A'"
                   severity="secondary"
                 />
               </template>
             </Column>
 
-            <Column field="dependency_prestation.public_price" header="Price">
+            <Column field="price" header="Price">
               <template #body="{ data }">
-                {{ formatCurrency(data.dependency_prestation?.public_price) }}
+                {{ formatCurrency(data.dependencyPrestation?.public_price || data.dependency_prestation?.public_price || 0) }}
               </template>
             </Column>
 
@@ -388,7 +396,7 @@ const removeItem = (itemId) => {
             <Column header="Parent Item">
               <template #body="{ data }">
                 <small class="parent-item">
-                  {{ data.parentItem?.prestation?.name || data.parentItem?.package?.name }}
+                  {{ data.parentItem?.prestation?.name || data.parentItem?.package?.name || 'Unknown' }}
                 </small>
               </template>
             </Column>
@@ -409,67 +417,76 @@ const removeItem = (itemId) => {
 </template>
 
 <style scoped>
+/* Card Styles */
 .item-card {
-  border-radius: 12px;
-  transition: all 0.3s ease;
-  border: 2px solid transparent;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease;
 }
 
 .item-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-  border-color: var(--primary-color);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
+/* Header Styles */
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  background: var(--surface-50);
-  border-radius: 12px 12px 0 0;
+  border-bottom: 1px solid #e9ecef;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .card-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: var(--primary-100);
+  background: var(--primary-color, #007bff);
+  color: white;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary-color);
-  font-size: 1.5rem;
+  font-size: 1.1rem;
+}
+
+.header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .card-title {
-  margin: 0 0 0.25rem 0;
-  color: var(--text-color);
+  font-size: 1.1rem;
   font-weight: 600;
+  margin: 0;
+  color: #2c3e50;
 }
 
 .card-subtitle {
-  color: var(--text-color-secondary);
+  color: #6c757d;
+  font-size: 0.85rem;
 }
 
-.type-chip {
-  font-size: 0.75rem;
+.header-actions {
+  display: flex;
+  align-items: center;
 }
 
+/* Content Styles */
 .card-content {
-  padding: 0;
+  padding: 1rem;
 }
 
 .summary-info {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
   margin-bottom: 1rem;
 }
 
@@ -480,20 +497,18 @@ const removeItem = (itemId) => {
 }
 
 .info-label {
-  color: var(--text-color-secondary);
-  font-size: 0.875rem;
+  font-weight: 500;
+  color: #495057;
 }
 
 .total-price {
-  color: var(--primary-color);
+  color: #28a745;
   font-size: 1.1rem;
 }
 
 .dependencies-summary {
-  background: var(--surface-50);
-  padding: 1rem;
-  border-radius: 8px;
-  border-left: 4px solid var(--yellow-500);
+  border-top: 1px solid #e9ecef;
+  padding-top: 1rem;
 }
 
 .dependencies-preview {
@@ -503,107 +518,138 @@ const removeItem = (itemId) => {
   margin-top: 0.5rem;
 }
 
-.dependency-chip {
-  display: inline-block;
-}
-
-.dependency-item {
-  font-size: 0.75rem;
-}
-
-.more-deps {
-  font-size: 0.75rem;
-}
-
+/* Footer Styles */
 .card-footer {
   display: flex;
-  gap: 0.5rem;
   justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-top: 1px solid #e9ecef;
+  background: #f8f9fa;
 }
 
-.group-details {
+/* Modal Styles */
+.details-modal {
+  max-height: 90vh;
+}
+
+.details-content {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.group-info .group-details {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .detail-item {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .detail-label {
-  font-size: 0.875rem;
-  color: var(--text-color-secondary);
-  font-weight: 500;
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.9rem;
 }
 
 .total-amount {
-  color: var(--primary-color);
-  font-size: 1.25rem;
+  color: #28a745;
+  font-size: 1.2rem;
 }
 
-.items-table,
-.dependencies-table {
-  width: 100%;
+/* Table Styles */
+.table-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #2c3e50;
 }
 
 .item-name-cell,
 .dependency-name-cell {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+}
+
+.item-icon {
+  color: #007bff;
+  font-size: 1.1rem;
+}
+
+.dependency-arrow {
+  color: #007bff;
+  font-size: 0.9rem;
+}
+
+.item-details,
+.dependency-details {
+  display: flex;
+  flex-direction: column;
 }
 
 .item-name,
 .dependency-name {
-  font-weight: 600;
-  color: var(--text-color);
+  font-weight: 500;
+  color: #2c3e50;
 }
 
 .item-code,
 .dependency-code {
-  color: var(--text-color-secondary);
+  color: #6c757d;
   font-size: 0.8rem;
 }
 
-.dependency-name-cell .dependency-name {
-  color: var(--primary-color);
-}
-
 .notes-text {
+  color: #495057;
   font-style: italic;
-  color: var(--text-color-secondary);
 }
 
 .parent-item {
-  color: var(--text-color-secondary);
-  font-style: italic;
+  color: #6c757d;
+  font-size: 0.8rem;
+}
+
+.no-items {
+  text-align: center;
+  padding: 2rem;
+  color: #6c757d;
 }
 
 .text-muted {
-  color: var(--text-color-secondary);
+  color: #6c757d;
   font-style: italic;
 }
 
+/* Responsive Design */
 @media (max-width: 768px) {
-  .group-details {
-    grid-template-columns: 1fr;
-  }
-  
-  .summary-info {
+  .card-header {
     flex-direction: column;
     align-items: stretch;
     gap: 1rem;
   }
-  
-  .dependencies-preview {
-    justify-content: center;
+
+  .summary-info {
+    flex-direction: column;
+    gap: 0.75rem;
   }
-  
+
   .card-footer {
     flex-direction: column;
-    gap: 0.5rem;
   }
-}</style>
+
+  .group-details {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Utility Classes */
+.mb-4 {
+  margin-bottom: 1.5rem;
+}
+</style>

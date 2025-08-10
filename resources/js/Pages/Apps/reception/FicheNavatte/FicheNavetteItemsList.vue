@@ -22,6 +22,7 @@ import Avatar from 'primevue/avatar'
 import PrestationPackageSelectionModal from '../../../../Components/Apps/reception/FicheNavatte/PrestationPackageSelectionModal.vue'
 import PrestationItemCard from '../../../../Components/Apps/reception/FicheNavatte/PrestationItemCard.vue'
 import FicheNavetteItemCreate from '../../../../Components/Apps/reception/FicheNavatteItem/FicheNavetteItemCreate.vue'
+import ConventionCompaniesDisplay from '../../../../Components/Apps/reception/FicheNavatteItem/ConventionCompaniesDisplay.vue'
 
 // Services - Fix the import path from 'Recption' to 'Reception'
 import { ficheNavetteService } from '../../../../Components/Apps/services/Reception/ficheNavetteService'
@@ -543,6 +544,42 @@ onMounted(async () => {
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
   gap: 1.5rem;
   padding: 1rem;
+}
+
+/* New styles for dependencies display */
+.dependency-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+}
+
+.dependency-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dependency-name {
+  font-weight: 500;
+  color: #92400e;
+}
+
+.dependency-code {
+  color: #d97706;
+  font-size: 0.75rem;
+}
+
+.dependency-price {
+  background: #f59e0b;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {

@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('parent_item_id')->constrained('fiche_navette_items')->onDelete('cascade');
             $table->foreignId('dependent_item_id')->constrained('fiche_navette_items')->onDelete('cascade');
-            $table->foreignId('convenction_id')->nullable()->constrained('conventions')->onDelete('set null');
+            $table->foreignId('patient_id')->nullable()->constrained('patients')->onDelete('set null');
+            $table->foreignId('convention_id')->nullable()->constrained('conventions')->onDelete('set null');
             $table->enum('dependency_type', ['contraindication', 'prerequisite', 'alternative', 'required', 'optional']);
             $table->text('notes')->nullable();
             $table->timestamps();

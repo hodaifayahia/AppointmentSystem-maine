@@ -60,6 +60,11 @@ const hasPermission = (requiredRoles) => {
                             <i class="far fa-circle nav-icon"></i>
                             <p>Fiche Navette</p> </router-link>
                     </li>
+                    <li class="nav-item">
+                        <router-link to="/reception/fiche-navette/custom-package" active-class="active" class="nav-link">
+                            <i class="far fa-circle nav-icon"></i>
+                            <p>Custom Package Name</p> </router-link>
+                    </li>
                    
                 </ul>
             </li>

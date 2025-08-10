@@ -10,6 +10,12 @@ use App\Services\B2B\ConventionService;
 use App\Http\Resources\B2B\ConventionResource;
 use App\Http\Resources\B2B\PrestationPricingResource;
 
+use App\Models\B2B\ConventionDetail;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Validation\ValidationException;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,26 +30,45 @@ class ConventionController extends Controller
      * Display a listing of the resource.
      * GET /conventions
      */
-     public function index(Request $request): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         try {
             $perPage = $request->get('per_page', 15);
             $search = $request->get('search');
             $status = $request->get('status');
-            $organismeId = $request->get('organisme_id'); // Correctly get the organisme_id from query parameters
-            // dd($organismeId);
+            $organismeId = $request->get('organisme_id');
+            $organismeIds = $request->get('organisme_ids'); // Accept multiple ids
+
             $query = Convention::with(['conventionDetail', 'organisme', 'annexes']);
 
             if ($search) {
-                $query->where('contract_name', 'like', '%' . $search . '%'); // Assuming 'contract_name' for search
+                $query->where('contract_name', 'like', '%' . $search . '%');
             }
 
             if ($status) {
                 $query->where('status', $status);
             }
 
-            if ($organismeId) {
+            // Support single or multiple organisme IDs
+            if ($organismeIds) {
+                // Accept comma-separated or array
+                if (is_string($organismeIds)) {
+                    $ids = array_filter(explode(',', $organismeIds));
+                } else {
+                    $ids = (array)$organismeIds;
+                }
+                $query->whereIn('organisme_id', $ids);
+            } elseif ($organismeId) {
                 $query->where('organisme_id', $organismeId);
+            }
+
+            // If per_page is -1, return all results without pagination
+            if ($perPage == -1) {
+                $conventions = $query->get();
+                return response()->json([
+                    'success' => true,
+                    'data' => ConventionResource::collection($conventions)
+                ]);
             }
 
             $conventions = $query->paginate($perPage);
@@ -94,6 +119,109 @@ class ConventionController extends Controller
             ], 500);
         }
     }
+ 
+public function getFamilyAuthorization(Request $request)
+{
+    $validatedData = $request->validate([
+        'prise_en_charge_date' => 'required|date',
+    ]);
+
+    try {
+        Log::info('Fetching family authorization for date: ' . $validatedData['prise_en_charge_date']);
+
+        // Query convention_details where the date is between start_date and end_date
+        $conventionDetail = ConventionDetail::whereDate('start_date', '<=', $validatedData['prise_en_charge_date'])
+            ->whereDate('end_date', '>=', $validatedData['prise_en_charge_date'])
+            ->first();
+
+        if (!$conventionDetail) {
+            Log::info('No convention detail found for date: ' . $validatedData['prise_en_charge_date']);
+            
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'message' => 'No family authorization available for ' . Carbon::parse($validatedData['prise_en_charge_date'])->format('d/m/Y'),
+            ]);
+        }
+
+        // Parse the family_auth - handle different formats
+        $familyAuthRaw = trim($conventionDetail->family_auth);
+        
+        if (empty($familyAuthRaw)) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'message' => 'No family authorization configured for this period.',
+            ]);
+        }
+
+        // Split by comma and clean up
+        $familyAuthOptions = array_filter(
+            array_map('trim', explode(',', $familyAuthRaw)),
+            fn($item) => !empty($item)
+        );
+
+        if (empty($familyAuthOptions)) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'message' => 'No valid family authorization options found.',
+            ]);
+        }
+
+        // Format the options for the frontend with proper labels
+        $formattedOptions = array_map(function ($auth) {
+            return [
+                'value' => $auth,
+                'label' => ucfirst($auth),
+            ];
+        }, $familyAuthOptions);
+
+        Log::info('Found family authorization options: ' . json_encode($formattedOptions));
+
+        return response()->json([
+            'success' => true,
+            'data' => $formattedOptions,
+            'message' => count($formattedOptions) . ' authorization option(s) available',
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch family authorization: ' . $e->getMessage(), [
+            'date' => $validatedData['prise_en_charge_date'],
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch family authorization options',
+            'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
+        ], 500);
+    }
+}
+
+/**
+ * Format authorization label for better display
+ */
+private function formatAuthorizationLabel(string $auth): string
+{
+    // Handle common authorization types
+    $authMap = [
+        'auth' => 'Authorized',
+        'asendent' => 'Ascending',
+        'descendent' => 'Descending',
+        'partial' => 'Partial Authorization',
+        'full' => 'Full Authorization',
+    ];
+
+    $lower = strtolower(trim($auth));
+    
+    if (isset($authMap[$lower])) {
+        return $authMap[$lower];
+    }
+
+    // Capitalize first letter and replace underscores/dashes with spaces
+    return ucfirst(str_replace(['_', '-'], ' ', $auth));
+}
 
     /**
      * Store a newly created resource in storage.

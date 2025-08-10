@@ -9,6 +9,7 @@ use App\Http\Resources\B2B\PrestationPricingResource;
 use App\Http\Resources\PrestationResource;
 use App\Http\Resources\CONFIGURATION\ServiceResource;
 use App\Models\B2B\PrestationPricing;
+use App\Models\B2B\Convention;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException; // Import ModelNotFoundException
@@ -327,6 +328,48 @@ class PrestationPricingController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch available prestations.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get prestations by convention ID
+     * This is a simplified version that only looks at prestation_pricing table
+     */
+    public function getPrestationsByConvention($conventionId): JsonResponse
+    {
+        try {
+            $prestations = PrestationPricing::with(['prestation.specialization'])
+                ->where('convention_id', $conventionId)
+                ->get()
+                ->map(function ($pricing) use ($conventionId) {
+                    return [
+                        'prestation_id' => $pricing->prestation->id,
+                        'prestation_name' => $pricing->prestation->name,
+                        'prestation_code' => $pricing->prestation->internal_code,
+                        'specialization_id' => $pricing->prestation->specialization_id,
+                        'specialization_name' => $pricing->prestation->specialization->name ?? null,
+                        'standard_price' => $pricing->prestation->public_price,
+                        'convention_price' => $pricing->prix_patient + $pricing->prix_company,
+                        'patient_price' => $pricing->prix_patient,
+                        'company_price' => $pricing->prix_company,
+                        'convention_id' => $conventionId,
+                        'pricing_id' => $pricing->id,
+                        'pricing_source' => 'prestation_pricing',
+                        'prestation' => $pricing->prestation
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'data' => $prestations
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch prestations by convention',
                 'error' => $e->getMessage()
             ], 500);
         }

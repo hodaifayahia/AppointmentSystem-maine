@@ -496,5 +496,226 @@ async getPrestationsDependencies(prestationIds) {
                 error
             };
         }
+    },
+
+    /**
+     * Get all companies (organismes)
+     */
+    async getCompanies() {
+        try {
+            const response = await axios.get('/api/organismes');
+            return {
+                success: true,
+                data: response.data.data || response.data
+            };
+        } catch (error) {
+            console.error('Error fetching companies:', error);
+            return {
+                success: false,
+                message: error.response?.data?.message || 'Failed to fetch companies',
+                error
+            };
+        }
+    },
+
+    /**
+     * Get all conventions with optional filtering
+     */
+    async getConventions(params = {}) {
+        try {
+            const response = await axios.get('/api/conventions', { params });
+            return {
+                success: true,
+                data: response.data.data || response.data
+            };
+        } catch (error) {
+            console.error('Error fetching conventions:', error);
+            return {
+                success: false,
+                message: error.response?.data?.message || 'Failed to fetch conventions',
+                error
+            };
+        }
+    },
+
+    /**
+     * Get conventions by organisme IDs
+     */
+    async getConventionsByOrganismes(organismeIds) {
+        console.log('Fetching conventions for organismes:', organismeIds);
+        
+        try {
+            const response = await axios.get('/api/conventions', {
+                params: { 
+                    organisme_ids: organismeIds.join(','),
+                    per_page: -1 // Get all results without pagination
+                }
+            });
+            console.log('Convention response:', response.data);
+
+            return {
+                success: true,
+                data: response.data.data || response.data
+            };
+        } catch (error) {
+            console.error('Error fetching conventions by organismes:', error);
+            return {
+                success: false,
+                message: error.response?.data?.message || 'Failed to fetch conventions',
+                error
+            };
+        }
+    },
+
+    /**
+     * Get prestations by convention
+     */
+    async getPrestationsByConvention(conventionId, priseEnChargeDate = null) {
+        try {
+            const params = {};
+            if (priseEnChargeDate) {
+                params.prise_en_charge_date = priseEnChargeDate;
+            }
+
+            const response = await axios.get(`/api/reception/prestations/by-convention/${conventionId}`, { params });
+            return {
+                success: true,
+                data: response.data.data || response.data
+            };
+        } catch (error) {
+            console.error('Error fetching prestations by convention:', error);
+            return {
+                success: false,
+                message: error.response?.data?.message || 'Failed to fetch prestations',
+                error
+            };
+        }
+    },
+
+    /**
+     * Get prestations with convention pricing including date
+     */
+    async getPrestationsWithConventionPricing(conventionIds = [], priseEnChargeDate = null) {
+        try {
+            const params = { convention_ids: conventionIds.join(',') };
+            if (priseEnChargeDate) {
+                params.prise_en_charge_date = priseEnChargeDate;
+            }
+
+            const response = await axios.get('/api/reception/prestations/with-convention-pricing', { params });
+            return {
+                success: true,
+                data: response.data.data || response.data,
+                meta: response.data.meta || {}
+            };
+        } catch (error) {
+            console.error('Error fetching prestations with convention pricing:', error);
+            return {
+                success: false,
+                message: error.response?.data?.message || 'Failed to fetch prestations',
+                error
+            };
+        }
+    },
+    async createConventionPrescription(ficheNavetteId, data) {
+    try {
+        const response = await axios.post(`/api/fiche-navette/${ficheNavetteId}/convention-prescription`, data);
+        return response.data;
+    } catch (error) {
+        console.error('Error creating convention prescription:', error);
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to create convention prescription'
+        };
+    }
+},
+
+async getPatientConventions(patientId , ficheNavetteId) {
+    try {
+        const response = await axios.get(`/api/reception/patients/${patientId}/conventions`,{
+            params: {
+                fiche_navette_id: ficheNavetteId
+            }
+        })
+        return {
+            success: true,
+            data: response.data.data || response.data
+        }
+    } catch (error) {
+        console.error('Error fetching patient conventions:', error)
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to fetch patient conventions',
+            error
+        }
+    }
+},
+async getGroupedItems(ficheNavetteId) {
+    try {
+        const response = await axios.get(`/api/reception/fiche-navette/${ficheNavetteId}/grouped-items`);
+        return {
+            success: true,
+            data: response.data.data,
+            meta: response.data.meta
+        };
+    } catch (error) {
+        console.error('Error fetching grouped items:', error);
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to fetch grouped items',
+            error
+        };
+    }
+},
+
+    /**
+     * Upload convention files
+     */
+    async uploadConventionFiles(files) {
+        try {
+            const formData = new FormData()
+            files.forEach((file, index) => {
+                formData.append(`files[${index}]`, file)
+            })
+
+            const response = await axios.post('/api/fiche-navette-items/upload-convention-files', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            })
+            return response.data
+        } catch (error) {
+            console.error('Error uploading convention files:', error)
+            return { success: false, message: error.response?.data?.message || 'Upload failed' }
+        }
+    },
+ async getFamilyAuthorization(priseEnChargeDate) {
+    try {
+        const response = await axios.get('/api/conventions/family-authorization', {
+            params: { prise_en_charge_date: priseEnChargeDate },
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching family authorization:', error);
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to fetch family authorization',
+        };
+    }
+},
+
+    /**
+     * Download convention file
+     */
+    async downloadConventionFile(fileId) {
+        try {
+            const response = await axios.get(`/api/fiche-navette-items/download-convention-file/${fileId}`, {
+                responseType: 'blob'
+            })
+            return response
+        } catch (error) {
+            console.error('Error downloading file:', error)
+            throw error
+        }
     }
 };

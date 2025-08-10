@@ -4,28 +4,30 @@ namespace App\Models\Reception;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Models\CONFIGURATION\Prestation;
 
 class ItemDependency extends Model
 {
+    protected $table = 'item_dependencies';
+    
     protected $fillable = [
         'parent_item_id',
-        'dependent_item_id',
+        'dependent_prestation_id',
         'dependency_type',
-        'convenction_id',
-        'dependency_prestation_id', // This stores the prestation ID directly
+        'doctor_id',
+        'base_price',
+        'final_price',
+        'status',
         'notes',
+        'custom_name' // Add this field
+    ];
+
+    protected $casts = [
+        'base_price' => 'decimal:2',
+        'final_price' => 'decimal:2'
     ];
 
     /**
-     * Dependency types
-     */
-    const TYPE_REQUIRED = 'required';        // Required dependencies for prestations
-    const TYPE_CUSTOM_GROUP = 'custom_group'; // Custom prestation grouping
-    const TYPE_PACKAGE = 'package';          // Package items
-
-    /**
-     * Get the parent item (main prestation in fiche_navette_items)
+     * Get the parent item
      */
     public function parentItem(): BelongsTo
     {
@@ -33,18 +35,35 @@ class ItemDependency extends Model
     }
 
     /**
-     * Get the dependent item (if exists - for backward compatibility)
+     * Get the dependent prestation
      */
-    public function dependentItem(): BelongsTo
+ public function dependencyPrestation(): BelongsTo
+{
+    return $this->belongsTo(\App\Models\CONFIGURATION\Prestation::class, 'parent_item_id', 'id');
+}
+
+    /**
+     * Get the doctor assigned to this dependency
+     */
+    public function doctor(): BelongsTo
     {
-        return $this->belongsTo(ficheNavetteItem::class, 'dependent_item_id');
+        return $this->belongsTo(\App\Models\User::class, 'doctor_id');
     }
 
     /**
-     * Get the dependency prestation directly (THIS IS WHAT STORES THE DEPENDENCIES)
+     * Get the display name (custom name takes priority, then prestation name)
      */
-    public function dependencyPrestation(): BelongsTo
+    public function getDisplayNameAttribute(): string
     {
-        return $this->belongsTo(Prestation::class, 'dependency_prestation_id');
+        // Priority: custom_name first, then prestation name, then fallback
+        if (!empty($this->custom_name)) {
+            return $this->custom_name;
+        }
+        
+        if ($this->dependencyPrestation) {
+            return $this->dependencyPrestation->name;
+        }
+        
+        return 'Unknown Dependency';
     }
 }

@@ -332,7 +332,7 @@ class ficheNavetteController extends Controller
 
     public function removePrestation($ficheNavetteId, $itemId)
     {
-        // Implementation for removing prestation
+        dd($ficheNavetteId, $itemId);
     }
 
     public function getPrestationsBySpecialization($specializationId): JsonResponse

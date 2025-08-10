@@ -17,6 +17,11 @@ const receptionRoutes = [
         name: 'reception.fiche-navette',
         component: () => import('../Pages/Apps/reception/FicheNavatte/ficheNavetteList.vue'),
       },
+        {
+        path: 'fiche-navette/custom-package',
+        name: 'reception.fiche-navette.custom-package',
+        component: () => import('../Pages/Apps/reception/FicheNavatte/ficheNavetteCustomPackage.vue'),
+      },
       {
         path: '/reception/fiche-navette/:id/items',
         name: 'reception.FicheNavetteItems',
