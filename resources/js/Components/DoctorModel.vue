@@ -40,6 +40,8 @@ const doctor = ref({
   name: props.doctorData?.name || '',
   email: props.doctorData?.email || '',
   phone: props.doctorData?.phone || '',
+  allowed_appointment_today: props.doctorData?.allowed_appointment_today ?? false,
+
   patients_based_on_time: props.doctorData?.patients_based_on_time || false,
   specialization: props.doctorData?.specialization || '',
   specialization_id: props.doctorData?.specialization_id || '',
@@ -142,6 +144,7 @@ watch(
         name: newValue?.name || '',
         email: newValue?.email || '',
         phone: newValue?.phone || '',
+        allowed_appointment_today: newValue?.allowed_appointment_today ?? false,
         patients_based_on_time: newValue?.patients_based_on_time || false,
         specialization: newValue?.specialization || '',
         specialization_id: newValue?.specialization_id || '',
@@ -277,6 +280,7 @@ const submitForm = async (values, { setErrors, resetForm }) => {
     formData.append('end_time', doctor.value.end_time_force);
     formData.append('number_of_patients', doctor.value.number_of_patients);
     formData.append('is_active', doctor.value.is_active ? 1 : 0);
+    formData.append('allowed_appointment_today', doctor.value.allowed_appointment_today ? 1 : 0);
 
 
     // Handle appointmentBookingWindow
@@ -427,7 +431,17 @@ onMounted(() => {
                   :class="{ 'is-invalid': validationErrors.start_time_force }" class="form-control form-control-md" />
                 <span class="text-sm invalid-feedback">{{ validationErrors.start_time_force }}</span>
               </div>
-
+          <div class="form-check mb-3">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="allowed_appointment_today"
+              v-model="doctor.allowed_appointment_today"
+            />
+            <label class="form-check-label" for="allowed_appointment_today">
+              Allow Appointments Today
+            </label>
+          </div>
               <!-- End Time -->
               <div class="col-md-6 mb-3">
                 <label for="end_time_force" class="form-label">End Time</label>

@@ -30,6 +30,8 @@ class OrganismeUpdateRequest extends FormRequest
 
         return [
             'name' => 'required|string|max:255',
+                    'organism_color' => ['nullable', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/'],
+
             'legal_form' => 'nullable|string|max:255',
             'trade_register_number' => ['nullable', 'string', 'max:255', Rule::unique('organismes')->ignore($organismeId)],
             'tax_id_nif' => ['nullable', 'string', 'max:255', Rule::unique('organismes')->ignore($organismeId)],

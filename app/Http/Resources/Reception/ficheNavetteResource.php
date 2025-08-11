@@ -18,6 +18,7 @@ class ficheNavetteResource extends JsonResource
             'reference' => $this->reference,
             'patient_id' => $this->patient_id,
             'patient_name' => $this->patient ? $this->patient->Firstname . ' ' . $this->patient->Lastname : null,
+            'patient_balance'=>$this->patient->balance,
             'creator_id' => $this->creator_id,
             'creator_name' => $this->creator ? $this->creator->name : null,
             'status' => $this->status,
@@ -57,6 +58,7 @@ class ficheNavetteResource extends JsonResource
                                         'name' => $dependency->dependencyPrestation->name,
                                         'internal_code' => $dependency->dependencyPrestation->internal_code,
                                         'price' => $dependency->dependencyPrestation->public_price,
+                                        'is_package' => $dependency->is_package
                                     ] : null,
                                 ];
                             });

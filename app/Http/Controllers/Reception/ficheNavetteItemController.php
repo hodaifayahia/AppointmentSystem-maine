@@ -13,6 +13,8 @@ use App\Services\Reception\ConventionPricingService;
 use App\Services\Reception\FileUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response; // Add this import
+use Illuminate\Support\Facades\Storage; // Add this import
 use App\Http\Resources\Reception\ConventionOrganismeResource;
 
 class ficheNavetteItemController extends Controller
@@ -43,6 +45,7 @@ class ficheNavetteItemController extends Controller
                 'error' => 'Missing ficheNavetteId parameter'
             ], 400);
         }
+        dd($request->all());
 
         $validatedData = $request->validate([
             'type' => 'required|string|in:prestation,custom',
@@ -124,30 +127,25 @@ class ficheNavetteItemController extends Controller
     /**
      * Store convention prescription items with specialization and doctor
      */
-    public function storeConventionPrescription(Request $request, $ficheNavetteId): JsonResponse
+public function storeConventionPrescription(Request $request, $ficheNavetteId): JsonResponse
 {
-    \Log::info('Convention prescription request received:', $request->all());
-    
     $validatedData = $request->validate([
-        'conventions' => 'required|array',
-        'conventions.*.convention_id' => 'required|exists:conventions,id',
-        'conventions.*.doctor_id' => 'required|exists:users,id',
-        'conventions.*.prestations' => 'required|array',
-        'conventions.*.prestations.*.prestation_id' => 'required|exists:prestations,id',
-        'conventions.*.prestations.*.convention_price' => 'nullable|numeric',
-        'conventions.*.prestations.*.doctor_id' => 'required|exists:users,id',
+        'conventions' => 'required|string', // JSON string
         'prise_en_charge_date' => 'required|date',
         'familyAuth' => 'required|string',
-        // Handle both direct ID and object structure
         'adherentPatient_id' => 'nullable|exists:patients,id',
-        'adherentPatient' => 'nullable', // Can be object or array
-        'adherentPatient.id' => 'nullable|exists:patients,id',
-        'uploadedFiles' => 'sometimes|array',
+        'uploadedFiles' => 'nullable|file|mimes:pdf,doc,docx|max:10240', // Single file
     ]);
 
     try {
-        $validatedData['fiche_navette_id'] = $ficheNavetteId;
+        // Decode the JSON string
+        $validatedData['conventions'] = json_decode($validatedData['conventions'], true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \Exception('Invalid conventions data format');
+        }
 
+        $validatedData['fiche_navette_id'] = $ficheNavetteId;
         $result = $this->receptionService->createConventionPrescriptionItems($validatedData, $ficheNavetteId);
 
         return response()->json([
@@ -164,7 +162,6 @@ class ficheNavetteItemController extends Controller
             'error' => $e->getMessage(),
             'line' => $e->getLine(),
             'file' => $e->getFile(),
-            'trace' => $e->getTraceAsString()
         ]);
         
         return response()->json([
@@ -174,7 +171,6 @@ class ficheNavetteItemController extends Controller
         ], 500);
     }
 }
-
     /**
      * Upload convention files
      */
@@ -263,12 +259,112 @@ class ficheNavetteItemController extends Controller
      * Get items for a specific fiche navette
      */
 
+   public function viewFile($fileId): Response
+    {
+        try {
+            // Find the fiche navette item that contains this file
+            $item = ficheNavetteItem::whereJsonContains('uploaded_file', ['id' => $fileId])->first();
+            
+            if (!$item) {
+                abort(404, 'File not found');
+            }
+
+            $fileData = json_decode($item->uploaded_file, true);
+            
+            if (!$fileData || !isset($fileData['path'])) {
+                abort(404, 'File path not found');
+            }
+
+            if (!Storage::disk('public')->exists($fileData['path'])) {
+                abort(404, 'File does not exist on storage');
+            }
+
+            // Return file for viewing in browser
+            return response()->file(
+                storage_path('app/public/' . $fileData['path'])
+            );
+        } catch (\Exception $e) {
+            \Log::error('Error viewing file:', [
+                'file_id' => $fileId,
+                'error' => $e->getMessage()
+            ]);
+            abort(500, 'Failed to load file');
+        }
+    }
+
+    /**
+     * Download file
+     */
+
+    public function removeDependency($dependencyId): JsonResponse
+{
+    try {
+        $result = $this->receptionService->removeDependency($dependencyId);
+        
+        if ($result) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Dependency removed successfully'
+            ]);
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to remove dependency'
+            ], 500);
+        }
+    } catch (\Exception $e) {
+        \Log::error('Error removing dependency:', [
+            'dependency_id' => $dependencyId,
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to remove dependency',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+    public function downloadFile($fileId): Response
+    {
+        dd($fileId);
+        try {
+            // Find the fiche navette item that contains this file
+            $item = ficheNavetteItem::whereJsonContains('uploaded_file', ['id' => $fileId])->first();
+            
+            if (!$item) {
+                abort(404, 'File not found');
+            }
+
+            $fileData = json_decode($item->uploaded_file, true);
+            
+            if (!$fileData || !isset($fileData['path'])) {
+                abort(404, 'File path not found');
+            }
+
+            if (!Storage::disk('public')->exists($fileData['path'])) {
+                abort(404, 'File does not exist on storage');
+            }
+
+            // Return file for download
+            return response()->download(
+                storage_path('app/public/' . $fileData['path']),
+                $fileData['original_name'] ?? 'download'
+            );
+        } catch (\Exception $e) {
+            \Log::error('Error downloading file:', [
+                'file_id' => $fileId,
+                'error' => $e->getMessage()
+            ]);
+            abort(500, 'Failed to download file');
+        }
+    }
 public function getPatientConventions(Request $request, $patientId): JsonResponse
 {
     try {
         // Get convention IDs and prestation IDs from fiche navette items
         $ficheNavetteItems = ficheNavetteItem::where('fiche_navette_id', $request->fiche_navette_id)
-            ->get(['convention_id', 'prestation_id'])
+            ->get(['convention_id', 'prestation_id', 'uploaded_file'])
             ->filter(function ($item) {
                 return $item->convention_id && $item->prestation_id;
             });
@@ -300,6 +396,7 @@ public function getPatientConventions(Request $request, $patientId): JsonRespons
             return [
                 'id' => $organisme->id,
                 'organisme_name' => $organisme->name,
+                'organism_color' => $organisme->organism_color ?? null, // CHANGE: Use organism_color instead of organisme_color
                 'description' => $organisme->description,
                 'industry' => $organisme->industry,
                 'address' => $organisme->address,
@@ -315,19 +412,33 @@ public function getPatientConventions(Request $request, $patientId): JsonRespons
                         ->unique()
                         ->values();
 
-                    // Get prestation details for this convention (only those used in this fiche navette)
+                    // Get prestation details for this convention
                     $conventionPrestations = $prestations->whereIn('id', $prestationIdsForConvention);
+
+                    // Collect all uploaded files for this convention from ficheNavetteItems
+                    $uploadedFiles = $ficheNavetteItems
+                        ->where('convention_id', $convention->id)
+                        ->pluck('uploaded_file')
+                        ->filter()
+                        ->flatMap(function ($file) {
+                            if (is_array($file)) return $file;
+                            if (is_string($file)) return json_decode($file, true) ?: [];
+                            return [];
+                        })
+                        ->filter() // Remove null/empty files
+                        ->unique('id') // Remove duplicates by file id
+                        ->values();
 
                     return [
                         'id' => $convention->id,
                         'convention_name' => $convention->name,
                         'status' => $convention->status,
+                        'uploaded_files' => $uploadedFiles,
                         'prestations' => $conventionPrestations->map(function ($prestation) {
                             return [
                                 'id' => $prestation->id,
                                 'name' => $prestation->name,
                                 'specialization' => $prestation->specialization ?? 'Unknown',
-                                // 'price' => $prestation->price,
                             ];
                         })->values()->all(),
                     ];
@@ -362,18 +473,17 @@ public function getPatientConventions(Request $request, $patientId): JsonRespons
 public function index(Request $request, $ficheNavetteId): JsonResponse
 {
     try {
-        $ficheNavette = ficheNavette::with([
-            'items.prestation.service', 
-            'items.prestation.specialization',
-            'items.dependencies', // Load dependencies first
-            'items.dependencies.dependencyPrestation', // Then load the nested relationship
-            'items.dependencies.dependencyPrestation.specialization',
-            'items.convention',
-            'items.doctor',
-            'items.insuredPatient',
-            'patient',
-            'creator'
-        ])->findOrFail($ficheNavetteId);
+       $ficheNavette = ficheNavette::with([
+    'items.prestation.service', 
+    'items.prestation.specialization',
+    'items.dependencies.dependencyPrestation',
+    'items.dependencies.dependencyPrestation.specialization',
+    'items.convention.organisme', // Make sure this is loaded
+    'items.doctor',
+    'items.insuredPatient',
+    'patient',
+    'creator'
+])->findOrFail($ficheNavetteId);
 
         return response()->json([
             'success' => true,

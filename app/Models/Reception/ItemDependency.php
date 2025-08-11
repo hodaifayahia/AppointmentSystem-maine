@@ -18,7 +18,8 @@ class ItemDependency extends Model
         'final_price',
         'status',
         'notes',
-        'custom_name' // Add this field
+        'custom_name' ,// Add this field
+        'is_package'
     ];
 
     protected $casts = [

@@ -1,5 +1,5 @@
 <script setup>
-// filepath: d:\Projects\AppointmentSystem\AppointmentSystem-main\resources\js\Components\Apps\reception\FicheNavatteItem\FicheNavetteItemCreate.vue
+// filepath: d:\Projects\AppointmentSystem\AppointmentSystem-main\resources\js\Components\Apps\reception\FicheNavetteItem\FicheNavetteItemCreate.vue
 
 import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
@@ -631,6 +631,55 @@ const formatDate = (date) => {
   if (!date) return 'No end date'
   return new Date(date).toLocaleDateString('fr-FR')
 }
+
+// File handling methods
+const getFileIcon = (mimeTypeOrName) => {
+  if (!mimeTypeOrName) return 'pi pi-file'
+  const type = mimeTypeOrName.toLowerCase()
+  if (type.includes('pdf')) return 'pi pi-file-pdf'
+  if (type.includes('word') || type.includes('doc')) return 'pi pi-file-word'
+  if (type.includes('excel') || type.includes('xls')) return 'pi pi-file-excel'
+  if (type.includes('image')) return 'pi pi-image'
+  return 'pi pi-file'
+}
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return 'Unknown size'
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
+}
+
+const viewFile = (file) => {
+  if (file && file.id) {
+    window.open(`/api/fiche-navette/files/${file.id}/view`, '_blank')
+  } else {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'File ID not available',
+      life: 3000
+    })
+  }
+}
+
+const downloadFile = (file) => {
+  if (file && file.id) {
+    const link = document.createElement('a')
+    link.href = `/api/fiche-navette/files/${file.id}/download`
+    link.download = file.original_name || 'download'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  } else {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'File ID not available',
+      life: 3000
+    })
+  }
+}
 </script>
 
 <template>
@@ -649,6 +698,8 @@ const formatDate = (date) => {
                 <div v-if="conventionOrganismes.length > 0" class="convention-organismes-preview">
                   <small class="organismes-label">Available Convention Organismes:</small>
                   <div class="organismes-tags">
+                                        <!-- {{ conventionOrganismes }} -->
+
                     <Tag
                       v-for="organisme in conventionOrganismes.slice(0, 3)"
                       :key="organisme.id"
@@ -657,6 +708,7 @@ const formatDate = (date) => {
                       class="organisme-tag"
                       @click="showOrganismeDetails(organisme)"
                     >
+
                       <template #default>
                         <div class="tag-content">
                           <i class="pi pi-building"></i>
@@ -1147,57 +1199,115 @@ const formatDate = (date) => {
       :style="{ width: '70vw', maxWidth: '800px' }"
     >
       <div v-if="selectedConventionOrganisme" class="organisme-details-content">
-        <div class="organisme-info">
-          <h4>
-            <i class="pi pi-building"></i>
-            {{ selectedConventionOrganisme.organisme_name || selectedConventionOrganisme.company_name }}
-          </h4>
-          <p v-if="selectedConventionOrganisme.description" class="organisme-description">
-            {{ selectedConventionOrganisme.description }}
-          </p>
-          <div v-if="selectedConventionOrganisme.industry" class="organisme-meta">
-            <small><strong>Industry:</strong> {{ selectedConventionOrganisme.industry }}</small>
-          </div>
-          <div v-if="selectedConventionOrganisme.address" class="organisme-meta">
-            <small><strong>Address:</strong> {{ selectedConventionOrganisme.address }}</small>
-          </div>
+        <div 
+          class="modal-header" 
+          :style="{ 
+            backgroundColor: selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6', 
+            color: 'white', 
+            padding: '1rem',
+            marginBottom: '1rem',
+            borderRadius: '8px'
+          }"
+        >
+          <h3 style="margin: 0;">{{ selectedConventionOrganisme.organisme_name || selectedConventionOrganisme.company_name }}</h3>
         </div>
+        
+        <div class="modal-body" style="padding: 1rem;">
+          <!-- Show convention details with prestations -->
+          <div v-for="convention in selectedConventionOrganisme.conventions" :key="convention.id" class="convention-section">
+            <h5>{{ convention.convention_name }}</h5>
+            
+            <!-- Show prestations (not files) -->
+            <div v-if="convention.prestations && convention.prestations.length" class="prestations-list">
+              <h6>Prestations Used (DGSN - {{ convention.prestations.length }} convention{{ convention.prestations.length > 1 ? 's' : '' }})</h6>
+              <div class="prestations-grid">
+                <Card
+                  v-for="prestation in convention.prestations"
+                  :key="prestation.id"
+                  class="prestation-card"
+                  :style="{
+                    borderLeft: `4px solid ${selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6'}`
+                  }"
+                >
+                  <template #content>
+                    <div class="prestation-info">
+                      <div class="prestation-header">
+                        <strong 
+                          class="prestation-title"
+                          :style="{ color: selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6' }"
+                        >
+                          {{ prestation.name }}
+                        </strong>
+                        <Tag
+                          value="DGSN"
+                          severity="info"
+                          size="small"
+                          :style="{
+                            backgroundColor: selectedConventionOrganisme.color ? selectedConventionOrganisme.color.light : '#DBEAFE',
+                            color: selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6'
+                          }"
+                        />
+                      </div>
+                    </div>
+                  </template>
+                </Card>
+              </div>
+            </div>
 
-      <div class="prestations-list">
-  <h5>Prestations Used in This Fiche Navette</h5>
-  <div class="prestations-grid">
-    <Card
-      v-for="prestation in (selectedConventionOrganisme.conventions[0]?.prestations || [])"
-      :key="prestation.id"
-      class="prestation-card"
-    >
-      <template #content>
-        <div class="prestation-info">
-          <div class="prestation-header">
-            <strong class="prestation-title">{{ prestation.name }}</strong>
-            <Tag
-              v-if="prestation.specialization && prestation.specialization !== 'Unknown'"
-              :value="prestation.specialization"
-              severity="info"
-              size="small"
-              class="ml-2"
-            />
-          </div>
-          <div class="prestation-details">
-            <span v-if="prestation.price" class="prestation-price">
-              <i class="pi pi-money-bill"></i>
-              {{ formatCurrency(prestation.price) }}
-            </span>
-            <span v-else class="prestation-price">
-              <i class="pi pi-money-bill"></i>
-              N/Af
-            </span>
+            <!-- Show files if any -->
+            <div v-if="convention.uploaded_files && convention.uploaded_files.length" class="uploaded-files-section">
+              <h6>
+                <i class="pi pi-folder" :style="{ color: selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6' }"></i>
+                Documents ({{ convention.uploaded_files.length }})
+              </h6>
+              <div class="files-grid">
+                <Card
+                  v-for="file in convention.uploaded_files"
+                  :key="file.id"
+                  class="file-card"
+                  :style="{
+                    borderLeft: `4px solid ${selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6'}`
+                  }"
+                >
+                  <template #content>
+                    <div class="file-info">
+                      <div class="file-icon">
+                        <i 
+                          :class="getFileIcon(file.mime_type || file.original_name)"
+                          :style="{ color: selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6' }"
+                        ></i>
+                      </div>
+                      <div class="file-details">
+                        <span class="file-name">{{ file.original_name }}</span>
+                        <small class="file-size">{{ formatFileSize(file.size) }}</small>
+                      </div>
+                      <div class="file-actions">
+                        <Button
+                          icon="pi pi-eye"
+                          severity="info"
+                          size="small"
+                          @click="viewFile(file)"
+                          v-tooltip="'View'"
+                          :style="{ 
+                            backgroundColor: selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6',
+                            borderColor: selectedConventionOrganisme.color ? selectedConventionOrganisme.color.bg : '#3B82F6'
+                          }"
+                        />
+                        <Button
+                          icon="pi pi-download"
+                          severity="success"
+                          size="small"
+                          @click="downloadFile(file)"
+                          v-tooltip="'Download'"
+                        />
+                      </div>
+                    </div>
+                  </template>
+                </Card>
+              </div>
+            </div>
           </div>
         </div>
-      </template>
-    </Card>
-  </div>
-</div>
       </div>
     </Dialog>
 
@@ -1985,5 +2095,73 @@ const formatDate = (date) => {
 .doctor-specialization {
   color: #6b7280;
   font-size: 0.75rem;
+}
+
+/* New styles for uploaded files section */
+.uploaded-files-section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.uploaded-files-section h6 {
+  margin: 0 0 1rem 0;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.file-card {
+  border: 1px solid #d1d5db;
+  transition: all 0.2s ease;
+}
+
+.file-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.file-icon {
+  font-size: 2rem;
+  color: #6b7280;
+}
+
+.file-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #1f2937;
+  word-break: break-word;
+}
+
+.file-size, .file-path {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.file-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-direction: column;
 }
 </style>

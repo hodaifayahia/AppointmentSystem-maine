@@ -19,6 +19,7 @@ return new class extends Migration
             $table->foreignId('convention_id')->nullable()->constrained('conventions')->onDelete('set null');
             $table->enum('dependency_type', ['contraindication', 'prerequisite', 'alternative', 'required', 'optional']);
             $table->text('notes')->nullable();
+            $table->boolean('is_package')->default(false)->comment('Indicates if this dependency is part of a custom package');
             $table->timestamps();
             
             // Indexes for performance

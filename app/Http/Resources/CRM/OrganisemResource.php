@@ -17,6 +17,8 @@ class OrganisemResource extends JsonResource
         return [
             'id' => $this->id, // Assuming 'id' is your primary key
             'name' => $this->name,
+                'organism_color' => $this->organism_color,
+
             'legal_form' => $this->legal_form,
             'trade_register_number' => $this->trade_register_number,
             'tax_id_nif' => $this->tax_id_nif,

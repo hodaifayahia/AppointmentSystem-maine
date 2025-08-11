@@ -27,24 +27,26 @@ class FileUploadService
     /**
      * Upload a single file and return its metadata
      */
-    public function uploadSingleFile(UploadedFile $file): array
-    {
-        // Generate unique filename
-        $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-        
-        // Store file in convention-documents directory
-        $path = $file->storeAs('convention-documents', $filename, 'public');
-        
-        return [
-            'id' => Str::uuid(),
-            'original_name' => $file->getClientOriginalName(),
-            'filename' => $filename,
-            'path' => $path,
-            'size' => $file->getSize(),
-            'mime_type' => $file->getMimeType(),
-            'uploaded_at' => now()->toISOString()
-        ];
-    }
+public function uploadSingleFile(UploadedFile $file): array
+{
+    // Generate unique filename
+    $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
+
+    // Store file in convention-documents directory
+    $folder = 'convention-documents';
+    $path = $file->storeAs($folder, $filename, 'public');
+
+    return [
+        'id' => Str::uuid(),
+        'original_name' => $file->getClientOriginalName(),
+        'filename' => $filename,
+        'path' => $path, // This includes folder/filename.ext
+        'folder' => $folder,
+        'size' => $file->getSize(),
+        'mime_type' => $file->getMimeType(),
+        'uploaded_at' => now()->toISOString()
+    ];
+}
 
     /**
      * Delete files from storage

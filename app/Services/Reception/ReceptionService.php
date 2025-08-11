@@ -190,7 +190,6 @@ class ReceptionService
                         'convention_id' => $mainPrestation['convention_id'] ?? null,
                         'convention_price' => $mainPrestation['convention_price'] ?? null,
                         'notes' => $mainPrestation['notes'] ?? null,
-                        'quantity' => $mainPrestation['quantity'] ?? 1,
                     ];
                     
                     $mainItem = $this->addPrestationToFiche($ficheNavette, $prestationData, null, $conventionData);
@@ -314,6 +313,7 @@ class ReceptionService
                         $prestationData,
                         $globalConventionData
                     );
+
                     
                     $createdItems[] = $item;
                     $totalAmount += $item->final_price;
@@ -358,96 +358,55 @@ class ReceptionService
     /**
      * Create a single convention prescription item
      */
-    private function createConventionPrescriptionItem(
-        ficheNavette $ficheNavette, 
-        array $conventionGroup, 
-        array $prestationData, 
-        array $globalConventionData
-    ): ficheNavetteItem {
-        
-        $prestation = Prestation::findOrFail($prestationData['prestation_id']);
-        
-        // Use convention price if available, otherwise use public price
-        $finalPrice = $prestationData['convention_price'] ?? $prestation->public_price;
-        
-        // Handle file uploads for this specific item
-        $itemFiles = [];
-        if (!empty($globalConventionData['uploaded_files'])) {
-            foreach ($globalConventionData['uploaded_files'] as $file) {
-                if (isset($file['file'])) {
-                    if ($this->fileUploadService->validateConventionFile($file['file'])) {
-                        $itemFiles[] = $this->fileUploadService->uploadSingleFile($file['file']);
-                    }
-                } else {
-                    $itemFiles[] = $file;
-                }
+   private function createConventionPrescriptionItem(
+    ficheNavette $ficheNavette, 
+    array $conventionGroup, 
+    array $prestationData, 
+    array $globalConventionData
+): ficheNavetteItem {
+    $prestation = Prestation::findOrFail($prestationData['prestation_id']);
+    $finalPrice = $prestationData['convention_price'] ?? $prestation->public_price;
+
+    // Handle a single file upload for this item
+    $fileMeta = null;
+    if (!empty($globalConventionData['uploaded_files'])) {
+        $file = $globalConventionData['uploaded_files'];
+        if ($file instanceof \Illuminate\Http\UploadedFile) {
+            if ($this->fileUploadService->validateConventionFile($file)) {
+                $fileMeta = $this->fileUploadService->uploadSingleFile($file);
             }
         }
-        
-        // Validate that doctor belongs to the specialization (optional safety check)
-        $doctorId = $prestationData['doctor_id'];
-        // $specializationId = $prestationData['specialization_id'];
-        
-        \Log::info('Creating ficheNavetteItem with data:', [
-            'fiche_navette_id' => $ficheNavette->id,
-            'prestation_id' => $prestation->id,
-            'convention_id' => $conventionGroup['convention_id'],
-            // 'patient_id' => $ficheNavette->patient_id,
-            'insured_id' => $globalConventionData['adherent_patient_id'] ?? $ficheNavette->patient_id,
-            'doctor_id' => $doctorId,
-            'base_price' => $prestation->public_price,
-            'final_price' => $finalPrice,
-            'prise_en_charge_date' => $globalConventionData['prise_en_charge_date'],
-            'family_authorization' => $globalConventionData['family_authorization']
-        ]);
-        
-        return ficheNavetteItem::create([
-            'fiche_navette_id' => $ficheNavette->id,
-            'prestation_id' => $prestation->id,
-            'convention_id' => $conventionGroup['convention_id'],
-            // 'patient_id' => $ficheNavette->patient_id,
-            'insured_id' => $globalConventionData['adherent_patient_id'] ?? $ficheNavette->patient_id,
-            'doctor_id' => $doctorId,
-            'status' => 'pending',
-            'base_price' => $prestation->public_price,
-            'final_price' => $finalPrice,
-            'patient_share' => $finalPrice,
-            'prise_en_charge_date' => $globalConventionData['prise_en_charge_date'],
-            'family_authorization' => json_encode($globalConventionData['family_authorization']),
-            'uploaded_file' => json_encode($itemFiles),
-            'notes' => 'Convention prescription ',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
     }
+
+    return ficheNavetteItem::create([
+        'fiche_navette_id' => $ficheNavette->id,
+        'prestation_id' => $prestation->id,
+        'convention_id' => $conventionGroup['convention_id'],
+        'insured_id' => $globalConventionData['adherent_patient_id'] ?? $ficheNavette->patient_id,
+        'doctor_id' => $prestationData['doctor_id'],
+        'status' => 'pending',
+        'base_price' => $prestation->public_price,
+        'final_price' => $finalPrice,
+        'patient_share' => $finalPrice,
+        'prise_en_charge_date' => $globalConventionData['prise_en_charge_date'],
+        'family_authorization' => json_encode($globalConventionData['family_authorization']),
+        'uploaded_file' => $fileMeta ? json_encode($fileMeta) : null, // Store as JSON object
+        'notes' => 'Convention prescription',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+}
 
     /**
      * Extract convention data from request for prescription
      */
-  private function extractConventionDataForPrescription(array $data): array
+ private function extractConventionDataForPrescription(array $data): array
 {
     // Handle adherent patient ID safely
     $adherentPatientId = null;
     
     if (isset($data['adherentPatient_id'])) {
-        // Direct ID provided
         $adherentPatientId = $data['adherentPatient_id'];
-    } elseif (isset($data['adherentPatient'])) {
-        // Object/array provided
-        $adherentPatient = $data['adherentPatient'];
-        
-        \Log::info('Processing adherentPatient:', [
-            'type' => gettype($adherentPatient),
-            'value' => $adherentPatient
-        ]);
-        
-        if (is_array($adherentPatient) && isset($adherentPatient['id'])) {
-            $adherentPatientId = $adherentPatient['id'];
-        } elseif (is_object($adherentPatient) && isset($adherentPatient->id)) {
-            $adherentPatientId = $adherentPatient->id;
-        } elseif (is_numeric($adherentPatient)) {
-            $adherentPatientId = $adherentPatient;
-        }
     }
 
     \Log::info('Final adherent patient ID:', ['adherent_patient_id' => $adherentPatientId]);
@@ -455,7 +414,7 @@ class ReceptionService
     return [
         'prise_en_charge_date' => isset($data['prise_en_charge_date']) ? Carbon::parse($data['prise_en_charge_date']) : now(),
         'family_authorization' => $data['familyAuth'] ?? '',
-        'uploaded_files' => $data['uploadedFiles'] ?? [],
+        'uploaded_files' => $data['uploadedFiles'] ?? null, // Single file, not array
         'adherent_patient_id' => $adherentPatientId,
     ];
 }
@@ -483,7 +442,7 @@ class ReceptionService
         return [
             'prise_en_charge_date' => isset($data['prise_en_charge_date']) ? Carbon::parse($data['prise_en_charge_date']) : now(),
             'family_authorization' => $data['familyAuth'] ?? [],
-            'uploaded_files' => $uploadedFiles,
+            'uploaded_file' => $uploadedFiles,
             'adherent_patient_id' => $data['adherentPatient_id'] ?? null,
         ];
     }
@@ -849,7 +808,7 @@ class ReceptionService
             ItemDependency::create([
                 'parent_item_id' => $parentItem->id,
                 'dependent_prestation_id' => $prestation->id,
-                'dependency_type' => 'custom', // Add this field to identify custom dependencies
+                // 'dependency_type' => 'custom', // Add this field to identify custom dependencies
                 'doctor_id' => $dependencyData['doctor_id'] ?? $parentItem->doctor_id,
                 'base_price' => $basePrice,
                 'final_price' => $finalPrice,

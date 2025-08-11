@@ -18,6 +18,11 @@
         <div><strong>Fax:</strong> {{ organisme.fax }}</div>
         <div><strong>Latitude:</strong> {{ organisme.latitude }}</div>
         <div><strong>Longitude:</strong> {{ organisme.longitude }}</div>
+        <div v-if="organisme.organism_color" style="display:flex;align-items:center;gap:0.5rem;">
+          <span style="font-weight:600;">Couleur:</span>
+          <span :style="{ backgroundColor: organisme.organism_color, width: '24px', height: '24px', borderRadius: '50%', display: 'inline-block', border: '1px solid #ccc' }"></span>
+          <span>{{ organisme.organism_color }}</span>
+        </div>
       </div>
       <div v-if="organisme.autres_informations" class="org-extra">
         <strong>Autres informations:</strong>
@@ -72,7 +77,8 @@ function fetchOrganisme() {
     fax: '021654321',
     mobile: '0550123456',
     email: 'contact@alpha.com',
-    autres_informations: 'Client premium depuis 2022.'
+    autres_informations: 'Client premium depuis 2022.',
+    organism_color: '#3498db'
   };
 }
 

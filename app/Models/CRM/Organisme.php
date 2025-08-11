@@ -31,6 +31,7 @@ class Organisme extends Model
         'statistical_id',
         'article_number',
         'wilaya',
+        'organism_color', 
         'address',
         'postal_code',
         'phone',

@@ -1,5 +1,5 @@
 <!-- components/Reception/FicheNavette/ItemCard.vue -->
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
@@ -15,45 +15,85 @@ import Column from 'primevue/column'
 import Dropdown from 'primevue/dropdown'
 
 // Import RemiseModal component
-import RemiseModal from '../FicheNavatteItem/RemiseFichenavetteModal.vue'
+import RemiseModal from './RemiseModal.vue'
 
 // Import the service
 import { ficheNavetteService } from '../../../Apps/services/Reception/ficheNavetteService'
 
+// Types
+interface ItemGroup {
+  id: string
+  type: 'package' | 'prestation'
+  name: string
+  doctor_name?: string
+  total_price: number
+  items: ItemDetail[]
+}
+
+interface ItemDetail {
+  id: string
+  prestation_id?: string
+  package_id?: string
+  prestation?: Prestation
+  package?: Package
+  status: string
+  base_price: number
+  final_price: number
+  patient_share: number
+  convention_id?: string
+  convention_name?: string
+  dependencies?: Dependency[]
+  isDependency?: boolean
+  originalDependency?: Dependency
+}
+
+interface Prestation {
+  id: string
+  name: string
+  internal_code: string
+  public_price: number
+  is_package: boolean
+  specialization_name?: string
+}
+
+interface Package {
+  id: string
+  name: string
+  internal_code: string
+  public_price: number
+}
+
+interface Doctor {
+  id: string
+  name: string
+  specialization: string
+}
+
+interface Dependency {
+  id: string
+  dependency_type: string
+  notes?: string
+  dependencyPrestation?: Prestation
+  dependency_prestation?: Prestation
+  status?: string
+  parentItem?: ItemDetail
+}
+
 // Props
-const props = defineProps({
-  group: {
-    type: Object,
-    required: true,
-    default: () => ({
-      items: [],
-      type: 'prestation'
-    })
-  },
-  prestations: {
-    type: Array,
-    required: true,
-    default: () => []
-  },
-  packages: {
-    type: Array,
-    required: true,
-    default: () => []
-  },
-  doctors: {
-    type: Array,
-    required: true,
-    default: () => []
-  }
-})
+const props = defineProps<{
+  group: ItemGroup
+  prestations: Prestation[]
+  packages: Package[]
+  doctors: Doctor[]
+}>()
 
 // Emits
-const emit = defineEmits([
-  'remove-item',
-  'item-updated', 
-  'dependency-removed',
-  'apply-remise'
-])
+const emit = defineEmits<{
+  'remove-item': [itemId: string]
+  'item-updated': [data: { itemId?: string; status?: string; refresh?: boolean }]
+  'dependency-removed': [dependencyId: string]
+  'apply-remise': [groupId: string]
+}>()
 
 // Composables
 const toast = useToast()
@@ -63,21 +103,16 @@ const confirm = useConfirm()
 const showDetailsModal = ref(false)
 const showRemiseModal = ref(false)
 
-// Safe access to group items
-const groupItems = computed(() => {
-  return props.group?.items || []
-})
-
 // Computed properties
 const cardTitle = computed(() => {
-  if (props.group?.type === 'package') {
+  if (props.group.type === 'package') {
     return props.group.name || 'Package'
   }
-  return props.group?.name || 'Prestation'
+  return props.group.name || 'Prestation'
 })
 
 const cardSubtitle = computed(() => {
-  if (props.group?.doctor_name) {
+  if (props.group.doctor_name) {
     return `Dr. ${props.group.doctor_name}`
   }
   return 'No doctor assigned'
@@ -85,19 +120,19 @@ const cardSubtitle = computed(() => {
 
 // Check if any items have convention_id
 const hasConventionItems = computed(() => {
-  return groupItems.value.some(item => 
+  return props.group.items?.some(item => 
     item.convention_id && item.convention_id !== null
-  )
+  ) || false
 })
 
-// Get convention information from items  
+// Get convention information from items
 const conventionInfo = computed(() => {
-  const conventionItems = groupItems.value.filter(item => 
+  const conventionItems = props.group.items?.filter(item => 
     item.convention_id && item.convention_id !== null
-  )
+  ) || []
   
   if (conventionItems.length === 0) {
-    return []
+    return null
   }
   
   // Get unique conventions
@@ -117,122 +152,25 @@ const conventionInfo = computed(() => {
   return Object.values(conventions)
 })
 
-// Add missing conventionChips computed property
-const conventionChips = computed(() => {
-  const conventionItems = groupItems.value.filter(item => 
-    item.convention_id && item.convention
-  )
-  
-  if (conventionItems.length === 0) {
-    return []
-  }
-  
-  // Create unique chips based on convention info
-  const uniqueConventions = conventionItems.reduce((acc, item) => {
-    const key = item.convention_id
-    if (!acc[key]) {
-      acc[key] = {
-        id: item.convention_id,
-        label: item.convention?.company_name || item.convention_name || 'Convention',
-        severity: 'info',
-        organism_color: item.convention?.organism_color || null
-      }
-    }
-    return acc
-  }, {})
-  
-  return Object.values(uniqueConventions)
-})
-
-// Add missing regularDependencies computed property
-const regularDependencies = computed(() => {
-  const allDependencies = []
-  
-  groupItems.value.forEach(item => {
-    if (item.dependencies && Array.isArray(item.dependencies)) {
-      item.dependencies.forEach(dep => {
-        // Only include non-package dependencies
-        if (dep.dependency_type !== 'package') {
-          allDependencies.push({
-            ...dep,
-            parentItem: item
-          })
-        }
-      })
-    }
-  })
-  
-  return allDependencies
-})
-
-// Add missing packageDependencies computed property
-const packageDependencies = computed(() => {
-  const packageDeps = []
-  
-  groupItems.value.forEach(item => {
-    if (item.dependencies && Array.isArray(item.dependencies)) {
-      item.dependencies.forEach(dep => {
-        // Only include package dependencies
-        if (dep.dependency_type === 'package') {
-          packageDeps.push({
-            ...dep,
-            parentItem: item
-          })
-        }
-      })
-    }
-  })
-  
-  return packageDeps
-})
-
-// Add this computed property to get the organism color
-const organismColor = computed(() => {
-  // Check if any item in the group has a convention with organism_color
-  const itemWithConvention = groupItems.value.find(item => 
-    item.convention_id && item.convention?.organism_color
-  )
-  
-  return itemWithConvention?.convention?.organism_color || null
-})
-
 // Card styling based on convention and type
 const cardStyleClass = computed(() => {
-  let baseClass = 'item-card'
-  
-  // If we have an organism color, use custom styling
-  if (organismColor.value) {
-    return `${baseClass} organism-convention-card`
-  }
-  
-  // Fallback to existing logic
   if (!hasConventionItems.value) {
-    return `${baseClass} default-card`
+    return 'item-card default-card'
   }
   
-  if (props.group?.type === 'package') {
-    return `${baseClass} convention-package-card`
+  if (props.group.type === 'package') {
+    return 'item-card convention-package-card'
   }
   
-  return `${baseClass} convention-prestation-card`
+  return 'item-card convention-prestation-card'
 })
 
-// Update the cardIconStyle computed property
 const cardIconStyle = computed(() => {
-  // If we have an organism color, use it
-  if (organismColor.value) {
-    return {
-      background: organismColor.value,
-      color: 'white'
-    }
-  }
-  
-  // Default styling based on convention status and type
   if (!hasConventionItems.value) {
     return {}
   }
   
-  if (props.group?.type === 'package') {
+  if (props.group.type === 'package') {
     return {
       background: 'var(--orange-500, #fd7e14)',
       color: 'white'
@@ -245,62 +183,55 @@ const cardIconStyle = computed(() => {
   }
 })
 
-// Check if any items have a specific status
-const hasSpecificStatusItems = computed(() => {
-  return groupItems.value.some(item => 
-    item.status && item.status !== 'completed'
-  )
+const conventionChips = computed(() => {
+  if (!conventionInfo.value || conventionInfo.value.length === 0) {
+    return []
+  }
+  
+  return conventionInfo.value.map(conv => ({
+    label: conv.count > 1 ? `${conv.name} (${conv.count})` : conv.name,
+    severity: props.group.type === 'package' ? 'warning' : 'success',
+    id: conv.id
+  }))
 })
 
-// Get all unique statuses from items
-const allStatuses = computed(() => {
-  const statuses = groupItems.value.map(item => item.status).filter(Boolean)
-  return [...new Set(statuses)]
+// Get all dependencies from all items in the group
+const allDependencies = computed(() => {
+  const dependencies = []
+  if (props.group.items) {
+    props.group.items.forEach(item => {
+      if (item.dependencies && Array.isArray(item.dependencies)) {
+        item.dependencies.forEach(dep => {
+          dependencies.push({
+            ...dep,
+            parentItem: item
+          })
+        })
+      }
+    })
+  }
+  return dependencies
 })
 
-// Get status color based on severity
-const statusColor = computed(() => {
-  if (!hasSpecificStatusItems.value) {
-    return null
-  }
-  
-  // If all items are in progress, show blue
-  if (groupItems.value.every(item => item.status === 'in_progress')) {
-    return 'var(--blue-500, #007bff)'
-  }
-  
-  // If all items are completed, show green
-  if (groupItems.value.every(item => item.status === 'completed')) {
-    return 'var(--green-500, #28a745)'
-  }
-  
-  // If there are pending items, show orange
-  if (groupItems.value.some(item => item.status === 'pending')) {
-    return 'var(--orange-500, #fd7e14)'
-  }
-  
-  // If there are cancelled items, show red
-  if (groupItems.value.some(item => item.status === 'cancelled')) {
-    return 'var(--red-500, #dc3545)'
-  }
-  
-  return null
+// Get package dependencies (dependencies that have is_package = true)
+const packageDependencies = computed(() => {
+  return allDependencies.value.filter(dep => {
+    const prestation = dep.dependencyPrestation || dep.dependency_prestation
+    return prestation && prestation.is_package === true
+  })
 })
 
-// Computed property for header styling
-const headerStyle = computed(() => {
-  if (organismColor.value) {
-    return {
-      background: `linear-gradient(135deg, ${organismColor.value}22 0%, ${organismColor.value}11 100%)`,
-      borderBottom: `2px solid ${organismColor.value}33`
-    }
-  }
-  return {}
+// Get regular dependencies (dependencies that don't have is_package or is_package = false)
+const regularDependencies = computed(() => {
+  return allDependencies.value.filter(dep => {
+    const prestation = dep.dependencyPrestation || dep.dependency_prestation
+    return !prestation || prestation.is_package !== true
+  })
 })
 
 // Combined items for main display (original items + package dependencies)
 const mainDisplayItems = computed(() => {
-  const items = [...groupItems.value]
+  const items = [...(props.group.items || [])]
   
   // Add package dependencies as main items
   packageDependencies.value.forEach(dep => {
@@ -333,32 +264,32 @@ const statusOptions = [
 ]
 
 // Methods
-const formatCurrency = (amount) => {
+const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency: 'DZD',
   }).format(amount || 0)
 }
 
-const getStatusData = (status) => {
+const getStatusData = (status: string) => {
   return statusOptions.find(option => option.value === status) || statusOptions[0]
 }
 
-const getItemTypeIcon = (item) => {
+const getItemTypeIcon = (item: ItemDetail) => {
   if (item.isDependency && item.prestation?.is_package) return 'pi pi-box'
   if (item.prestation_id) return 'pi pi-medical'
   if (item.package_id) return 'pi pi-box'
   return 'pi pi-circle'
 }
 
-const getItemTypeBadge = (item) => {
+const getItemTypeBadge = (item: ItemDetail) => {
   if (item.isDependency && item.prestation?.is_package) return { label: 'Package', severity: 'warning' }
   if (item.prestation_id) return { label: 'Prestation', severity: 'success' }
   if (item.package_id) return { label: 'Package', severity: 'info' }
   return { label: 'Unknown', severity: 'secondary' }
 }
 
-const getConventionBadge = (item) => {
+const getConventionBadge = (item: ItemDetail) => {
   if (!item.convention_id) return null
   
   return {
@@ -367,7 +298,7 @@ const getConventionBadge = (item) => {
   }
 }
 
-const updateItemStatus = async (item, newStatus) => {
+const updateItemStatus = async (item: ItemDetail, newStatus: string) => {
   console.log('Updating item status:', item.id, newStatus)
   emit('item-updated', { itemId: item.id, status: newStatus })
 }
@@ -380,11 +311,11 @@ const openRemiseModal = () => {
   showRemiseModal.value = true
 }
 
-const removeItem = (itemId) => {
+const removeItem = (itemId: string) => {
   emit('remove-item', itemId)
 }
 
-const removeDependency = async (dependency) => {
+const removeDependency = async (dependency: Dependency) => {
   try {
     const result = await ficheNavetteService.removeDependency(dependency.id)
     
@@ -413,7 +344,7 @@ const removeDependency = async (dependency) => {
   }
 }
 
-const confirmRemoveDependency = (dependency) => {
+const confirmRemoveDependency = (dependency: Dependency) => {
   confirm.require({
     message: `Are you sure you want to remove the dependency "${dependency.dependencyPrestation?.name || dependency.dependency_prestation?.name || 'Unknown'}"?`,
     header: 'Remove Dependency',
@@ -426,7 +357,7 @@ const confirmRemoveDependency = (dependency) => {
   })
 }
 
-const handleApplyRemise = (data) => {
+const handleApplyRemise = (data: any) => {
   emit('apply-remise', props.group.id)
   
   toast.add({
@@ -442,12 +373,12 @@ const handleApplyRemise = (data) => {
 </script>
 
 <template>
-  <div :class="cardStyleClass" :style="organismColor ? { borderColor: '#ffffff' } : {}">
-    <!-- Header with organism color styling -->
-    <div class="card-header" :style="headerStyle">
+  <div :class="cardStyleClass">
+    <!-- Header -->
+    <div class="card-header">
       <div class="header-left">
-        <div class="" :style="cardIconStyle">
-          <i :class="group?.type === 'package' ? 'pi pi-box' : 'pi pi-medical'"></i>
+        <div class="card-icon" :style="cardIconStyle">
+          <i :class="group.type === 'package' ? 'pi pi-box' : 'pi pi-medical'"></i>
         </div>
         <div class="header-info">
           <h6 class="card-title">{{ cardTitle }}</h6>
@@ -455,31 +386,21 @@ const handleApplyRemise = (data) => {
         </div>
       </div>
       <div class="header-actions">
-        <!-- Convention chips with organism color -->
-        <div v-if="conventionChips && conventionChips.length > 0" class="convention-chips">
+        <!-- Convention chips -->
+        <div v-if="conventionChips.length > 0" class="convention-chips">
           <Chip
             v-for="chip in conventionChips"
             :key="chip.id"
             :label="chip.label"
             :severity="chip.severity"
             class="convention-chip"
-            :style="chip.organism_color ? { 
-              backgroundColor: chip.organism_color + '22', 
-              color: chip.organism_color,
-              borderColor: chip.organism_color + '66'
-            } : {}"
           />
         </div>
         
         <Chip
-          :label="group?.type === 'package' ? 'Package' : 'Prestation'"
-          :severity="group?.type === 'package' ? 'info' : 'success'"
+          :label="group.type === 'package' ? 'Package' : 'Prestation'"
+          :severity="group.type === 'package' ? 'info' : 'success'"
           class="type-chip"
-          :style="organismColor ? {
-            backgroundColor: organismColor + '22',
-            color: organismColor,
-            borderColor: organismColor + '66'
-          } : {}"
         />
       </div>
     </div>
@@ -495,7 +416,7 @@ const handleApplyRemise = (data) => {
               v-for="conv in conventionInfo"
               :key="conv.id"
               :label="conv.count > 1 ? `${conv.name} (${conv.count} items)` : conv.name"
-              :severity="group?.type === 'package' ? 'warning' : 'success'"
+              :severity="group.type === 'package' ? 'warning' : 'success'"
               class="convention-detail"
             />
           </div>
@@ -513,12 +434,12 @@ const handleApplyRemise = (data) => {
         </div>
         <div class="info-item">
           <span class="info-label">Total:</span>
-          <strong class="total-price">{{ formatCurrency(group?.total_price || 0) }}</strong>
+          <strong class="total-price">{{ formatCurrency(group.total_price) }}</strong>
         </div>
       </div>
 
       <!-- Dependencies Summary -->
-      <div v-if="regularDependencies && regularDependencies.length > 0" class="dependencies-summary">
+      <div v-if="regularDependencies.length > 0" class="dependencies-summary">
         <div class="info-item">
           <span class="info-label">Dependencies:</span>
           <Chip
@@ -548,7 +469,7 @@ const handleApplyRemise = (data) => {
       </div>
       
       <!-- Package Dependencies Info -->
-      <div v-if="packageDependencies && packageDependencies.length > 0" class="package-dependencies-summary">
+      <div v-if="packageDependencies.length > 0" class="package-dependencies-summary">
         <div class="info-item">
           <span class="info-label">Package Dependencies:</span>
           <Chip
@@ -577,7 +498,7 @@ const handleApplyRemise = (data) => {
         icon="pi pi-trash"
         label="Remove"
         class="p-button-outlined p-button-danger p-button-sm"
-        @click="removeItem(groupItems?.[0]?.id)"
+        @click="removeItem(group.items?.[0]?.id)"
       />
     </div>
 
@@ -1242,75 +1163,5 @@ const handleApplyRemise = (data) => {
 /* Utility Classes */
 .mb-4 {
   margin-bottom: 1.5rem;
-}
-
-/* Add these new styles to your existing CSS */
-
-/* Organism-based convention card styles */
-.organism-convention-card {
-  transition: all 0.3s ease;
-  border: 2px solid;
-  border-radius: 8px;
-  background: white;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 280px;
-}
-
-.organism-convention-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-  filter: brightness(1.02);
-}
-
-/* Enhanced header styling for organism colors */
-.organism-convention-card .card-header {
-  position: relative;
-}
-
-.organism-convention-card .card-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--organism-color, transparent);
-}
-
-/* Convention chip styling with organism colors */
-.organism-convention-card .convention-chip {
-  border: 1px solid;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.organism-convention-card .convention-chip:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  filter: brightness(1.1);
-}
-
-.organism-convention-card .type-chip {
-  border: 1px solid;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.organism-convention-card .type-chip:hover {
-  filter: brightness(1.1);
-}
-
-/* Enhanced card icon for organism colors */
-.organism-convention-card .card-icon {
-  position: relative;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  transition: all 0.3s ease;
-}
-
-.organism-convention-card .card-icon:hover {
-  transform: scale(1.1);
-  filter: brightness(1.1);
 }
 </style>

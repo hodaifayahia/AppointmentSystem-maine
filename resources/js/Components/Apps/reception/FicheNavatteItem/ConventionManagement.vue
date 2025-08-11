@@ -493,45 +493,49 @@ const createConventionPrescription = async () => {
   creating.value = true
 
   try {
-    // Get the first convention to extract common data
     const firstConvention = completedConventions.value[0]
     
-    const conventionData = {
-      // Move these to top level as required by validation
-      prise_en_charge_date: formatDateForApi(firstConvention.priseEnChargeDate),
-      familyAuth: firstConvention.selectedFamilyAuth,
-      adherentPatient: firstConvention.selectedAdherentPatient ? {
-        id: firstConvention.selectedAdherentPatient.id
-      } : null,
-      
-      // Convention data without the duplicated fields
-      conventions: completedConventions.value.map(conv => ({
-        convention_id: conv.convention.id,
-        specialization_id: conv.specialization.id,
+    // Create FormData for file upload
+    const formData = new FormData()
+    
+    // Add the basic data as JSON strings
+    formData.append('prise_en_charge_date', formatDateForApi(firstConvention.priseEnChargeDate))
+    formData.append('familyAuth', firstConvention.selectedFamilyAuth)
+    
+    if (firstConvention.selectedAdherentPatient) {
+      formData.append('adherentPatient_id', firstConvention.selectedAdherentPatient.id)
+    }
+    
+    // Add conventions data as JSON string
+    formData.append('conventions', JSON.stringify(completedConventions.value.map(conv => ({
+      convention_id: conv.convention.id,
+      specialization_id: conv.specialization.id,
+      doctor_id: conv.doctor.id,
+      prestations: conv.prestations.map(prest => ({
+        prestation_id: prest.prestation_id || prest.id,
+        convention_price: prest.convention_price,
         doctor_id: conv.doctor.id,
-        prestations: conv.prestations.map(prest => ({
-          prestation_id: prest.prestation_id || prest.id,
-          convention_price: prest.convention_price,
-          doctor_id: conv.doctor.id,
-          specialization_id: conv.specialization.id
-        }))
-      })),
-      
-      uploadedFiles: uploadedFiles.value
+        specialization_id: conv.specialization.id
+      }))
+    }))))
+
+    // Add file if exists (SINGLE FILE, NOT ARRAY)
+    if (uploadedFiles.value && uploadedFiles.value.length > 0) {
+      formData.append('uploadedFiles', uploadedFiles.value[0].file)
     }
 
-    console.log('Sending convention data:', JSON.stringify(conventionData, null, 2))
+    console.log('Sending FormData with single file')
 
     const result = await ficheNavetteService.createConventionPrescription(
       props.ficheNavetteId,
-      conventionData
+      formData
     )
 
     if (result.success) {
       toast.add({
         severity: 'success',
         summary: 'Convention Prescription Created',
-        detail: `Created ${result.data.items_created} prescription items with total amount: ${formatCurrency(result.data.total_amount)}`,
+        detail: `Created ${result.data.items_created} prescription items`,
         life: 4000
       })
 
@@ -1121,225 +1125,94 @@ const getConventionInfo = () => {
   </Dialog>
 </template>
 
-
 <style scoped>
-/* Add to your existing styles */
-.selection-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  align-items: end;
-  margin: 1.5rem 0;
-}
-
-.field-group.full-width {
-  grid-column: 1 / -1;
-}
-
-.field-group.add-button-group {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.doctor-option {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.doctor-name {
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.doctor-specialization {
-  color: var(--text-color-secondary);
-  font-size: 0.75rem;
-}
-
-.prestation-option {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.prestation-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.prestation-name {
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.prestation-code {
-  color: var(--text-color-secondary);
-  font-size: 0.75rem;
-}
-
-.prestation-price {
-  color: var(--green-600);
-  font-weight: 600;
-  font-size: 0.875rem;
-  background: var(--green-100);
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-}
-
-.selection-status {
-  margin: 1.5rem 0;
-}
-
-.status-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.status-item {
-  color: var(--text-color);
-}
-
-.field-help {
-  font-size: 0.75rem;
-  margin-top: 0.25rem;
-  color: var(--text-color-secondary);
-}
-
-.field-help.text-orange-600 {
-  color: var(--orange-600);
-}
-
-.field-help.text-green-600 {
-  color: var(--green-600);
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-}
-
-.summary-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.summary-sub-item {
-    background: var(--surface-0);
-    padding: 0.75rem;
-    border-radius: 4px;
-    border: 1px solid var(--surface-200);
-}
-
-.summary-section {
-  background: var(--surface-100);
-  padding: 1rem;
-  border-radius: 6px;
-}
-
-.summary-section h6 {
-  margin: 0 0 1rem 0;
-  color: var(--primary-700);
-  font-weight: 600;
-}
-
-.add-convention-btn {
-  min-width: 200px;
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .selection-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-
+/* General Reset and Base Styles */
 .convention-modal {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f8fafc;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .modal-content {
-  padding: 1rem;
+  padding: 1.5rem;
 }
 
+/* Stepper Styling */
 .custom-stepper {
-  min-height: 600px;
+  margin-bottom: 1rem;
 }
 
-.step-content {
-  padding: 1rem 0;
-}
-
-.step-card {
-  border: 1px solid var(--surface-200);
+.custom-stepper .p-stepper-nav {
+  background: #ffffff;
   border-radius: 8px;
+  padding: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.custom-stepper .p-stepper-panel {
+  background: transparent;
+}
+
+/* Step Card */
+.step-card {
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: #ffffff;
+  overflow: hidden;
 }
 
 .step-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 1rem;
-  background: var(--surface-50);
-  border-bottom: 1px solid var(--surface-200);
+  gap: 1rem;
+  padding: 1.5rem;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .step-header h4 {
   margin: 0;
-  color: var(--text-color);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e293b;
 }
 
-.step-description {
-  color: var(--text-color-secondary);
-  line-height: 1.6;
-  margin-bottom: 1.5rem;
+.step-header .pi {
+  font-size: 1.5rem;
+  color: #3b82f6;
 }
 
-/* Combined Setup Styles */
-.combined-setup {
+/* Step Content */
+.step-content {
   padding: 1.5rem;
 }
 
+.section-description {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+/* Setup Grid (Step 1) */
 .setup-grid {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
-  align-items: flex-end;
+  margin-bottom: 1.5rem;
 }
 
 .setup-field {
-  flex: 1;
-  min-width: 550px;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
 .setup-field label {
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.section-description {
-  color: var(--text-color-secondary);
-  font-size: 0.9rem;
-  margin-bottom: 1.5rem;
-  line-height: 1.5;
+  font-weight: 500;
+  color: #1e293b;
+  font-size: 0.95rem;
 }
 
 .date-input,
@@ -1349,84 +1222,75 @@ const getConventionInfo = () => {
 }
 
 .field-help {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  color: #64748b;
   margin-top: 0.25rem;
 }
 
-.text-muted {
-  color: var(--text-color-secondary);
-}
-
-.text-orange-600 {
-  color: var(--orange-600);
-}
-
-.text-green-600 {
-  color: var(--green-600);
-}
-
-.auth-status,
-.patient-status {
-  margin-top: 1rem;
-}
-
-/* Step Progress */
+/* Progress Indicators */
 .step-progress {
   margin-top: 2rem;
 }
 
 .progress-indicators {
   display: flex;
-  justify-content: center;
-  gap: 2rem;
-  margin: 1.5rem 0;
+  gap: 1rem;
   flex-wrap: wrap;
+  margin-bottom: 1.5rem;
 }
 
 .progress-item {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 0.5rem;
-  padding: 1rem;
-  border-radius: 8px;
-  background: var(--surface-100);
-  color: var(--text-color-secondary);
-  min-width: 120px;
-  transition: all 0.3s ease;
+  color: #94a3b8;
+  font-size: 0.9rem;
 }
 
 .progress-item.completed {
-  background: var(--green-100);
-  color: var(--green-700);
-  border: 2px solid var(--green-200);
+  color: #22c55e;
 }
 
-.progress-item i {
-  font-size: 1.5rem;
+.progress-item .pi {
+  font-size: 1rem;
 }
 
-.progress-item span {
-  font-size: 0.875rem;
+/* Step Navigation */
+.step-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.proceed-btn {
+  background: #3b82f6;
+  border: none;
+  padding: 0.75rem 1.5rem;
   font-weight: 500;
-  text-align: center;
+  transition: background 0.2s;
 }
 
-/* Convention Selection */
+.proceed-btn:hover {
+  background: #2563eb;
+}
+
+/* Convention Selection (Step 2) */
 .convention-selection {
-  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .prerequisites-warning {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
-.selection-row {
+.selection-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr auto;
-  gap: 1rem;
-  align-items: end;
-  margin: 1.5rem 0;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .field-group {
@@ -1436,87 +1300,70 @@ const getConventionInfo = () => {
 }
 
 .field-group label {
-  font-weight: 600;
-  color: var(--text-color);
-  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1e293b;
+  font-size: 0.95rem;
 }
 
 .field-input {
   width: 100%;
 }
 
-.prestation-option {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.prestation-name {
-  font-weight: 500;
-}
-
-.prestation-price {
-  color: var(--green-600);
-  font-weight: 600;
-  font-size: 0.875rem;
+.add-button-group {
+  align-self: flex-end;
 }
 
 .add-convention-btn {
-  white-space: nowrap;
+  background: #22c55e;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.add-convention-btn:hover {
+  background: #16a34a;
 }
 
 /* Completed Conventions */
 .completed-conventions {
   margin-top: 2rem;
-  padding: 1rem;
-  background: var(--green-50);
-  border: 1px solid var(--green-200);
-  border-radius: 6px;
-}
-
-.completed-conventions h5 {
-  margin: 0 0 1rem 0;
-  color: var(--green-700);
 }
 
 .convention-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .convention-item {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  background: #ffffff;
+  border-radius: 8px;
   padding: 1rem;
-  background: var(--surface-0);
-  border-radius: 6px;
-  border: 1px solid var(--green-200);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .convention-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: 100%;
+  gap: 1rem;
 }
 
 .convention-info {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .convention-title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
 }
 
 .convention-subtitle {
-  color: var(--text-color-secondary);
-  font-size: 0.875rem;
+  font-size: 0.9rem;
+  color: #64748b;
 }
 
 .convention-details {
@@ -1527,34 +1374,37 @@ const getConventionInfo = () => {
 
 .prestations-list {
   margin-top: 1rem;
-  border-top: 1px solid var(--surface-200);
-  padding-top: 1rem;
-}
-
-.prestations-list h6 {
-  margin: 0 0 0.75rem 0;
 }
 
 .prestations-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
 }
 
 .prestation-item {
-  background-color: var(--surface-50);
-  border: 1px solid var(--surface-200);
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  flex: 1 1 auto;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 6px;
 }
 
-.prestation-item .prestation-info {
-  flex: 1;
+.prestation-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.prestation-name {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.prestation-code {
+  font-size: 0.8rem;
+  color: #64748b;
 }
 
 .prestation-actions {
@@ -1563,137 +1413,150 @@ const getConventionInfo = () => {
   gap: 0.5rem;
 }
 
-/* Final Step */
-.final-step {
-  padding: 1.5rem;
+.prestation-price {
+  font-weight: 500;
+  color: #22c55e;
 }
 
+/* File Upload (Step 3) */
 .file-upload-section {
   margin-bottom: 2rem;
 }
 
-.file-upload-section h5 {
-  margin: 0 0 1rem 0;
-  color: var(--text-color);
-}
-
 .uploaded-files {
   margin-top: 1rem;
-  max-height: 120px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .uploaded-file-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem;
-  background: var(--surface-100);
-  border-radius: 4px;
-  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 6px;
 }
 
 .file-info {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex: 1;
 }
 
 .file-name {
   font-weight: 500;
+  color: #1e293b;
 }
 
 .file-size {
-  color: var(--text-color-secondary);
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  color: #64748b;
 }
 
+/* Prescription Summary */
 .prescription-summary {
   margin-bottom: 2rem;
 }
 
-.prescription-summary h5 {
-  margin: 0 0 1rem 0;
-  color: var(--text-color);
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
 }
 
-.summary-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+.summary-section {
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
 }
 
-.summary-item {
-  padding: 0.75rem;
-  background: var(--surface-100);
-  border-radius: 4px;
+.summary-item,
+.summary-sub-item {
+  font-size: 0.9rem;
+  color: #1e293b;
 }
 
-.summary-item strong {
-  color: var(--text-color);
-  margin-right: 0.5rem;
+.summary-sub-item small {
+  color: #64748b;
 }
 
-/* Step Navigation */
-.step-navigation,
+/* Final Actions */
 .final-actions {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  margin-top: 2rem;
   align-items: center;
+  gap: 1rem;
 }
 
-.proceed-btn,
 .create-prescription-btn {
-  min-width: 200px;
+  padding: 0.75rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
 }
 
-/* Responsive */
-@media (max-width: 1024px) {
-  .selection-grid {
-    grid-template-columns: 1fr;
+/* PrimeVue Component Overrides */
+:deep(.p-dialog-header) {
+  background: #3b82f6;
+  color: #ffffff;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  padding: 1rem 1.5rem;
+}
+
+:deep(.p-dialog-header-icon) {
+  color: #ffffff;
+}
+
+:deep(.p-inputtext),
+:deep(.p-dropdown),
+:deep(.p-multiselect) {
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+:deep(.p-inputtext:focus),
+:deep(.p-dropdown:focus),
+:deep(.p-multiselect:focus) {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+:deep(.p-button) {
+  border-radius: 6px;
+}
+
+:deep(.p-button-outlined) {
+  border-color: #d1d5db;
+  color: #1e293b;
+}
+
+:deep(.p-button-outlined:hover) {
+  background: #f1f5f9;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .convention-modal {
+    width: 95vw;
   }
-  
+
+  .setup-grid,
+  .selection-grid,
   .summary-grid {
     grid-template-columns: 1fr;
   }
-}
 
-@media (max-width: 768px) {
-  .modal-content {
-    padding: 0.5rem;
-  }
-  
-  .step-content {
-    padding: 0.5rem 0;
-  }
-  
-  .step-header {
-    padding: 0.75rem;
-  }
-  
-  .combined-setup,
-  .convention-selection,
-  .final-step {
-    padding: 1rem;
-  }
-  
-  .progress-indicators {
+  .step-navigation,
+  .final-actions {
     flex-direction: column;
-    gap: 0.5rem;
   }
-  
-  .progress-item {
-    min-width: auto;
+
+  .proceed-btn,
+  .create-prescription-btn {
     width: 100%;
   }
-  
-  .setup-grid {
-    flex-direction: column;
-    gap: 1rem;
-  }
 }
-
 </style>

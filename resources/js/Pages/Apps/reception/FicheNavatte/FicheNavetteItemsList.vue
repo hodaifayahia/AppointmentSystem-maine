@@ -1,30 +1,19 @@
-<script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+<!-- pages/Reception/FicheNavette/FicheNavetteDetails.vue -->
+<script setup lang="ts">
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import { useConfirm } from 'primevue/useconfirm'
-
-// PrimeVue Components
-import Card from 'primevue/card'
-import Button from 'primevue/button'
-import Dropdown from 'primevue/dropdown'
-import InputText from 'primevue/inputtext'
-import Chip from 'primevue/chip'
-import Tag from 'primevue/tag'
-import Toolbar from 'primevue/toolbar'
-import ProgressSpinner from 'primevue/progressspinner'
-import Divider from 'primevue/divider'
-import Dialog from 'primevue/dialog'
-import ConfirmDialog from 'primevue/confirmdialog'
-import Avatar from 'primevue/avatar'
 
 // Components
-import PrestationPackageSelectionModal from '../../../../Components/Apps/reception/FicheNavatte/PrestationPackageSelectionModal.vue'
-import PrestationItemCard from '../../../../Components/Apps/reception/FicheNavatte/PrestationItemCard.vue'
-import FicheNavetteItemCreate from '../../../../Components/Apps/reception/FicheNavatteItem/FicheNavetteItemCreate.vue'
-import ConventionCompaniesDisplay from '../../../../Components/Apps/reception/FicheNavatteItem/ConventionCompaniesDisplay.vue'
-
-// Services - Fix the import path from 'Recption' to 'Reception'
+import FicheNavetteHeader from '../../../../Components/Apps/reception/FicheNavatteItem/FicheNavetteHeader.vue'
+import FicheNavetteInfo from '../../../../Components/Apps/reception/FicheNavatteItem/FicheNavetteInfo.vue'
+import FicheNavetteItemsSection from '../../../../Components/Apps/reception/FicheNavatteItem/FicheNavetteItemsSection.vue'
+import LoadingSpinner from '../../../../Components/Common/LoadingSpinner.vue'
+import Dialog from 'primevue/dialog'
+import Card from 'primevue/card'
+import Tag from 'primevue/tag'
+import Button from 'primevue/button'
+// Services
 import { ficheNavetteService } from '../../../../Components/Apps/services/Reception/ficheNavetteService'
 import prestationService from '../../../../Components/Apps/services/Prestation/prestationService'
 import prestationPackageService from '../../../../Components/Apps/services/Prestation/prestationPackageService'
@@ -33,7 +22,6 @@ import prestationPackageService from '../../../../Components/Apps/services/Prest
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const confirm = useConfirm()
 
 // State
 const fiche = ref(null)
@@ -42,8 +30,24 @@ const prestations = ref([])
 const packages = ref([])
 const doctors = ref([])
 const loading = ref(false)
-const showSelectionModal = ref(false)
-const showAddItemsModal = ref(false)
+const showCreateForm = ref(false)
+const conventionCompanies = ref([])
+const loadingConventions = ref(false)
+const showConventionDetailsModal = ref(false)
+const showAllConventionsModal = ref(false)
+const selectedConventionOrganisme = ref(null)
+
+// Color fallback palette
+const fallbackColors = [
+  { bg: '#3B82F6', light: '#DBEAFE' },
+  { bg: '#10B981', light: '#D1FAE5' },
+  { bg: '#8B5CF6', light: '#EDE9FE' },
+  { bg: '#F59E0B', light: '#FEF3C7' },
+  { bg: '#EF4444', light: '#FEE2E2' },
+  { bg: '#06B6D4', light: '#CFFAFE' },
+  { bg: '#84CC16', light: '#ECFCCB' },
+  { bg: '#EC4899', light: '#FCE7F3' }
+]
 
 // Computed
 const ficheId = computed(() => route.params.id)
@@ -77,20 +81,23 @@ const totalAmount = computed(() => {
   return items.value.reduce((total, item) => total + parseFloat(item.final_price || 0), 0)
 })
 
-// Updated method to load fiche and items separately using correct service methods
+const itemsCount = computed(() => items.value.length)
+
+// Methods
 const loadFiche = async () => {
   loading.value = true
   try {
-    // Get fiche details from ficheNavetteController
-    const ficheResult = await ficheNavetteService.getById(ficheId.value)
+    const [ficheResult, itemsResult] = await Promise.all([
+      ficheNavetteService.getById(ficheId.value),
+      ficheNavetteService.getFicheNavetteItems(ficheId.value)
+    ])
+
     if (ficheResult.success) {
       fiche.value = ficheResult.data
     } else {
       throw new Error(ficheResult.message || 'Failed to load fiche')
     }
 
-    // Get items from ficheNavetteItemController
-    const itemsResult = await ficheNavetteService.getFicheNavetteItems(ficheId.value)
     if (itemsResult.success) {
       items.value = itemsResult.data || []
     } else {
@@ -109,128 +116,56 @@ const loadFiche = async () => {
   }
 }
 
-const loadPrestations = async () => {
+const loadSupportData = async () => {
   try {
-    const result = await prestationService.getAll()
-    if (result.success) {
-      prestations.value = result.data
-    }
-  } catch (error) {
-    console.error('Error loading prestations:', error)
-  }
-}
+    const [prestationsResult, packagesResult] = await Promise.all([
+      prestationService.getAll(),
+      prestationPackageService.getAll()
+    ])
 
-const loadPackages = async () => {
-  try {
-    const result = await prestationPackageService.getAll()
-    if (result.success) {
-      packages.value = result.data
+    if (prestationsResult.success) {
+      prestations.value = prestationsResult.data
     }
-  } catch (error) {
-    console.error('Error loading packages:', error)
-  }
-}
 
-const loadDoctors = async () => {
-  try {
-    // Add your doctor service call here
-    // const result = await doctorService.getAll()
-    // if (result.success) {
-    //   doctors.value = result.data
-    // }
-    
-    // Mock data for now
+    if (packagesResult.success) {
+      packages.value = packagesResult.data
+    }
+
+    // Mock doctors data
     doctors.value = [
       { id: 1, name: 'Dr. Martin', specialization: 'Cardiology' },
       { id: 2, name: 'Dr. Sarah', specialization: 'Neurology' },
       { id: 3, name: 'Dr. Ahmed', specialization: 'Radiology' }
     ]
   } catch (error) {
-    console.error('Error loading doctors:', error)
+    console.error('Error loading support data:', error)
   }
 }
 
-// router navigation to reception.FicheNavetteItems.type-selection
-const goToTypeSelection = () => {
-  router.push({ name: 'reception.FicheNavetteItems.create', params: { id: ficheId.value } })
-}
-
-const handleItemAdded = async (newItem) => {
-  showSelectionModal.value = false
-  await loadFicheDetails() // Reload both fiche and items
-  toast.add({
-    severity: 'success',
-    summary: 'Success',
-    detail: 'Item added successfully',
-    life: 3000
-  })
-}
-
-// Updated remove item method to use ficheNavetteItemController
-const removeItem = async (itemId) => {
+const loadConventionCompanies = async () => {
+  if (!fiche.value?.patient_id) return
+  
   try {
-    const result = await ficheNavetteService.removeFicheNavetteItem(ficheId.value, itemId)
+    loadingConventions.value = true
+    const result = await ficheNavetteService.getPatientConventions(
+      fiche.value.patient_id, 
+      fiche.value.id
+    )
+    
     if (result.success) {
-      await loadFicheDetails() // Reload both fiche and items
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: 'Item removed successfully',
-        life: 3000
-      })
+      conventionCompanies.value = result.data || []
+      console.log('Loaded convention companies:', conventionCompanies.value) // Debug
     }
   } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to remove item',
-      life: 3000
-    })
+    console.error('Error loading convention companies:', error)
+  } finally {
+    loadingConventions.value = false
   }
 }
 
-const confirmRemoveItem = (itemId) => {
-  confirm.require({
-    message: 'Are you sure you want to remove this item?',
-    header: 'Remove Confirmation',
-    icon: 'pi pi-exclamation-triangle',
-    acceptClass: 'p-button-danger',
-    accept: () => removeItem(itemId)
-  })
-}
-
-const goBack = () => {
-  router.push('/reception/fiche-navette')
-}
-
-const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'DZD'
-  }).format(amount || 0)
-}
-
-const getStatusSeverity = (status) => {
-  const statusMap = {
-    'pending': 'warning',
-    'in_progress': 'info',
-    'completed': 'success',
-    'cancelled': 'danger',
-    'required': 'secondary'
-  }
-  return statusMap[status] || 'secondary'
-}
-
-// Method to open the add items modal
-const openAddItemsModal = () => {
-  showAddItemsModal.value = true
-}
-
-// Updated handle items added method
-const onItemsAdded = (updatedFiche) => {
-  showAddItemsModal.value = false
-  // Refresh both fiche and items data
-  loadFicheDetails()
+const handleItemsAdded = async () => {
+  showCreateForm.value = false
+  await loadFiche()
   
   toast.add({
     severity: 'success',
@@ -240,376 +175,396 @@ const onItemsAdded = (updatedFiche) => {
   })
 }
 
-// Updated method to load fiche details after adding items
-const loadFicheDetails = async () => {
-  loading.value = true
-  try {
-    // Get fiche details from ficheNavetteController
-    const ficheResult = await ficheNavetteService.getById(ficheId.value)
-    if (ficheResult.success) {
-      fiche.value = ficheResult.data
-    }
+const handleItemRemoved = async () => {
+  await loadFiche()
+  
+  toast.add({
+    severity: 'success',
+    summary: 'Success',
+    detail: 'Item removed successfully',
+    life: 3000
+  })
+}
 
-    // Get items from ficheNavetteItemController
-    const itemsResult = await ficheNavetteService.getFicheNavetteItems(ficheId.value)
-    if (itemsResult.success) {
-      items.value = itemsResult.data || []
-    }
-  } catch (error) {
-    console.error('Error loading fiche details:', error)
-  } finally {
-    loading.value = false
-  }
+const handleRemiseApplied = async () => {
+  await loadFiche()
+  
+  toast.add({
+    severity: 'success',
+    summary: 'Success',
+    detail: 'Discount applied successfully',
+    life: 3000
+  })
+}
+
+const toggleCreateForm = () => {
+  showCreateForm.value = !showCreateForm.value
+}
+
+const goBack = () => {
+  router.push('/reception/fiche-navette')
 }
 
 // Lifecycle
 onMounted(async () => {
   await Promise.all([
     loadFiche(),
-    loadPrestations(),
-    loadPackages(),
-    loadDoctors()
+    loadSupportData()
   ])
+  
+  loadConventionCompanies()
 })
+
+// Watch
+watch(() => fiche.value?.id, (newId) => {
+  if (newId) {
+    loadConventionCompanies()
+  }
+})
+
+// Event Handlers
+const showConventionDetails = (organisme) => {
+  console.log('Received organisme:', organisme) // Debug
+  selectedConventionOrganisme.value = organisme
+  showConventionDetailsModal.value = true
+}
+
+const showAllConventions = () => {
+  showAllConventionsModal.value = true
+}
+
+// When a company is clicked
+const handleShowConventionDetails = (company) => {
+  selectedConventionOrganisme.value = company // company already has color from FicheNavetteInfo
+  showConventionDetailsModal.value = true
+}
+
+// Add file handling methods for the modal
+const getFileIcon = (mimeTypeOrName) => {
+  if (!mimeTypeOrName) return 'pi pi-file'
+  const type = mimeTypeOrName.toLowerCase()
+  if (type.includes('pdf')) return 'pi pi-file-pdf'
+  if (type.includes('word') || type.includes('doc')) return 'pi pi-file-word'
+  if (type.includes('excel') || type.includes('xls')) return 'pi pi-file-excel'
+  if (type.includes('image')) return 'pi pi-image'
+  return 'pi pi-file'
+}
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return 'Unknown size'
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
+}
+
+const viewFile = (file) => {
+  if (file && file.id) {
+    window.open(`/api/fiche-navette/files/${file.id}/view`, '_blank')
+  }
+}
+
+const downloadFile = (file) => {
+  if (file && file.id) {
+    const link = document.createElement('a')
+    link.href = `/api/fiche-navette/files/${file.id}/download`
+    link.download = file.original_name || 'download'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+}
 </script>
 
 <template>
-  <div class="fiche-items-page">
+  <div class="fiche-navette-details">
     <!-- Header -->
-    <div class="page-header">
-      <div class="header-content">
-        <div class="header-left">
-          <Button 
-            icon="pi pi-arrow-left"
-            class="p-button-text p-button-secondary"
-            @click="goBack"
-            v-tooltip.bottom="'Back to Fiche List'"
-          />
-          <div class="title-section">
-            <h1 class="page-title">
-              <i class="pi pi-file-edit"></i>
-              Fiche Navette #{{ ficheId }}
-            </h1>
-            <p class="page-subtitle" v-if="fiche">
-              {{ fiche.patient_name }} - {{ new Date(fiche.fiche_date).toLocaleDateString() }}
-            </p>
-          </div>
-        </div>
-        <div class="header-actions">
-       
-        </div>
-      </div>
-    </div>
+    <FicheNavetteHeader
+      :fiche-id="ficheId"
+      :fiche="fiche"
+      :show-create-form="showCreateForm"
+      @go-back="goBack"
+      @toggle-create-form="toggleCreateForm"
+    />
 
     <!-- Loading State -->
-    <div v-if="loading" class="loading-container">
-      <ProgressSpinner />
-      <p>Loading fiche navette...</p>
-    </div>
+    <LoadingSpinner v-if="loading" message="Loading fiche navette..." />
 
     <!-- Main Content -->
     <div v-else-if="fiche" class="main-content">
-      <Card class="fiche-info-card mb-4">
-        <template #content>
-          <div class="fiche-info-grid">
-            <div class="info-item">
-              <span class="info-label">Patient:</span>
-              <div class="patient-info">
-                <Avatar icon="pi pi-user" class="mr-2" size="small" />
-                <strong>{{ fiche.patient_name }}</strong>
-              </div>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Date:</span>
-              <span>{{ new Date(fiche.fiche_date).toLocaleDateString() }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Status:</span>
-              <Tag 
-                :value="fiche.status"
-                :severity="getStatusSeverity(fiche.status)"
-              />
-            </div>
-            <div class="info-item">
-              <span class="info-label">Total Amount:</span>
-              <strong class="total-amount">{{ formatCurrency(totalAmount) }}</strong>
-            </div>
-          </div>
-        </template>
-      </Card>
-      <FicheNavetteItemCreate
-        v-if="fiche"
-        :patient-id="fiche.patient_id"
-        :fiche-navette-id="fiche.id"
-        @created="onItemsAdded"
-      ></FicheNavetteItemCreate>
-      <Card class="items-section">
-        <template #header>
-          <div class="section-header">
-            <h3>
-              <i class="pi pi-list mr-2"></i>
-              Items ({{ items.length }})
-            </h3>
-           
-          </div>
-        </template>
-     
-         <FicheNavetteItemCreate
-          :patient-id="fiche.patient_id"
-          :fiche-navette-id="fiche.id"
-          @created="onItemsAdded"
-        />
-        
-        <template #content>
-          <!-- Empty State -->
-          <div v-if="items.length === 0" class="empty-state">
-            <i class="pi pi-inbox empty-icon"></i>
-            <h4>No Items Yet</h4>
-            <p>Add prestations or packages to this fiche navette</p>
-            <Button 
-              icon="pi pi-plus"
-              label="Add First Item"
-              class="p-button-primary"
-              @click="openAddItemsModal"
-            />
-          </div>
+      <!-- Fiche Information -->
+      <FicheNavetteInfo
+        :fiche="fiche"
+        :total-amount="totalAmount"
+        :items-count="itemsCount"
+        :groups-count="groupedItems.length"
+        :convention-companies="conventionCompanies"
+        @show-convention-details="handleShowConventionDetails"
+        @show-all-conventions="showAllConventions"
+      />
 
-          
-          <!-- Items Grid -->
-          <div v-else class="items-grid">
-            <PrestationItemCard
-              v-for="group in groupedItems"
-              :key="`${group.type}_${group.id}`"
-              :group="group"
-              :prestations="prestations"
-              :packages="packages"
-              :doctors="doctors"
-              @remove-item="confirmRemoveItem"
-              @item-updated="loadFiche"
-            />
-          </div>
-        </template>
-      </Card>
-
-      <!-- Add Items Modal -->
-      <Dialog 
-        v-model:visible="showAddItemsModal"
-        header="Add Items to Fiche Navette"
-        :style="{ width: '90vw', maxHeight: '90vh' }"
-        :modal="true"
-        :closable="true"
-      >
-        <FicheNavetteItemCreate
-          v-if="showAddItemsModal && fiche"
-          :patient-id="fiche.patient_id"
-          :fiche-navette-id="fiche.id"
-          mode="add"
-          @created="onItemsAdded"
-          @cancel="showAddItemsModal = false"
-        />
-      </Dialog>
+      <!-- Items Section -->
+      <FicheNavetteItemsSection
+        :fiche="fiche"
+        :items="items"
+        :grouped-items="groupedItems"
+        :prestations="prestations"
+        :packages="packages"
+        :doctors="doctors"
+        :show-create-form="showCreateForm"
+        :total-amount="totalAmount"
+        :items-count="itemsCount"
+        @items-added="handleItemsAdded"
+        @item-removed="handleItemRemoved"
+        @remise-applied="handleRemiseApplied"
+        @toggle-create-form="toggleCreateForm"
+      />
     </div>
 
-    <!-- Selection Modal (if needed) -->
-    <!-- <PrestationPackageSelectionModal
-      v-model:visible="showSelectionModal"
-      :fiche-id="ficheId"
-      :prestations="prestations"
-      :packages="packages"
-      :doctors="doctors"
-      :existing-items="items"
-      @item-added="handleItemAdded"
-    /> -->
+    <Dialog
+      v-model:visible="showConventionDetailsModal"
+      :header="selectedConventionOrganisme?.organisme_name || selectedConventionOrganisme?.company_name || 'Organisme Details'"
+      modal
+      class="convention-details-modal"
+      :style="{ width: '70vw', maxWidth: '800px' }"
+    >
+      <div v-if="selectedConventionOrganisme" class="organisme-details-content">
+        <!-- Modal header with company color -->
+        <div 
+          class="modal-header" 
+          :style="{ 
+            backgroundColor: selectedConventionOrganisme.organism_color || '#3B82F6', 
+            color: 'white', 
+            padding: '1rem',
+            marginBottom: '1rem',
+            borderRadius: '8px'
+          }"
+        >
+          <h3 style="margin: 0;">{{ selectedConventionOrganisme.organisme_name || selectedConventionOrganisme.company_name }}</h3>
+        </div>
+        
+        <!-- Modal body showing prestations -->
+        <div class="modal-body" style="padding: 1rem;">
+          <div v-for="convention in selectedConventionOrganisme.conventions" :key="convention.id" class="convention-section" style="margin-bottom: 2rem;">
+            <h5 style="color: var(--text-color); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--surface-200);">
+              {{ convention.convention_name }}
+            </h5>
+            
+            <!-- Show prestations (MAIN FOCUS) -->
+            <div v-if="convention.prestations && convention.prestations.length" class="prestations-modal-section">
+              <h6 style="color: var(--text-color-secondary); margin-bottom: 1rem;">
+                <i class="pi pi-list" :style="{ color: selectedConventionOrganisme.organism_color || '#3B82F6' }"></i>
+                Prestations Used (DGSN - {{ convention.prestations.length }} prestation{{ convention.prestations.length > 1 ? 's' : '' }})
+              </h6>
+              <div class="prestations-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+                <Card
+                  v-for="prestation in convention.prestations"
+                  :key="prestation.id"
+                  class="prestation-card"
+                  :style="{
+                    borderLeft: `4px solid ${selectedConventionOrganisme.organism_color || '#3B82F6'}`
+                  }"
+                >
+                  <template #content>
+                    <div class="prestation-info">
+                      <div class="prestation-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <strong 
+                          class="prestation-title"
+                          :style="{ color: selectedConventionOrganisme.organism_color || '#3B82F6', fontSize: '1rem' }"
+                        >
+                          {{ prestation.name }}
+                        </strong>
+                        <Tag
+                          value="DGSN"
+                          severity="info"
+                          size="small"
+                          :style="{
+                            backgroundColor: selectedConventionOrganisme.organism_color ? selectedConventionOrganisme.organism_color + '22' : '#DBEAFE',
+                            color: selectedConventionOrganisme.organism_color || '#3B82F6'
+                          }"
+                        />
+                      </div>
+                      <div v-if="prestation.specialization" class="prestation-specialization" style="margin-top: 0.5rem;">
+                        <small :style="{ color: 'var(--text-color-secondary)' }">
+                          Spécialisation: {{ prestation.specialization }}
+                        </small>
+                      </div>
+                      <div v-if="prestation.internal_code" class="prestation-code" style="margin-top: 0.25rem;">
+                        <small :style="{ color: 'var(--text-color-secondary)' }">
+                          Code: {{ prestation.internal_code }}
+                        </small>
+                      </div>
+                    </div>
+                  </template>
+                </Card>
+              </div>
+            </div>
 
-    <ConfirmDialog />
+            <!-- Show files if any (secondary) -->
+            <div v-if="convention.uploaded_files && convention.uploaded_files.length" class="uploaded-files-section" style="margin-top: 2rem;">
+              <h6 style="color: var(--text-color-secondary); margin-bottom: 1rem;">
+                <i class="pi pi-folder" :style="{ color: selectedConventionOrganisme.organism_color || '#3B82F6' }"></i>
+                Documents ({{ convention.uploaded_files.length }})
+              </h6>
+              <div class="files-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                <Card
+                  v-for="file in convention.uploaded_files"
+                  :key="file.id"
+                  class="file-card"
+                  :style="{
+                    borderLeft: `4px solid ${selectedConventionOrganisme.organism_color || '#3B82F6'}`
+                  }"
+                >
+                  <template #content>
+                    <div class="file-info" style="display: flex; align-items: center; gap: 1rem;">
+                      <div class="file-icon">
+                        <i 
+                          :class="getFileIcon(file.mime_type || file.original_name)"
+                          :style="{ color: selectedConventionOrganisme.organism_color || '#3B82F6', fontSize: '1.5rem' }"
+                        ></i>
+                      </div>
+                      <div class="file-details" style="flex: 1;">
+                        <span class="file-name" style="font-weight: 500; color: var(--text-color);">{{ file.original_name }}</span>
+                        <small class="file-size" style="display: block; color: var(--text-color-secondary); margin-top: 0.25rem;">{{ formatFileSize(file.size) }}</small>
+                      </div>
+                      <div class="file-actions" style="display: flex; gap: 0.5rem;">
+                        <Button
+                          icon="pi pi-eye"
+                          severity="info"
+                          size="small"
+                          @click="viewFile(file)"
+                          v-tooltip="'View'"
+                          :style="{ 
+                            backgroundColor: selectedConventionOrganisme.organism_color || '#3B82F6',
+                            borderColor: selectedConventionOrganisme.organism_color || '#3B82F6'
+                          }"
+                        />
+                        <Button
+                          icon="pi pi-download"
+                          severity="success"
+                          size="small"
+                          @click="downloadFile(file)"
+                          v-tooltip="'Download'"
+                        />
+                      </div>
+                    </div>
+                  </template>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="showAllConventionsModal"
+      header="All Available Conventions"
+      modal
+      class="all-conventions-modal"
+      :style="{ width: '80vw', maxWidth: '1000px' }"
+    >
+      <div class="all-conventions-content">
+      </div>
+    </Dialog>
   </div>
 </template>
 
-<!-- Styles remain the same -->
 <style scoped>
-.fiche-items-page {
+.fiche-navette-details {
   min-height: 100vh;
-  background: var(--surface-50);
+  background: var(--surface-ground);
   padding: 1.5rem;
 }
 
-.page-header {
-  margin-bottom: 2rem;
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.title-section {
-  flex: 1;
-}
-
-.page-title {
-  font-size: 2rem;
-  font-weight: 600;
-  color: var(--primary-color);
-  margin: 0 0 0.25rem 0;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.page-subtitle {
-  color: var(--text-color-secondary);
-  margin: 0;
-  font-size: 1rem;
-}
-
-.loading-container {
+.main-content {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-  gap: 1rem;
-}
-
-.fiche-info-card {
-  background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-100) 100%);
-  border: 1px solid var(--primary-200);
-}
-
-.fiche-info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1.5rem;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.info-label {
-  font-size: 0.875rem;
-  color: var(--text-color-secondary);
-  font-weight: 500;
-}
-
-.patient-info {
-  display: flex;
-  align-items: center;
-}
-
-.total-amount {
-  color: var(--primary-color);
-  font-size: 1.25rem;
-}
-
-.section-header {
-  padding: 1rem;
-  border-bottom: 1px solid var(--surface-200);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.section-header h3 {
-  margin: 0;
-  color: var(--text-color);
-  display: flex;
-  align-items: center;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-}
-
-.empty-icon {
-  font-size: 4rem;
-  color: var(--text-color-secondary);
-  margin-bottom: 1rem;
-}
-
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1.5rem;
-  padding: 1rem;
-}
-
-/* New styles for dependencies display */
-.dependency-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem;
-  background: #fef3c7;
-  border: 1px solid #fde68a;
-  border-radius: 6px;
-}
-
-.dependency-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.dependency-name {
-  font-weight: 500;
-  color: #92400e;
-}
-
-.dependency-code {
-  color: #d97706;
-  font-size: 0.75rem;
-}
-
-.dependency-price {
-  background: #f59e0b;
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  font-weight: 500;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 @media (max-width: 768px) {
-  .fiche-items-page {
+  .fiche-navette-details {
     padding: 1rem;
   }
-  
-  .header-content {
-    flex-direction: column;
-    align-items: stretch;
+}
+
+/* Add these styles for the modal */
+.convention-details-modal .p-dialog-content {
+  padding: 0;
+}
+
+.organisme-details-content {
+  min-height: 400px;
+}
+
+.convention-section {
+  padding: 1rem;
+  border-bottom: 1px solid var(--surface-200);
+}
+
+.convention-section:last-child {
+  border-bottom: none;
+}
+
+.prestations-modal-section {
+  margin-bottom: 1rem;
+}
+
+.prestation-card {
+  transition: all 0.3s ease;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.prestation-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.prestation-card .p-card-body {
+  padding: 1rem;
+}
+
+.file-card {
+  transition: all 0.3s ease;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.file-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.file-card .p-card-body {
+  padding: 1rem;
+}
+
+.modal-header {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive design for modal */
+@media (max-width: 768px) {
+  .prestations-grid {
+    grid-template-columns: 1fr !important;
   }
   
-  .header-left {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
+  .files-grid {
+    grid-template-columns: 1fr !important;
   }
   
-  .fiche-info-grid {
-    grid-template-columns: 1fr;
+  .file-info {
+    flex-direction: column !important;
+    text-align: center;
+    gap: 0.5rem !important;
   }
   
-  .items-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .section-header {
-    flex-direction: column;
-    gap: 1rem;
-    align-items: stretch;
+  .file-actions {
+    justify-content: center !important;
   }
 }
 </style>

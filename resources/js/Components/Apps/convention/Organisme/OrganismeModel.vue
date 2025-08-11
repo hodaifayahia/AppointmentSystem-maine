@@ -22,6 +22,7 @@ const formData = ref({
     id: null,
     name: '',
     legal_form: '',
+     organism_color: '#3b82f6', // Default or empty string
     trade_register_number: '',
     tax_id_nif: '',
     statistical_id: '',
@@ -499,6 +500,26 @@ const closeModal = () => {
                                         <input type="number" step="any" id="longitude" v-model.number="formData.longitude" class="form-input" placeholder="Enter longitude">
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Company Color Picker -->
+                            <div class="form-group">
+                                <label for="organism_color" class="form-label">
+                                    <i class="fas fa-palette label-icon"></i>
+                                    Company Color
+                                </label>
+                                <input
+                                    type="color"
+                                    id="organism_color"
+                                    v-model="formData.organism_color"
+                                    class="form-input"
+                                    style="width: 60px; height: 40px; padding: 0; border: none; background: none;"
+                                >
+                                <span v-if="formData.organism_color" class="color-hex">{{ formData.organism_color }}</span>
+                                <p v-if="errors.organism_color" class="error-message">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    {{ errors.organism_color[0] }}
+                                </p>
                             </div>
                             
                             <div class="modal-footer">

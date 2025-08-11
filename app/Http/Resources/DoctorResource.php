@@ -16,6 +16,7 @@ class DoctorResource extends JsonResource
             'is_active'=> $this->user->is_active,
             'avatar' => $this->getAvatarUrl(),
             'email' => $this->user->email ?? '',
+            'allowed_appointment_today' => $this->allowed_appointment_today,
             'phone' => $this->user->phone ?? '',
             'specialization' => $this->specialization->name ?? null,
             'specialization_id' => $this->specialization->id ?? null,

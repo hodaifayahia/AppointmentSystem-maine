@@ -445,6 +445,7 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/fiche-navette/{ficheNavetteId}/items', [ficheNavetteItemController::class, 'index']);
             Route::put('/fiche-navette/{ficheNavetteId}/items/{itemId}', [ficheNavetteItemController::class, 'update']);
             Route::delete('/fiche-navette/{ficheNavetteId}/items/{itemId}', [ficheNavetteItemController::class, 'destroy']);
+            
             Route::apiResource('/fiche-navette', ficheNavetteController::class);
                     
             // Add these new routes for convention pricing
@@ -460,6 +461,9 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/prestations/by-service/{serviceId}', [ficheNavetteController::class, 'getPrestationsByService']);
             Route::get('/packages/by-service/{serviceId}', [ficheNavetteController::class, 'getPackagesByService']);
                 // Specialization-based routes
+
+                    Route::delete('/dependencies/{dependencyId}', [ficheNavetteItemController::class, 'removeDependency']);
+
             Route::get('/prestations/by-specialization/{specializationId}', [ficheNavetteController::class, 'getPrestationsBySpecialization']);
             Route::get('/packages/by-specialization/{specializationId}', [ficheNavetteController::class, 'getPackagesBySpecialization']);
             Route::post('/prestations/dependencies', [ficheNavetteController::class, 'getPrestationsDependencies']);
@@ -479,11 +483,6 @@ Route::middleware(['auth'])->group(function () {
         // Convention prescription routes
         Route::post('/fiche-navette/{ficheNavetteId}/convention-prescription', [ficheNavetteItemController::class, 'storeConventionPrescription']);
     }); // End of /api group
-    Route::prefix('fiche-navette-items')->group(function () {
-        // File upload routes
-        Route::post('/upload-convention-files', [FicheNavetteItemController::class, 'uploadConventionFiles']);
-        Route::get('/download-convention-file/{fileId}', [FicheNavetteItemController::class, 'downloadConventionFile']);
-    });
 
     // The main application entry point for authenticated users
     Route::get('/{view}', [ApplicationController::class, '__invoke'])->where('view', '.*')->name('dashboard');

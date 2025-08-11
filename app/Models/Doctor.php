@@ -43,6 +43,7 @@ class Doctor extends Model
         'is_active',
         'created_by',
         'user_id',
+        'allowed_appointment_today'
     ];
 
     /**
@@ -55,6 +56,8 @@ class Doctor extends Model
         'patients_based_on_time' => 'boolean',
         'specific_date' => 'date',
         'number_of_patients_per_day' => 'integer',
+        'allowed_appointment_today' => 'boolean',
+
     ];
 
     /**

@@ -617,9 +617,13 @@ async getPrestationsDependencies(prestationIds) {
             };
         }
     },
-    async createConventionPrescription(ficheNavetteId, data) {
+  async createConventionPrescription(ficheNavetteId, data) {
     try {
-        const response = await axios.post(`/api/fiche-navette/${ficheNavetteId}/convention-prescription`, data);
+        const response = await axios.post(`/api/fiche-navette/${ficheNavetteId}/convention-prescription`, data, {
+            headers: {
+                'Content-Type': 'multipart/form-data' // Important for file upload
+            }
+        });
         return response.data;
     } catch (error) {
         console.error('Error creating convention prescription:', error);
@@ -627,6 +631,18 @@ async getPrestationsDependencies(prestationIds) {
             success: false,
             message: error.response?.data?.message || 'Failed to create convention prescription'
         };
+    }
+},
+async removeDependency(dependencyId) {
+    try {
+        const response = await axios.delete(`/api/reception/dependencies/${dependencyId}`)
+        return response.data
+    } catch (error) {
+        console.error('Error removing dependency:', error)
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to remove dependency'
+        }
     }
 },
 

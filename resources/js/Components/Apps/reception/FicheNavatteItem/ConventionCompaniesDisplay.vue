@@ -84,13 +84,14 @@
       :rowsPerPageOptions="[5, 10, 20]"
       class="prestations-table"
     >
+    
       <template #empty>
         <div class="empty-state">
           <i class="pi pi-search"></i>
           <p>No prestations found for this patient</p>
         </div>
       </template>
-
+      
       <Column field="prestation.name" header="Prestation" style="min-width: 250px">
         <template #body="{ data }">
           <div class="prestation-info">
@@ -115,10 +116,13 @@
       </Column>
 
       <Column field="doctor" header="Doctor">
+        
         <template #body="{ data }">
+          
           <div v-if="data.doctor" class="doctor-info">
             <i class="pi pi-user"></i>
             <span>{{ data.doctor.name }}</span>
+
           </div>
           <span v-else class="no-doctor">Not assigned</span>
         </template>

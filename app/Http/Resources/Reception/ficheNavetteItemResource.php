@@ -31,6 +31,7 @@ class ficheNavetteItemResource extends JsonResource
             'prise_en_charge_date' => $this->prise_en_charge_date,
             'custom_name' => $this->custom_name,
             'convention_id' => $this->convention_id,
+            'convention_name' => $this->convention->name ?? null,
             'insured_id' => $this->insured_id,
             'family_authorization' => $this->family_authorization,
             'uploaded_file' => $this->uploaded_file,
@@ -75,6 +76,8 @@ class ficheNavetteItemResource extends JsonResource
                     'company_name' => $this->convention->company_name,
                     'status' => $this->convention->status,
                     'is_active' => $this->convention->is_active,
+                    'organism_color' => $this->convention->organisme->organism_color ?? null,
+
                 ];
             }),
             
@@ -123,6 +126,7 @@ class ficheNavetteItemResource extends JsonResource
                                     $prestationInfo = [
                                         'id' => $prestation->id,
                                         'name' => $prestation->name,
+                                        'is_package' => $$dependency->is_package ?? false,
                                         'internal_code' => $prestation->internal_code,
                                         'description' => $prestation->description,
                                         'public_price' => $prestation->public_price,
