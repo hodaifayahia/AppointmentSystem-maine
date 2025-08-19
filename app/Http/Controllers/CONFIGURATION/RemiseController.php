@@ -5,10 +5,16 @@ namespace App\Http\Controllers\CONFIGURATION;
 use App\Http\Controllers\Controller;
 use App\Models\CONFIGURATION\Remise;
 use App\Services\CONFIGURATION\RemiseService;
+use App\Models\Reception\ItemDependency;
+use App\Models\Reception\ficheNavetteItem;
+use App\Models\Reception\ficheNavette;
+
 use App\Http\Requests\CONFIGURATION\RemiseRequest;
 use Illuminate\Http\Request;
 use App\Http\Resources\CONFIGURATION\RemiseResource;
 use Illuminate\Http\JsonResponse;
+//DB
+use DB;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class RemiseController extends Controller
@@ -61,6 +67,36 @@ class RemiseController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error retrieving remises: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function userRemise(Request $request)
+    {
+        try {
+            $userId = $request->input('user_id');
+            
+            if (!$userId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User ID is required'
+                ], 400);
+            }
+            
+            $remises = $this->remiseService->getUserRemises($userId);
+            // Remove the dd() statement that was causing the hang
+            
+            return response()->json([
+                'success' => true,
+                'data' => RemiseResource::collection($remises),
+                'message' => 'User remises retrieved successfully'
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Error retrieving user remises: ' . $e->getMessage(), ['exception' => $e]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error retrieving user remises: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -142,7 +178,7 @@ class RemiseController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Remise $remise): JsonResponse
+    public function destroy(Remise $remise)
     {
         try {
             $deleted = $this->remiseService->deleteRemise($remise);
@@ -163,6 +199,98 @@ class RemiseController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error deleting remise: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function applyRemise(Request $request)
+    {
+        try {
+            $validatedData = $request->validate([
+                'remise_id' => 'nullable|integer',
+                'is_custom' => 'boolean',
+                'custom_user_balance' => 'nullable|array',
+                'custom_doctor_balance' => 'nullable|array',
+                'prestations' => 'nullable|array',
+                'affected_items' => 'required|array'
+            ]);
+
+            $affectedItems = $validatedData['affected_items'] ?? [];
+
+            DB::beginTransaction();
+
+            $updatedFicheIds = [];
+
+            foreach ($affectedItems as $itemData) {
+                $ficheItemId = $itemData['fiche_item_id'] ?? null;
+                $discountedPrice = isset($itemData['discounted_price']) ? (float) $itemData['discounted_price'] : null;
+
+                if (!$ficheItemId) {
+                    continue;
+                }
+
+                // If this id is an ItemDependency
+                $dependency = ItemDependency::find($ficheItemId);
+                if ($dependency) {
+                    if (!is_null($discountedPrice)) {
+                        $dependency->final_price = $discountedPrice;
+                        $dependency->save();
+                    }
+
+                    // collect fiche_navette id from parent fiche item if available
+                    $parentItem = ficheNavetteItem::find($dependency->parent_item_id);
+                    if ($parentItem) {
+                        $updatedFicheIds[] = $parentItem->fiche_navette_id;
+                    }
+
+                    continue;
+                }
+
+                // Otherwise try to update fiche navette item
+                $ficheItem = ficheNavetteItem::find($ficheItemId);
+                if ($ficheItem) {
+                    if (!is_null($discountedPrice)) {
+                        $ficheItem->final_price = $discountedPrice;
+                        $ficheItem->save();
+                    }
+                    $updatedFicheIds[] = $ficheItem->fiche_navette_id;
+                }
+            }
+
+            // Recalculate totals for affected fiches
+            $updatedFicheIds = array_unique($updatedFicheIds);
+            foreach ($updatedFicheIds as $ficheId) {
+                // sum fiche items final_price
+                $items = ficheNavetteItem::where('fiche_navette_id', $ficheId)->get();
+                $itemIds = $items->pluck('id')->toArray();
+                $sumItems = $items->sum(function ($i) {
+                    return (float) ($i->final_price ?? 0);
+                });
+
+                if (!empty($itemIds)) {
+                    $sumDeps = ItemDependency::whereIn('parent_item_id', $itemIds)
+                        ->sum(DB::raw('COALESCE(final_price,0)'));
+                }
+
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Remise applied successfully',
+                'data' => [
+                    'remise_id' => $validatedData['remise_id'] ?? null,
+                    'affected_items' => $affectedItems,
+                    'updated_fiche_ids' => $updatedFicheIds
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error applying remise: ' . $e->getMessage(), ['exception' => $e]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error applying remise: ' . $e->getMessage()
             ], 500);
         }
     }

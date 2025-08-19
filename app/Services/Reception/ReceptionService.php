@@ -5,9 +5,12 @@ namespace App\Services\Reception;
 
 use App\Models\Reception\ficheNavette;
 use App\Models\Reception\ficheNavetteItem;
+
 use App\Models\Reception\ItemDependency;
 use App\Models\CONFIGURATION\Prestation;
+use App\Models\B2B\Convention;
 use App\Models\CONFIGURATION\PrestationPackage;
+use App\Models\CONFIGURATION\PrestationPackageitem;
 use App\Services\Reception\FileUploadService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -163,6 +166,49 @@ class ReceptionService
             throw $e;
         }
     }
+
+   public function getPrestationsByPackage($packageId): array
+{
+    try {
+        // Get package with its items and prestations
+        $package = PrestationPackage::with([
+            'items.prestation.service',
+            'items.prestation.specialization'
+        ])->findOrFail($packageId);
+
+        $prestations = $package->items->map(function($packageItem) {
+            return [
+                'id' => $packageItem->prestation->id,
+                'name' => $packageItem->prestation->name,
+                'internal_code' => $packageItem->prestation->internal_code,
+                'public_price' => $packageItem->prestation->public_price,
+                'service_name' => $packageItem->prestation->service->name ?? null,
+                'specialization_name' => $packageItem->prestation->specialization->name ?? null,
+                'specialization_id' => $packageItem->prestation->specialization_id,
+                'need_an_appointment' => $packageItem->prestation->need_an_appointment ?? false,
+                'package_item_id' => $packageItem->id,
+                'prestation_package_id' => $packageItem->prestation_package_id
+            ];
+        });
+
+        return [
+            'success' => true,
+            'data' => $prestations
+        ];
+    } catch (\Exception $e) {
+        \Log::error('Error fetching prestations by package:', [
+            'package_id' => $packageId,
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile(),
+        ]);
+        return [
+            'success' => false,
+            'message' => 'Failed to fetch prestations',
+            'error' => $e->getMessage()
+        ];
+    }
+}
 
     /**
      * Add items to an existing fiche navette
@@ -367,13 +413,14 @@ class ReceptionService
     $prestation = Prestation::findOrFail($prestationData['prestation_id']);
     $finalPrice = $prestationData['convention_price'] ?? $prestation->public_price;
 
-    // Handle a single file upload for this item
-    $fileMeta = null;
-    if (!empty($globalConventionData['uploaded_files'])) {
-        $file = $globalConventionData['uploaded_files'];
-        if ($file instanceof \Illuminate\Http\UploadedFile) {
-            if ($this->fileUploadService->validateConventionFile($file)) {
-                $fileMeta = $this->fileUploadService->uploadSingleFile($file);
+    // Handle multiple file uploads
+    $fileMetas = [];
+    if (!empty($globalConventionData['uploaded_files']) && is_array($globalConventionData['uploaded_files'])) {
+        foreach ($globalConventionData['uploaded_files'] as $file) {
+            if ($file instanceof \Illuminate\Http\UploadedFile) {
+                if ($this->fileUploadService->validateConventionFile($file)) {
+                    $fileMetas[] = $this->fileUploadService->uploadSingleFile($file);
+                }
             }
         }
     }
@@ -390,7 +437,7 @@ class ReceptionService
         'patient_share' => $finalPrice,
         'prise_en_charge_date' => $globalConventionData['prise_en_charge_date'],
         'family_authorization' => json_encode($globalConventionData['family_authorization']),
-        'uploaded_file' => $fileMeta ? json_encode($fileMeta) : null, // Store as JSON object
+        'uploaded_file' => !empty($fileMetas) ? json_encode($fileMetas) : null,
         'notes' => 'Convention prescription',
         'created_at' => now(),
         'updated_at' => now(),
@@ -414,7 +461,7 @@ class ReceptionService
     return [
         'prise_en_charge_date' => isset($data['prise_en_charge_date']) ? Carbon::parse($data['prise_en_charge_date']) : now(),
         'family_authorization' => $data['familyAuth'] ?? '',
-        'uploaded_files' => $data['uploadedFiles'] ?? null, // Single file, not array
+        'uploaded_files' => $data['uploadedFiles'] ?? [], // Array of files
         'adherent_patient_id' => $adherentPatientId,
     ];
 }
@@ -710,30 +757,66 @@ class ReceptionService
     /**
      * Add a package to fiche navette
      */
-    private function addPackageToFiche(
-        ficheNavette $ficheNavette, 
-        array $packageData, 
-        array $conventionData = []
-    ): array {
+private function addPackageToFiche(
+    ficheNavette $ficheNavette, 
+    array $packageData, 
+    array $conventionData = []
+): array {
     
-        $package = PrestationPackage::with('prestations')->findOrFail($packageData['package_id']);
-        $createdItems = [];
+    $package = PrestationPackage::findOrFail($packageData['package_id']);
     
-        foreach ($package->prestations as $prestation) {
-            $prestationData = [
-                'prestation_id' => $prestation->id,
-                'doctor_id' => $packageData['doctor_id'] ?? null,
-                'convention_id' => $packageData['convention_id'] ?? null,
-                'convention_price' => $packageData['convention_prices'][$prestation->id] ?? null,
-            ];
-        
-            $item = $this->addPrestationToFiche($ficheNavette, $prestationData, $package, $conventionData);
-            $createdItems[] = $item;
+    // Handle file uploads for this specific item
+    $itemFiles = [];
+    if (!empty($conventionData['uploaded_files'])) {
+        foreach ($conventionData['uploaded_files'] as $file) {
+            if (isset($file['file'])) {
+                if ($this->fileUploadService->validateConventionFile($file['file'])) {
+                    $itemFiles[] = $this->fileUploadService->uploadSingleFile($file['file']);
+                }
+            } else {
+                $itemFiles[] = $file;
+            }
         }
-    
-        return $createdItems;
     }
-
+    
+    // FIXED: Use the package price directly from prestation_packages table
+    // This is the special deal price, not the sum of individual prestations
+    $packagePrice = $package->price;
+    
+    // Prepare item data - store package_id, not prestation_id
+    $itemData = [
+        'fiche_navette_id' => $ficheNavette->id,
+        'prestation_id' => null, // NULL for packages
+        'package_id' => $package->id, // Store the package ID
+        'doctor_id' => $packageData['doctor_id'] ?? null,
+        'status' => 'pending',
+        'base_price' => $packagePrice, // Use package special price
+        'final_price' => $packageData['total_price'] ?? $packagePrice,
+        'patient_share' => $packageData['total_price'] ?? $packagePrice,
+        'notes' => $packageData['notes'] ?? 'Package: ' . $package->name,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ];
+    
+    // Add convention-specific data if available
+    if (!empty($conventionData)) {
+        $itemData = array_merge($itemData, [
+            'convention_id' => $packageData['convention_id'] ?? null,
+            'insured_id' => $conventionData['adherent_patient_id'] ?? $ficheNavette->patient_id,
+            'prise_en_charge_date' => $conventionData['prise_en_charge_date'] ?? now(),
+            'family_authorization' => json_encode($conventionData['family_authorization']),
+            'uploaded_file' => json_encode($itemFiles),
+        ]);
+    } else {
+        // For regular items, use the main patient as insured
+        $itemData['insured_id'] = $ficheNavette->patient_id;
+    }
+    
+    // Create single fiche navette item for the entire package
+    $createdItem = ficheNavetteItem::create($itemData);
+    
+    return [$createdItem]; // Return array with single item
+}
     /**
      * Add custom prestations to fiche navette
      */

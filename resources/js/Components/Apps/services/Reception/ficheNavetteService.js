@@ -25,6 +25,23 @@ export const ficheNavetteService = {
             };
         }
     },
+   async getPrestationsPackage(packageId) {
+    try {
+        console.log('Service: Fetching prestations for package ID:', packageId);
+        const response = await axios.get(`/api/reception/prestations/packages/${packageId}`);
+        return {
+            success: true,
+            data: response.data.data || response.data
+        };
+    } catch (error) {
+        console.error('Error fetching prestations by package:', error);
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to fetch prestations',
+            error
+        };
+    }
+},
 
     /**
      * Get packages by service ID
@@ -46,25 +63,26 @@ export const ficheNavetteService = {
         }
     },
 
-    /**
-     * Get all prestations for custom tab
-     */
-    async getAllPrestations(params = {}) {
-        try {
-            const response = await axios.get('/api/prestation', { params });
-            return {
-                success: true,
-                data: response.data.data || response.data
-            };
-        } catch (error) {
-            console.error('Error fetching all prestations:', error);
-            return {
-                success: false,
-                message: error.response?.data?.message || 'Failed to fetch prestations',
-                error
-            };
-        }
-    },
+   /**
+ * Get all prestations using the main prestation endpoint (not reception endpoint)
+ */
+async getAllPrestations() {
+    try {
+        // Use the new dedicated endpoint
+        const response = await axios.get('/api/reception/prestations/all');
+        return {
+            success: true,
+            data: response.data.data || response.data
+        };
+    } catch (error) {
+        console.error('Error fetching all prestations:', error);
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to fetch prestations',
+            error
+        };
+    }
+},
 
     /**
      * Get all packages
@@ -735,3 +753,5 @@ async getGroupedItems(ficheNavetteId) {
         }
     }
 };
+
+export default ficheNavetteService;

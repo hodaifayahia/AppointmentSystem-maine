@@ -61,7 +61,7 @@ const closeModal = () => {
   align-items: center;
   overflow: auto;
   /* Allow the overlay to scroll if content exceeds viewport */
-  z-index: 100;
+  z-index: 1000000;
   /* Ensure it's on top of other content */
 }
 

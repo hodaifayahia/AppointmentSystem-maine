@@ -1,4 +1,5 @@
 <?php
+// filepath: d:\Projects\AppointmentSystem\AppointmentSystem-main\app\Services\CONFIGURATION\UserPaymentMethodService.php
 
 namespace App\Services\CONFIGURATION;
 
@@ -7,152 +8,122 @@ use App\Models\CONFIGURATION\UserPaymentMethod;
 use App\Enums\Payment\PaymentMethodEnum;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 
 class UserPaymentMethodService
 {
     /**
      * Get all users with their payment accesses, transformed for frontend.
-     *
-     * @return \Illuminate\Support\Collection
      */
-    public function getAllUsersWithPaymentAccess()
+    public function getAllUsersWithPaymentAccess(): \Illuminate\Database\Eloquent\Collection
     {
-       
-        $users = UserPaymentMethod::with('user')
-            ->get();
-        return $users;
-        }
-    
+        return UserPaymentMethod::with('user')->get();
+    }
 
     /**
-     * Get a single user with their payment accesses, transformed for frontend.
-     *
-     * @param \App\Models\User $user
-     * @return array
+     * Get a single user with their payment accesses.
      */
-    public function getUserWithPaymentAccess()
+    public function getUserWithPaymentAccess(User $user): \Illuminate\Database\Eloquent\Collection
     {
-        $users = UserPaymentMethod::with('user')
-            ->where('user_id', $user->id)
-            ->get();
-        return $users;
+        return UserPaymentMethod::with('user')->where('user_id', $user->id)->get();
     }
 
     /**
-     * Create a new user and assign their payment methods.
-     *
-     * @param array $userData
-     * @param array $allowedMethodsData
-     * @return \App\Models\User
-     * @throws \Exception
+     * Create a new user with payment methods (for non-edit mode)
      */
-public function assignPaymentMethodsToUsersBulk(array $paymentMethodKeys, array $userIds, string $status): int
-{
-    $assignedCount = 0;
-
-    DB::beginTransaction();
-
-    try {
-        foreach ($userIds as $userId) {
-            // Check if record exists for this user
-            $userPaymentRecord = UserPaymentMethod::where('user_id', $userId)->first();
-            
-            if ($userPaymentRecord) {
-                // Update existing record - merge payment methods
-                $existingMethods = $userPaymentRecord->payment_method_key ?? [];
-                $allMethods = array_unique(array_merge($existingMethods, $paymentMethodKeys));
-                
-                $userPaymentRecord->update([
-                    'payment_method_key' => $allMethods,
-                    'status' => $status,
-                ]);
-            } else {
-                // Create new record
-                UserPaymentMethod::create([
-                    'user_id' => $userId,
-                    'payment_method_key' => $paymentMethodKeys,
-                    'status' => $status,
-                ]);
-            }
-            
-            $assignedCount++;
-        }
-
-        DB::commit();
-        return $assignedCount;
-
-    } catch (Exception $e) {
-        DB::rollBack();
-        \Log::error("Failed to assign multiple payment methods to users in bulk: " . $e->getMessage(), [
-            'payment_method_keys' => $paymentMethodKeys,
-            'userIds' => $userIds,
-            'status' => $status,
-            'exception' => $e
-        ]);
-        throw $e;
-    }
-}
-
-
-    /**
-     * Update an existing user and their payment methods.
-     *
-     * @param \App\Models\User $user
-     * @param array $userData
-     * @param array $allowedMethodsData
-     * @return \App\Models\User
-     * @throws \Exception
-     */
-public function updateUserPaymentMethods(User $user, array $formRequest): Collection
-{
-    DB::beginTransaction();
-    try {
-        // Delete existing payment methods for this user
-        UserPaymentMethod::where('user_id', $user->id)->delete();
-        
-        $userPaymentMethods = collect();
-        
-        // Add new payment methods with the specified status
-        if (isset($formRequest['allowedMethods']) && !empty($formRequest['allowedMethods'])) {
-            foreach ($formRequest['allowedMethods'] as $paymentMethodKey) {
-                $userPaymentMethod = UserPaymentMethod::create([
-                    'user_id' => $user->id,
-                    'payment_method_key' => $paymentMethodKey,
-                    'status' => $formRequest['status'] ?? 'active'
-                ]);
-                
-                $userPaymentMethods->push($userPaymentMethod);
-            }
-        }
-        
-        DB::commit();
-        
-        // Load relationships if needed
-        $userPaymentMethods->load(['user', 'paymentMethod']); // Adjust relationship names as needed
-        
-        return $userPaymentMethods;
-    } catch (\Exception $e) {
-        DB::rollBack();
-        throw $e;
-    }
-}
-
-
-
-    /**
-     * Delete a user.
-     *
-     * @param \App\Models\User $user
-     * @return bool|null
-     * @throws \Exception
-     */
-    public function deleteUser(User $user): ?bool
+    public function createUserWithPaymentMethods(array $data): User
     {
         DB::beginTransaction();
         try {
-            $result = $user->delete(); // onDelete('cascade') handles pivot records
+            // Create the user first
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => Hash::make($data['password']),
+                'email_verified_at' => now(),
+            ]);
+
+            // Create the user payment method record
+            UserPaymentMethod::create([
+                'user_id' => $user->id,
+                'payment_method_key' => $data['allowedMethods'] ?? [],
+                'status' => $data['status'] ?? 'active'
+            ]);
+
             DB::commit();
-            return $result;
+            return $user;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error("Failed to create user with payment methods: " . $e->getMessage(), [
+                'data' => $data,
+                'exception' => $e
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Bulk assigns payment methods to multiple users.
+     */
+    public function assignPaymentMethodsToUsersBulk(array $paymentMethodKeys, array $userIds, string $status): int
+    {
+        $assignedCount = 0;
+
+        DB::beginTransaction();
+        try {
+            foreach ($userIds as $userId) {
+                // Find or create the UserPaymentMethod record for this user
+                $userPaymentRecord = UserPaymentMethod::firstOrNew(['user_id' => $userId]);
+
+                // Get existing methods, or an empty array if none exist
+                $existingMethods = $userPaymentRecord->payment_method_key ?? [];
+
+                // Merge the new keys with the existing unique keys
+                $allMethods = array_unique(array_merge($existingMethods, $paymentMethodKeys));
+
+                // Update the model instance's attributes
+                $userPaymentRecord->payment_method_key = $allMethods;
+                $userPaymentRecord->status = $status;
+                $userPaymentRecord->save();
+                
+                $assignedCount++;
+            }
+
+            DB::commit();
+            return $assignedCount;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error("Failed to assign multiple payment methods to users in bulk: " . $e->getMessage(), [
+                'payment_method_keys' => $paymentMethodKeys,
+                'userIds' => $userIds,
+                'status' => $status,
+                'exception' => $e
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Updates an existing user's payment methods.
+     */
+    public function updateUserPaymentMethods(User $user, array $formRequest): UserPaymentMethod
+    {
+        DB::beginTransaction();
+        try {
+            // Find the existing record or create a new one
+            $userPaymentRecord = UserPaymentMethod::firstOrNew(['user_id' => $user->id]);
+            
+            // Set the new payment methods and status
+            $userPaymentRecord->payment_method_key = $formRequest['allowedMethods'] ?? [];
+            $userPaymentRecord->status = $formRequest['status'] ?? 'active';
+
+            $userPaymentRecord->save();
+            
+            DB::commit();
+
+            // Load the user relationship for the response
+            $userPaymentRecord->load('user');
+            return $userPaymentRecord;
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -160,59 +131,23 @@ public function updateUserPaymentMethods(User $user, array $formRequest): Collec
     }
 
     /**
-     * Get the list of available payment methods from the Enum.
-     *
-     * @return array
+     * Delete a user and their payment method records.
      */
-    public function getAvailablePaymentMethods(): array
+    public function deleteUser(User $user): ?bool
     {
-        return PaymentMethodEnum::toArrayForDropdown();
-    }
-
-    /**
-     * Helper method to sync user payment methods in the pivot table.
-     *
-     * @param \App\Models\User $user
-     * @param array $newPaymentMethods [{key: 'prepayment', status: 'active'}, ...]
-     */
-    protected function syncPaymentMethods(User $user, array $newPaymentMethods)
-    {
-        $existingAccesses = $user->paymentAccesses->keyBy('payment_method_key');
-        $methodsToKeep = [];
-
-        foreach ($newPaymentMethods as $methodData) {
-            $key = $methodData['key'];
-            $status = $methodData['status'];
-
-            if ($existingAccesses->has($key)) {
-                $access = $existingAccesses->get($key);
-                if ($access->status !== $status) {
-                    $access->status = $status;
-                    $access->save();
-                }
-                $methodsToKeep[] = $key;
-            } else {
-                UserPaymentMethod::create([
-                    'user_id' => $user->id,
-                    'payment_method_key' => $key,
-                    'status' => $status,
-                ]);
-                $methodsToKeep[] = $key;
-            }
+        DB::beginTransaction();
+        try {
+            // Delete the user payment method records first
+            UserPaymentMethod::where('user_id', $user->id)->delete();
+            
+            // Then delete the user
+            $result = $user->delete();
+            
+            DB::commit();
+            return $result;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
         }
-
-        $user->paymentAccesses->each(function($access) use ($methodsToKeep) {
-            if (!in_array($access->payment_method_key->value, $methodsToKeep)) {
-                $access->delete();
-            }
-        });
     }
-
-    /**
-     * Helper method to transform a User model for frontend response.
-     *
-     * @param \App\Models\User $user
-     * @return array
-     */
-  
 }

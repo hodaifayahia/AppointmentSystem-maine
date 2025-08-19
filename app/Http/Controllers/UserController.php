@@ -84,6 +84,8 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|unique:users,email',
             'phone' => 'required|string',
+            'fichenavatte_max' =>'nullable|numeric', // Assuming this is an integer field
+            'salary' => 'nullable|numeric',
             'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Max 2MB file size
             'role' => 'required|string', 
             'is_active'=>'nullable|boolean',
@@ -110,6 +112,8 @@ class UserController extends Controller
                 'name' => $validatedData['name'],
                 'email' => $validatedData['email'],
                 'phone' => $validatedData['phone'],
+                'fichenavatte_max' => $validatedData['fichenavatte_max'],
+                'salary' => $validatedData['salary'],
                 'is_active' => $validatedData['is_active'] ?? 0, // <-- Fix here
                 'password' => Hash::make($validatedData['password']),
                 'avatar' => $avatarPath ?? $request->user()->avatar, // Keep old avatar if none uploaded
@@ -123,26 +127,39 @@ class UserController extends Controller
  * Show the form for editing the specified resource.
  */
 public function update(Request $request, string $id)
-{
-    // Find the user by their ID
-    $user = User::findOrFail($id);
+{    $user = User::findOrFail($id);
 
-    // Validate input data, including avatar
+    // Normalize boolean and numeric incoming values
+    if ($request->has('is_active')) {
+        // Convert various truthy strings to boolean/int
+        $request->merge(['is_active' => filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN) ? 1 : 0]);
+    } else {
+        $request->merge(['is_active' => 0]);
+    }
+
+    if ($request->has('fichenavatte_max')) {
+        $request->merge(['fichenavatte_max' => is_numeric($request->input('fichenavatte_max')) ? (int) $request->input('fichenavatte_max') : null]);
+    }
+    
+
     $validatedData = $request->validate([
         'name' => 'required|string|max:255',
         'email' => 'required|unique:users,email,' . $id,
         'phone' => 'required|string|min:10|max:15',
-        'is_active'=>'nullable|boolean',
+        'is_active' => 'nullable|boolean',
+        'salary' => 'nullable|numeric',
+        'fichenavatte_max' => 'nullable|integer',
         'password' => 'nullable|string|min:8',
         'role' => 'required|string|in:admin,doctor,receptionist,SuperAdmin',
         'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Avatar validation
     ]);
-
     // Prepare data for updating
     $updateData = [
         'name' => $validatedData['name'],
         'email' => $validatedData['email'],
         'phone' => $validatedData['phone'],
+        'salary' => $validatedData['salary'],
+        'fichenavatte_max' => $validatedData['fichenavatte_max'],
         'is_active' => $validatedData['is_active'],
         'role' => $validatedData['role'],
     ];
@@ -267,6 +284,43 @@ public function bulkDelete(Request $request)
     return response()->json(['message' => 'Users deleted successfully!'], 200);
 }
 
+public function notify(Request $request, $id)
+{
+    $request->validate([
+        'amount' => 'required|numeric|min:0',
+        'message' => 'nullable|string'
+    ]);
+
+    $user = User::findOrFail($id);
+    $amount = (float) $request->input('amount', 0);
+    $current = (float) ($user->balance ?? 0);
+    $max = (float) ($user->fichenavatte_max ?? 0);
+
+    // Check if adding amount would exceed max
+    if ($max > 0 && ($current + $amount) > $max) {
+        return response()->json([
+            'success' => false,
+            'message' => "Adding {$amount} would exceed maximum allowed balance ({$max})"
+        ], 422);
+    }
+
+    // Update user balance
+    $user->balance = $current + $amount;
+    $user->save();
+
+    // Here you can add actual notification logic (email, SMS, etc.)
+    // For now, we'll just return success
+
+    return response()->json([
+        'success' => true,
+        'message' => 'User notified and balance updated',
+        'data' => [
+            'user' => new \App\Http\Resources\UserResource($user),
+            'balance' => $user->balance,
+            'amount_added' => $amount
+        ]
+    ]);
+}
     
     
     

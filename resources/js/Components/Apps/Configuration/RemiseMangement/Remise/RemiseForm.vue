@@ -270,7 +270,6 @@
     </form>
   </div>
 </template>
-
 <script setup>
 import { ref, watch, computed, defineProps, defineEmits } from 'vue'
 import InputText from 'primevue/inputtext'
@@ -364,12 +363,17 @@ const isFormValid = computed(() => {
 })
 
 const onTypeChange = () => {
+  // Clear the other field when type changes
   if (form.value.type === 'fixed') {
     form.value.percentage = null
+    // Clear percentage error if present
+    delete errors.value.percentage
   } else {
     form.value.amount = null
+    // Clear amount error if present
+    delete errors.value.amount
   }
-  // Clear related errors on type change
+  // Clear any general errors related to both fields
   delete errors.value.amount
   delete errors.value.percentage
 }
@@ -377,13 +381,21 @@ const onTypeChange = () => {
 const handleSubmit = () => {
   // isFormValid computed property will update errors.value
   if (isFormValid.value) {
-    // Trim string values
+    // Prepare data for submission
     const formData = {
       ...form.value,
       name: form.value.name?.trim(),
       code: form.value.code?.trim().toUpperCase(),
       description: form.value.description?.trim()
     }
+    
+    // Remove the unused field based on type
+    if (formData.type === 'fixed') {
+      delete formData.percentage
+    } else {
+      delete formData.amount
+    }
+    
     emit('save', formData)
   }
 }
@@ -396,6 +408,13 @@ watch(() => props.remise, (newRemise) => {
       // Ensure user_ids and prestation_ids are arrays of IDs for MultiSelect
       user_ids: newRemise.users ? newRemise.users.map(user => user.id) : [],
       prestation_ids: newRemise.prestations ? newRemise.prestations.map(prestation => prestation.id) : []
+    }
+    
+    // Ensure proper initialization of amount/percentage based on type
+    if (newRemise.type === 'percentage' && newRemise.percentage !== undefined) {
+      form.value.amount = null
+    } else if (newRemise.type === 'fixed' && newRemise.amount !== undefined) {
+      form.value.percentage = null
     }
   } else {
     // Reset form for 'add' mode if no remise prop is provided

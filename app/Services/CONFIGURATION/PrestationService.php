@@ -174,6 +174,7 @@ class PrestationService
         if (!$request->requires_hospitalization) {
             $data['default_hosp_nights'] = null;
         }
+    $data['need_an_appointment'] = (bool)($data['need_an_appointment'] ?? false);
 
         return $data;
     }

@@ -31,10 +31,12 @@ const user = ref({
   name: props.userData?.name || '',
   email: props.userData?.email || '',
   phone: props.userData?.phone || '',
-  is_active: props.userData?.is_active || true,
-  avatar:  props.userData?.avatar, // Initialize as null for file upload
+  is_active: props.userData?.is_active ?? true, // ensure is_active present
+  avatar:  props.userData?.avatar,
   password: '',
   role: props.userData?.role || 'receptionist',
+  fichenavatte_max: props.userData?.fichenavatte_max ?? 0,
+  salary: props.userData?.salary ?? 0, // ...added salary default...
 });
 const isEditMode = computed(() => !!props.userData?.id);
 const showPassword = ref(false);
@@ -51,6 +53,8 @@ watch(
       avatar: null,
       password: '',
       role: newValue?.role || 'receptionist',
+      fichenavatte_max: newValue?.fichenavatte_max ?? 0, // keep in edit mode
+      salary: newValue?.salary ?? 0, // ...sync salary on edit...
     };
     
     // Handle existing image in edit mode
@@ -73,6 +77,9 @@ const userSchema = computed(() =>
       .matches(/^[0-9]{10,15}$/, 'Phone number must be between 10 and 15 digits')
       .required('Phone number is required'),
     role: yup.string().oneOf(['admin', 'receptionist', 'doctor' ,'SuperAdmin'], 'Invalid role').required('Role is required'),
+    is_active: yup.boolean(), // added validation for is_active
+    fichenavatte_max: yup.number().integer().min(0).nullable(),
+    salary: yup.number().min(0).nullable(), // ...added salary validation...
     avatar: yup
       .mixed()
       .nullable()
@@ -269,6 +276,27 @@ const submitForm = async (values) => {
                 {{ validationErrors.role || (errors.role && errors.role[0]) }}
               </span>
             </div>
+            <div class="mb-3">
+              <label for="fichenavatte_max" class="form-label">Max FicheNavatte</label>
+              <Field type="number" id="fichenavatte_max" name="fichenavatte_max"
+                :class="{ 'is-invalid': validationErrors.fichenavatte_max || errors.fichenavatte_max }"
+                v-model="user.fichenavatte_max" class="form-control" min="0" />
+              <span class="text-sm invalid-feedback">
+                {{ validationErrors.fichenavatte_max || (errors.fichenavatte_max && errors.fichenavatte_max[0]) }}
+              </span>
+            </div>
+
+            <!-- Added Salary Field (same style as fichenavatte_max) -->
+            <div class="mb-3">
+              <label for="salary" class="form-label">Salary</label>
+              <Field type="number" id="salary" name="salary"
+                :class="{ 'is-invalid': validationErrors.salary || errors.salary }"
+                v-model="user.salary" class="form-control" min="0" step="0.01" />
+              <span class="text-sm invalid-feedback">
+                {{ validationErrors.salary || (errors.salary && errors.salary[0]) }}
+              </span>
+            </div>
+
             <div class="mb-3">
               <label for="password" class="form-label">
                 {{ isEditMode ? 'Password (leave blank to keep current)' : 'Password' }}

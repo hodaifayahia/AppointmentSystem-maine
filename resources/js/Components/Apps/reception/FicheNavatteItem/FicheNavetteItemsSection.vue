@@ -10,6 +10,8 @@ import { useConfirm } from 'primevue/useconfirm'
 import FicheNavetteItemCreate from './FicheNavetteItemCreate.vue'
 import PrestationItemCard from '../FicheNavatte/PrestationItemCard.vue'
 import EmptyState from '../../../Common/EmptyState.vue'
+import { ficheNavetteService } from '../../../Apps/services/Reception/ficheNavetteService'
+
 
 const props = defineProps({
   fiche: {
@@ -65,14 +67,34 @@ const formatCurrency = (amount) => {
     currency: 'DZD'
   }).format(amount || 0)
 }
-
+const confirmRemoveGroup = (items) => {
+  confirm.require({
+    message: 'Are you sure you want to remove this group and all its prestations and dependencies? This action cannot be undone.',
+    header: 'Remove Group',
+    icon: 'pi pi-exclamation-triangle',
+    acceptClass: 'p-button-danger',
+    accept: () => handleRemoveGroup(items)
+  })
+}
+const handleRemoveGroup = async (items) => {
+  // items is an array of all prestations in the group
+  for (const item of items) {
+    await ficheNavetteService.removeFicheNavetteItem(props.fiche.id, item.id)
+    // Optionally: remove dependencies if not handled by backend
+  }
+  emit('items-added')
+}
+const handleRemoveItem = async (item) => {
+  await ficheNavetteService.removeFicheNavetteItem(props.fiche.id, item)
+  emit('item-removed', item)
+}
 const confirmRemoveItem = (itemId) => {
   confirm.require({
     message: 'Are you sure you want to remove this item? This action cannot be undone.',
     header: 'Remove Item',
     icon: 'pi pi-exclamation-triangle',
     acceptClass: 'p-button-danger',
-    accept: () => emit('item-removed', itemId)
+    accept: () => handleRemoveItem(itemId)
   })
 }
 </script>
@@ -165,11 +187,13 @@ const confirmRemoveItem = (itemId) => {
             v-for="group in groupedItems"
             :key="`${group.type}_${group.id}`"
             :group="group"
+            :patient-id="fiche.patient_id"
             :prestations="prestations"
             :packages="packages"
             :doctors="doctors"
             @remove-item="confirmRemoveItem"
             @item-updated="$emit('items-added')"
+            @remove-group="confirmRemoveGroup"
             @dependency-removed="$emit('items-added')"
             @apply-remise="$emit('remise-applied')"
           />

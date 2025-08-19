@@ -17,6 +17,7 @@ const sidebarManifest = {
   infrastructure: defineAsyncComponent(() => import('../../Pages/Dashborad/Sidebars/InfrastructureSidebar.vue')),
   crm: defineAsyncComponent(() => import('../../Pages/Dashborad/Sidebars/CrmSidebar.vue')),
   ticketManagement: defineAsyncComponent(() => import('../../Pages/Dashborad/Sidebars/TicketManagementSidebar.vue')),
+  portal: defineAsyncComponent(() => import('../../Pages/Dashborad/Sidebars/PortalSidebar.vue')),
 //   admission: defineAsyncComponent(() => import('../Dashborad/Sidebars/AdmissionSidebar.vue')),
 //   emergency: defineAsyncComponent(() => import('../Dashborad/Sidebars/EmergencySidebar.vue')),
 //   nursing: defineAsyncComponent(() => import('../Dashborad/Sidebars/NursingSidebar.vue')),

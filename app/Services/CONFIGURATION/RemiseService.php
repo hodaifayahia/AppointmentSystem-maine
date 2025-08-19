@@ -5,13 +5,15 @@ namespace App\Services\CONFIGURATION;
 use App\Models\CONFIGURATION\Remise;
 use App\Models\CONFIGURATION\RemiseUser;
 use Illuminate\Support\Collection;
+use Auth;
+
 
 class RemiseService
 {
     /**
      * Get all remises with their relationships
      */
-     public function getAllRemises(array $params = [])
+    public function getAllRemises(array $params = [])
     {
         $query = Remise::with(['users', 'prestations']);
 
@@ -22,22 +24,34 @@ class RemiseService
                 $q->where('name', 'like', '%' . $searchTerm . '%')
                   ->orWhere('code', 'like', '%' . $searchTerm . '%')
                   ->orWhere('description', 'like', '%' . $searchTerm . '%');
-                // Add more fields to search if necessary, e.g., 'type'
             });
         }
+       
+        // Only fetch remises for the authenticated user
+        $query->whereHas('users', function ($q) {
+            $q->where('user_id', Auth::id());
+        });
 
         // Apply pagination if 'page' and 'size' are provided
-        // This assumes you want pagination. If 'all: true' is always used,
-        // you might just return ->get() based on the presence of 'all' in params.
         if (isset($params['page']) && isset($params['size'])) {
             $page = $params['page'];
             $size = $params['size'];
             return $query->paginate($size, ['*'], 'page', $page);
         }
 
-        // Default to returning all if no pagination params, or if an 'all' param is true
+        // Default to returning all if no pagination params
         return $query->get();
     }
+
+
+public function getUserRemises(string $userId) {
+    return Remise::with(['users', 'prestations'])
+        ->whereHas('users', function($query) use ($userId) {
+            $query->where('user_id', $userId);
+        })
+        ->where('is_active', true)
+        ->get(); // Add ->get() to execute the query
+}
 
     /**
      * Create a new remise with users and prestations

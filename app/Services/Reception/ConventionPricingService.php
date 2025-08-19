@@ -131,6 +131,7 @@ class ConventionPricingService
                     'standard_price' => $prestation->public_price,
                     'convention_price' => $prestation->public_price, // Use public price as convention price
                     'patient_price' => $prestation->public_price,
+                    'need_an_appointment' => $prestation->need_an_appointment, // <-- ADD THIS LINE
                     'company_price' => 0,
                     'convention_id' => $conventionId,
                     'pricing_source' => 'public_pricing',
@@ -148,46 +149,47 @@ class ConventionPricingService
     /**
      * Get prestations from annexes (get ALL prestations from ALL annexes)
      */
-    private function getPrestationsFromAnnexes($conventionId): array
-    {
-        $prestations = [];
+   private function getPrestationsFromAnnexes($conventionId): array
+{
+    $prestations = [];
 
-        try {
-            $annexes = Annex::where('convention_id', $conventionId)
-                ->where('status', 'active')
-                ->get();
+    try {
+        $annexes = Annex::where('convention_id', $conventionId)
+            ->where('status', 'active')
+            ->get();
 
-            foreach ($annexes as $annex) {
-                $annexPricingData = $this->conventionService->calculatePrestationPricing($annex->id);
+        foreach ($annexes as $annex) {
+            $annexPricingData = $this->conventionService->calculatePrestationPricing($annex->id);
 
-                foreach ($annexPricingData as $pricingData) {
-                    $prestation = Prestation::with('specialization')->find($pricingData['prestation_id']);
-                    
-                    if ($prestation) {
-                        $prestations[] = [
-                            'prestation_id' => $prestation->id,
-                            'prestation_name' => $prestation->name,
-                            'prestation_code' => $prestation->internal_code,
-                            'specialization_id' => $prestation->specialization_id,
-                            'specialization_name' => $prestation->specialization->name ?? null,
-                            'standard_price' => $pricingData['prix_global'],
-                            'convention_price' => $pricingData['prix_global'],
-                            'patient_price' => $pricingData['prix_patient'],
-                            'company_price' => $pricingData['prix_company'],
-                            'convention_id' => $conventionId,
-                            'annex_id' => $annex->id,
-                            'max_price_exceeded' => $pricingData['max_price_exceeded'],
-                            'prestation' => $prestation
-                        ];
-                    }
+            foreach ($annexPricingData as $pricingData) {
+                $prestation = Prestation::with('specialization')->find($pricingData['prestation_id']);
+                
+                if ($prestation) {
+                    $prestations[] = [
+                        'prestation_id' => $prestation->id,
+                        'prestation_name' => $prestation->name,
+                        'prestation_code' => $prestation->internal_code,
+                        'specialization_id' => $prestation->specialization_id,
+                        'specialization_name' => $prestation->specialization->name ?? null,
+                        'need_an_appointment' => $prestation->need_an_appointment, // <-- ADD THIS
+                        'standard_price' => $pricingData['prix_global'],
+                        'convention_price' => $pricingData['prix_global'],
+                        'patient_price' => $pricingData['prix_patient'],
+                        'company_price' => $pricingData['prix_company'],
+                        'convention_id' => $conventionId,
+                        'annex_id' => $annex->id,
+                        'max_price_exceeded' => $pricingData['max_price_exceeded'],
+                        'prestation' => $prestation
+                    ];
                 }
             }
-        } catch (\Exception $e) {
-            Log::error('Error getting prestations from annexes: ' . $e->getMessage());
         }
-
-        return $prestations;
+    } catch (\Exception $e) {
+        Log::error('Error getting prestations from annexes: ' . $e->getMessage());
     }
+
+    return $prestations;
+}
 
     /**
      * Find the appropriate convention detail for a given date
@@ -205,76 +207,78 @@ class ConventionPricingService
     /**
      * Get prestations from a specific avenant
      */
-    private function getPrestationsFromAvenant($avenantId, $conventionId): array
-    {
-        $prestations = [];
+  private function getPrestationsFromAvenant($avenantId, $conventionId): array
+{
+    $prestations = [];
 
-        try {
-            $avenantPrestations = PrestationPricing::with(['prestation.specialization'])
-                ->where('avenant_id', $avenantId)
-                ->get();
+    try {
+        $avenantPrestations = PrestationPricing::with(['prestation.specialization'])
+            ->where('avenant_id', $avenantId)
+            ->get();
 
-            foreach ($avenantPrestations as $pricing) {
-                if ($pricing->prestation) {
-                    $prestations[] = [
-                        'prestation_id' => $pricing->prestation->id,
-                        'prestation_name' => $pricing->prestation->name,
-                        'prestation_code' => $pricing->prestation->internal_code,
-                        'specialization_id' => $pricing->prestation->specialization_id,
-                        'specialization_name' => $pricing->prestation->specialization->name ?? null,
-                        'standard_price' => $pricing->prestation->public_price,
-                        'convention_price' => $pricing->prix_patient + $pricing->prix_company,
-                        'patient_price' => $pricing->prix_patient,
-                        'company_price' => $pricing->prix_company,
-                        'convention_id' => $conventionId,
-                        'pricing_id' => $pricing->id,
-                        'prestation' => $pricing->prestation
-                    ];
-                }
+        foreach ($avenantPrestations as $pricing) {
+            if ($pricing->prestation) {
+                $prestations[] = [
+                    'prestation_id' => $pricing->prestation->id,
+                    'prestation_name' => $pricing->prestation->name,
+                    'prestation_code' => $pricing->prestation->internal_code,
+                    'specialization_id' => $pricing->prestation->specialization_id,
+                    'specialization_name' => $pricing->prestation->specialization->name ?? null,
+                    'need_an_appointment' => $pricing->prestation->need_an_appointment, // <-- ADD THIS
+                    'standard_price' => $pricing->prestation->public_price,
+                    'convention_price' => $pricing->prix_patient + $pricing->prix_company,
+                    'patient_price' => $pricing->prix_patient,
+                    'company_price' => $pricing->prix_company,
+                    'convention_id' => $conventionId,
+                    'pricing_id' => $pricing->id,
+                    'prestation' => $pricing->prestation
+                ];
             }
-        } catch (\Exception $e) {
-            Log::error('Error getting prestations from avenant: ' . $e->getMessage());
         }
-
-        return $prestations;
+    } catch (\Exception $e) {
+        Log::error('Error getting prestations from avenant: ' . $e->getMessage());
     }
+
+    return $prestations;
+}
 
     /**
      * Get prestations from prestation pricing table
      */
-    private function getPrestationsFromPrestationPricing($conventionId): array
-    {
-        $prestations = [];
+  private function getPrestationsFromPrestationPricing($conventionId): array
+{
+    $prestations = [];
 
-        try {
-            $pricingData = PrestationPricing::with(['prestation.specialization'])
-                ->where('convention_id', $conventionId)
-                ->get();
+    try {
+        $pricingData = PrestationPricing::with(['prestation.specialization'])
+            ->where('convention_id', $conventionId)
+            ->get();
 
-            foreach ($pricingData as $pricing) {
-                if ($pricing->prestation) {
-                    $prestations[] = [
-                        'prestation_id' => $pricing->prestation->id,
-                        'prestation_name' => $pricing->prestation->name,
-                        'prestation_code' => $pricing->prestation->internal_code,
-                        'specialization_id' => $pricing->prestation->specialization_id,
-                        'specialization_name' => $pricing->prestation->specialization->name ?? null,
-                        'standard_price' => $pricing->prestation->public_price,
-                        'convention_price' => $pricing->prix_patient + $pricing->prix_company,
-                        'patient_price' => $pricing->prix_patient,
-                        'company_price' => $pricing->prix_company,
-                        'convention_id' => $conventionId,
-                        'pricing_id' => $pricing->id,
-                        'prestation' => $pricing->prestation
-                    ];
-                }
+        foreach ($pricingData as $pricing) {
+            if ($pricing->prestation) {
+                $prestations[] = [
+                    'prestation_id' => $pricing->prestation->id,
+                    'prestation_name' => $pricing->prestation->name,
+                    'prestation_code' => $pricing->prestation->internal_code,
+                    'specialization_id' => $pricing->prestation->specialization_id,
+                    'specialization_name' => $pricing->prestation->specialization->name ?? null,
+                    'need_an_appointment' => $pricing->prestation->need_an_appointment, // <-- ADD THIS
+                    'standard_price' => $pricing->prestation->public_price,
+                    'convention_price' => $pricing->prix_patient + $pricing->prix_company,
+                    'patient_price' => $pricing->prix_patient,
+                    'company_price' => $pricing->prix_company,
+                    'convention_id' => $conventionId,
+                    'pricing_id' => $pricing->id,
+                    'prestation' => $pricing->prestation
+                ];
             }
-        } catch (\Exception $e) {
-            Log::error('Error getting prestations from prestation pricing: ' . $e->getMessage());
         }
-
-        return $prestations;
+    } catch (\Exception $e) {
+        Log::error('Error getting prestations from prestation pricing: ' . $e->getMessage());
     }
+
+    return $prestations;
+}
 
     /**
      * Remove duplicate prestations keeping highest priority

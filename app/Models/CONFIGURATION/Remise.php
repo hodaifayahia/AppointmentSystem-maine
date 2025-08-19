@@ -36,4 +36,5 @@ class Remise extends Model
     {
         return $this->belongsToMany(User::class, 'remise_users', 'remise_id', 'user_id');
     }
+    
 }

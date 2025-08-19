@@ -1,11 +1,21 @@
+<!-- filepath: d:\Projects\AppointmentSystem\AppointmentSystem-main\resources\js\Pages\Apps\Configuration\RemiseMangement\PaymentMethod\PaymentMethodList.vue -->
+
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
 import { FilterMatchMode } from 'primevue/api';
-import axios from 'axios'; // Import axios
 
-// PrimeVue Components (only Toast and ConfirmDialog remain here as they are global or page-level)
+// UPDATED: Import service and enum instead of axios
+import paymentMethodService from '../../../../../Components/Apps/services/Reception/paymentMethodService.js';
+import {
+  PaymentMethodEnum,
+  getPaymentMethodsForDropdown,
+  getPaymentMethodLabel,
+  getPaymentMethodIcon
+} from '../../../../../Components/Apps/enums/PaymentMethodEnum.js';
+
+// PrimeVue Components
 import Toast from 'primevue/toast';
 import ConfirmDialog from 'primevue/confirmdialog';
 
@@ -18,45 +28,45 @@ import AssignPaymentMethodDialog from '../../../../../Components/Apps/Configurat
 const toast = useToast();
 const confirm = useConfirm();
 
-// --- Payment Method Data ---
-const paymentOptions = ref([]); // Will be fetched from API
+// --- Payment Method Data (UPDATED to use enum) ---
+const paymentOptions = ref(getPaymentMethodsForDropdown()); // Use enum data
 
 const paymentOptionsFilter = computed(() => {
   return [
     { name: 'All Methods', key: 'all' },
     ...paymentOptions.value.map((option) => ({
-      name: option.name,
-      key: option.key,
+      name: option.label,
+      key: option.value,
     })),
   ];
 });
 
 const paymentOptionsDropdown = computed(() => {
   return paymentOptions.value.map((option) => ({
-    name: option.name,
-    key: option.key,
+    name: option.label,
+    key: option.value,
   }));
 });
 
+// UPDATED: Use enum helper function
 const getPaymentMethodName = (key) => {
-  const method = paymentOptions.value.find((p) => p.key === key);
-  return method ? method.name : key;
+  return getPaymentMethodLabel(key);
 };
 
 // --- User Management State ---
-const users = ref([]); // This array will hold ALL users fetched from the backend
+const users = ref([]);
 const userDialogVisible = ref(false);
 const editMode = ref(false);
 const userForm = reactive({
   id: null,
   name: '',
   email: '',
-  password: '', // Added password field for creation/update
+  password: '',
   status: null,
-  allowedMethods: [], // This will be an array of objects: [{ key: 'prepayment', status: 'active' }]
+  allowedMethods: [], // Array of payment method keys (strings)
 });
 const submitted = ref(false);
-const userStatusOptions = ref(['Active', 'Inactive', 'Allowed']);
+const userStatusOptions = ref(['active', 'inactive', 'suspended']); // FIXED: lowercase to match backend
 
 // --- DataTable Filtering State ---
 const selectedPaymentMethodFilter = ref(null);
@@ -72,23 +82,19 @@ const filteredUsers = computed(() => {
     const searchTerm = filters.value.global.value.toLowerCase();
     filtered = filtered.filter(
       (user) =>
-        user.name.toLowerCase().includes(searchTerm) ||
-        user.email.toLowerCase().includes(searchTerm)
+        user.name?.toLowerCase().includes(searchTerm) ||
+        user.email?.toLowerCase().includes(searchTerm)
     );
   }
 
-  // Filter by status if selected
   if (filters.value.status.value && filters.value.status.value !== 'all') {
     filtered = filtered.filter((user) => user.status === filters.value.status.value);
   }
 
   if (selectedPaymentMethodFilter.value && selectedPaymentMethodFilter.value !== 'all') {
     const methodKey = selectedPaymentMethodFilter.value;
-    // Filter by users who have the selected method with 'active' status
     filtered = filtered.filter((user) =>
-      user.allowedMethods.some(
-        (method) => method.key === methodKey && method.status === 'active'
-      )
+      Array.isArray(user.allowedMethods) && user.allowedMethods.includes(methodKey)
     );
   }
 
@@ -97,43 +103,42 @@ const filteredUsers = computed(() => {
 
 // --- Bulk Assignment Dialog State ---
 const assignPaymentDialogVisible = ref(false);
-// CHANGED: paymentMethodToAssign -> paymentMethodsToAssign (now an Array)
 const paymentMethodsToAssign = ref([]);
-// selectedUsersForAssignment will hold the FULL user objects selected in the MultiSelect
 const selectedUsersForAssignment = ref([]);
 const UsersPaymentMethod = ref([]);
 const assignSubmitted = ref(false);
 
-// --- API Calls ---
-const API_BASE_URL = '/api'; // Adjust if your API is on a different base path
-
+// --- API Calls (UPDATED to use service) ---
 const fetchPaymentMethods = async () => {
-  try {
-    const response = await axios.get(`${API_BASE_URL}/payment-methods`);
-    paymentOptions.value = response.data.data;
-    console.log('Fetched payment options:', paymentOptions.value); // Debugging log
-    
-  } catch (error) {
-    console.error('Error fetching payment methods:', error);
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Could not load payment methods.',
-      life: 3000,
-    });
-  }
+  // UPDATED: Use enum instead of API call for payment methods
+  paymentOptions.value = getPaymentMethodsForDropdown();
+  console.log('Using enum payment options:', paymentOptions.value);
 };
+
 const fetchPaymentMethodUsers = async () => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/user-payment-methods`);
-    UsersPaymentMethod.value = response.data.data;
-    console.log('Fetched UsersPaymentMethod:', UsersPaymentMethod.value); // Debugging log
+    const result = await paymentMethodService.getAllUsersWithPaymentMethods();
+    if (result.success) {
+      // UPDATED: Normalize the data structure
+      UsersPaymentMethod.value = result.data.data.map(userPaymentMethod => ({
+        id: userPaymentMethod.user?.id || userPaymentMethod.user_id,
+        name: userPaymentMethod.user?.name || 'Unknown',
+        email: userPaymentMethod.user?.email || 'No email',
+        status: userPaymentMethod.status || 'inactive',
+        allowedMethods: Array.isArray(userPaymentMethod.payment_method_key) 
+          ? userPaymentMethod.payment_method_key 
+          : []
+      }));
+      console.log('Fetched UsersPaymentMethod:', UsersPaymentMethod.value);
+    } else {
+      throw new Error(result.message);
+    }
   } catch (error) {
-    console.error('Error fetching payment methods:', error);
+    console.error('Error fetching payment method users:', error);
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: error.response?.data?.message || 'Could not load payment methods.',
+      detail: error.message || 'Could not load payment method users.',
       life: 3000,
     });
   }
@@ -141,36 +146,27 @@ const fetchPaymentMethodUsers = async () => {
 
 const fetchUsers = async () => {
   try {
-    // This endpoint should return ALL users relevant for management
-    const response = await axios.get(`${API_BASE_URL}/users`);
-    console.log('Fetched raw users data:', response.data.data); // Inspect this
-
-    // Defensive coding: ensure status and allowedMethods exist and are correct types
-    users.value = response.data.data.map((user) => {
-      const newUser = { ...user }; // Create a copy to avoid direct mutation of original
-      if (newUser.status === undefined || newUser.status === null) {
-        console.warn(
-          `User ${newUser.id} (${newUser.name}) has an undefined or null status. Setting to 'Inactive'.`
-        );
-        newUser.status = 'Inactive'; // Default for robustness on frontend
-      }
-      // Ensure allowedMethods is an array of strings for proper handling in the form and display
-      if (typeof newUser.allowedMethods === 'string') {
-        newUser.allowedMethods = newUser.allowedMethods.split(',').map(m => m.trim()).filter(m => m !== '');
-      } else if (!Array.isArray(newUser.allowedMethods)) {
-        console.warn(
-          `User ${newUser.id} (${newUser.name}) has invalid allowedMethods. Setting to empty array.`
-        );
-        newUser.allowedMethods = []; // Ensure it's an array
-      }
-      return newUser;
-    });
+    // UPDATED: Use a different endpoint for all users (not payment-specific)
+    const result = await paymentMethodService.getAllUsersWithPaymentMethods();
+    if (result.success) {
+      users.value = result.data.data.map(item => ({
+        id: item.user?.id || item.user_id,
+        name: item.user?.name || 'Unknown',
+        email: item.user?.email || 'No email',
+        status: item.status || 'inactive',
+        allowedMethods: Array.isArray(item.payment_method_key) 
+          ? item.payment_method_key 
+          : []
+      }));
+    } else {
+      throw new Error(result.message);
+    }
   } catch (error) {
     console.error('Error fetching users:', error);
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: error.response?.data?.message || 'Could not load users.',
+      detail: error.message || 'Could not load users.',
       life: 3000,
     });
   }
@@ -182,14 +178,14 @@ onMounted(async () => {
   await fetchPaymentMethodUsers();
 });
 
-// --- Helper Functions for Styling and Logic ---
+// --- Helper Functions (UPDATED to use enum) ---
 const getStatusBadgeClass = (status) => {
   switch (status) {
-    case 'Active':
+    case 'active':
       return 'status-active';
-    case 'Allowed':
+    case 'suspended':
       return 'status-info';
-    case 'Inactive':
+    case 'inactive':
       return 'status-inactive';
     default:
       return '';
@@ -198,11 +194,11 @@ const getStatusBadgeClass = (status) => {
 
 const getPaymentMethodTagClass = (key) => {
   switch (key) {
-    case 'prepayment':
+    case PaymentMethodEnum.PREPAYMENT:
       return 'tag-green';
-    case 'postpayment':
+    case PaymentMethodEnum.POSTPAYMENT:
       return 'tag-blue';
-    case 'versement':
+    case PaymentMethodEnum.VERSEMENT:
       return 'tag-orange';
     default:
       return '';
@@ -210,9 +206,8 @@ const getPaymentMethodTagClass = (key) => {
 };
 
 const isValidEmail = (email) => {
-  const re =
-    /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-  return re.test(String(email).toLowerCase());
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email);
 };
 
 const getEmptyMessageForUsers = () => {
@@ -232,7 +227,7 @@ const clearAllFilters = () => {
 const hideUserDialog = () => {
   userDialogVisible.value = false;
   submitted.value = false;
-  resetUserForm(); // Reset form on hide
+  resetUserForm();
 };
 
 const resetUserForm = () => {
@@ -247,25 +242,24 @@ const resetUserForm = () => {
 const editUser = (user) => {
   editMode.value = true;
   userDialogVisible.value = true;
-  // Deep copy the user object and populate the form
   userForm.id = user.id;
   userForm.name = user.name;
   userForm.email = user.email;
-  userForm.password = ''; // Do not pre-fill password for security reasons
+  userForm.password = '';
   userForm.status = user.status;
-  // Ensure allowedMethods is an array of strings. If it's a comma-separated string, split it.
-  userForm.allowedMethods = typeof user.allowedMethods === 'string'
-    ? user.allowedMethods.split(',').map(m => m.trim()).filter(m => m !== '')
-    : (Array.isArray(user.allowedMethods) ? user.allowedMethods : []);
-  console.log('Editing user:', userForm); // Debugging: Check populated form data
+  // UPDATED: Ensure allowedMethods is always an array of strings
+  userForm.allowedMethods = Array.isArray(user.allowedMethods) 
+    ? [...user.allowedMethods] 
+    : [];
+  console.log('Editing user:', userForm);
 };
 
-
+// UPDATED: Use service for save operations
 const saveUserPaymentMethod = async () => {
   submitted.value = true;
 
-  // Validation for status (required)
-  if (userForm.status === null) {
+  // Validation
+  if (!userForm.status) {
     toast.add({
       severity: 'error',
       summary: 'Validation Error',
@@ -275,7 +269,6 @@ const saveUserPaymentMethod = async () => {
     return;
   }
 
-  // For new users, validate required fields
   if (!editMode.value) {
     if (!userForm.name.trim() || !userForm.email.trim() || !isValidEmail(userForm.email)) {
       toast.add({
@@ -298,59 +291,61 @@ const saveUserPaymentMethod = async () => {
     }
   }
 
-  // Construct the payload
+  // UPDATED: Construct payload correctly
   const payload = {
     status: userForm.status,
     allowedMethods: userForm.allowedMethods, // Array of payment method keys
   };
 
- 
+  // For new users, add user creation fields
+  if (!editMode.value) {
+    payload.name = userForm.name;
+    payload.email = userForm.email;
+    payload.password = userForm.password;
+  }
 
   try {
-    let response;
+    let result;
     if (editMode.value) {
-      // Update existing user's payment methods
-      response = await axios.put(`${API_BASE_URL}/user-payment-methods/${userForm.id}`, payload);
+      // UPDATED: Use service
+      result = await paymentMethodService.updateUserPaymentMethods(userForm.id, payload);
     } else {
-      // Create new user with payment methods
-      response = await axios.post(`${API_BASE_URL}/user-payment-methods`, payload);
+      // UPDATED: Use service for bulk assignment (which creates users)
+      result = await paymentMethodService.bulkAssignPaymentMethods({
+        userIds: [userForm.id], // If creating, this might need adjustment
+        paymentMethodKeys: payload.allowedMethods,
+        status: payload.status,
+        // Add user creation fields
+        ...payload
+      });
     }
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: `User payment methods ${editMode.value ? 'updated' : 'created'} successfully`,
-      life: 3000,
-    });
-
-    hideUserDialog();
-    await fetchUsers(); // Re-fetch all users to update the table
-    await fetchPaymentMethodUsers(); // Re-fetch payment method users if they are distinct
-  } catch (error) {
-    console.error('Error saving user payment methods:', error);
-
-    if (error.response && error.response.data && error.response.data.errors) {
-      const errors = error.response.data.errors;
-      let detailMessage = Object.values(errors).flat().join('<br>');
+    if (result.success) {
       toast.add({
-        severity: 'error',
-        summary: 'Validation Error',
-        detail: detailMessage,
-        life: 5000,
-        group: 'br',
-      });
-    } else {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: error.response?.data?.message || 'An error occurred while saving.',
+        severity: 'success',
+        summary: 'Success',
+        detail: `User payment methods ${editMode.value ? 'updated' : 'created'} successfully`,
         life: 3000,
       });
+
+      hideUserDialog();
+      await fetchUsers();
+      await fetchPaymentMethodUsers();
+    } else {
+      throw new Error(result.message);
     }
+  } catch (error) {
+    console.error('Error saving user payment methods:', error);
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.message || 'An error occurred while saving.',
+      life: 3000,
+    });
   }
 };
 
-
+// UPDATED: Use service for delete
 const confirmDeleteUser = (user) => {
   confirm.require({
     message: `Are you sure you want to delete ${user.name}? This action cannot be undone.`,
@@ -362,23 +357,36 @@ const confirmDeleteUser = (user) => {
     rejectLabel: 'Cancel',
     accept: async () => {
       try {
-        await axios.delete(`${API_BASE_URL}/user-payment-methods/${user.id}`);
-
-        toast.add({ severity: 'success', summary: 'Confirmed', detail: 'User deleted', life: 3000 });
-        await fetchUsers(); // Refresh the user list
-        await fetchPaymentMethodUsers(); // Refresh the payment method users list
+        const result = await paymentMethodService.deleteUserPaymentMethods(user.id);
+        if (result.success) {
+          toast.add({ 
+            severity: 'success', 
+            summary: 'Confirmed', 
+            detail: 'User deleted', 
+            life: 3000 
+          });
+          await fetchUsers();
+          await fetchPaymentMethodUsers();
+        } else {
+          throw new Error(result.message);
+        }
       } catch (error) {
         console.error('Error deleting user:', error);
         toast.add({
           severity: 'error',
           summary: 'Error',
-          detail: error.response?.data?.message || 'An error occurred while deleting the user.',
+          detail: error.message || 'An error occurred while deleting the user.',
           life: 3000,
         });
       }
     },
     reject: () => {
-      toast.add({ severity: 'info', summary: 'Rejected', detail: 'Delete operation cancelled', life: 3000 });
+      toast.add({ 
+        severity: 'info', 
+        summary: 'Rejected', 
+        detail: 'Delete operation cancelled', 
+        life: 3000 
+      });
     },
   });
 };
@@ -397,16 +405,14 @@ const hideAssignPaymentDialog = () => {
 };
 
 const resetAssignPaymentForm = () => {
-  // CHANGED: paymentMethodToAssign -> paymentMethodsToAssign (reset to empty array)
   paymentMethodsToAssign.value = [];
   selectedUsersForAssignment.value = [];
 };
 
-// MODIFIED: performBulkAssignment for a single bulk POST request
+// UPDATED: Use service for bulk assignment
 const performBulkAssignment = async () => {
   assignSubmitted.value = true;
 
-  // CHANGED: Check paymentMethodsToAssign length instead of null/value
   if (paymentMethodsToAssign.value.length === 0 || selectedUsersForAssignment.value.length === 0) {
     toast.add({
       severity: 'error',
@@ -417,63 +423,57 @@ const performBulkAssignment = async () => {
     return;
   }
 
-  // Extract only the IDs from the selected users
   const userIdsToAssign = selectedUsersForAssignment.value.map((user) => user.id);
 
-  // Prepare the payload for the bulk assignment API call
+  // UPDATED: Use correct payload structure
   const bulkPayload = {
-    // CHANGED: Send an array of paymentMethodKeys
     paymentMethodKeys: paymentMethodsToAssign.value,
     userIds: userIdsToAssign,
-    status: 'active', // Assuming 'active' for bulk assignment
+    status: 'active',
   };
 
-  console.log('Bulk Assignment Payload to send:', bulkPayload);
+  console.log('Bulk Assignment Payload:', bulkPayload);
 
   try {
-    // CHANGED: Call the correct endpoint that uses your store method
-    const response = await axios.post(`${API_BASE_URL}/user-payment-methods`, bulkPayload);
+    // UPDATED: Use service
+    const result = await paymentMethodService.bulkAssignPaymentMethods(bulkPayload);
+    
+    if (result.success) {
+      const message = result.data.message || 
+        `${userIdsToAssign.length} user(s) updated with ${paymentMethodsToAssign.value.length} payment method(s).`;
 
-    // Use the response data from your store method
-    const message =
-      response.data.message ||
-      `${userIdsToAssign.length} user(s) updated with ${paymentMethodsToAssign.value.length} new payment method(s).`;
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: message,
+        life: 3000,
+      });
 
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: message,
-      life: 3000,
-    });
-
-    hideAssignPaymentDialog();
-    await fetchUsers(); // Refresh the user list after the bulk update
-    await fetchPaymentMethodUsers(); // Refresh the payment method users list
+      hideAssignPaymentDialog();
+      await fetchUsers();
+      await fetchPaymentMethodUsers();
+    } else {
+      throw new Error(result.message);
+    }
   } catch (error) {
     console.error('Error performing bulk assignment:', error);
-
-    if (error.response && error.response.data && error.response.data.message) {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: error.response.data.message,
-        life: 3000,
-      });
-    } else {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: 'An error occurred during bulk assignment.',
-        life: 3000,
-      });
-    }
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.message || 'An error occurred during bulk assignment.',
+      life: 3000,
+    });
   }
 };
 
 const selectAllActiveUsers = () => {
-  // This selects all users that have a status of 'Active' from the fetched 'users' list
-  selectedUsersForAssignment.value = users.value.filter((user) => user.status === 'Active');
-  toast.add({ severity: 'info', summary: 'Users Selected', detail: `All active users added to selection.`, life: 3000 });
+  selectedUsersForAssignment.value = users.value.filter((user) => user.status === 'active');
+  toast.add({ 
+    severity: 'info', 
+    summary: 'Users Selected', 
+    detail: `All active users added to selection.`, 
+    life: 3000 
+  });
 };
 
 const removeUserChip = (userToRemove) => {

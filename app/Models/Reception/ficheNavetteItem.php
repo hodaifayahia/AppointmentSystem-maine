@@ -3,86 +3,79 @@
 namespace App\Models\Reception;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\CONFIGURATION\Prestation;
-use App\Models\Doctor;
+use App\Models\CONFIGURATION\PrestationPackage;
+use App\Models\CONFIGURATION\PrestationPackageitem;
 use App\Models\B2B\Convention;
+use App\Models\User;
 use App\Models\Patient;
 
 class ficheNavetteItem extends Model
 {
-    protected $table = 'fiche_navette_items';
-
     protected $fillable = [
         'fiche_navette_id',
-        'prestation_id',
-        'package_id',
-        'appointment_id',
+        'prestation_id', // Can be null for packages
+        'package_id', // For package items
+        'convention_id',
+        'insured_id',
+        'doctor_id',
         'status',
         'base_price',
-        'user_remise_id',
-        'user_remise_share',
-        'doctor_share',
-        'doctor_id',
+        'custom_name',
+        'discounted_price',
         'final_price',
         'patient_share',
-        'modality_id',
         'prise_en_charge_date',
-        'custom_name',
-        'convention_id',
-        'uploaded_file',
         'family_authorization',
-        'patient_id',
-        'insured_id', // This will store the selected patient for convention
+        'uploaded_file',
+        'notes',
     ];
 
     protected $casts = [
-        'base_price' => 'decimal:2',
-        'final_price' => 'decimal:2',
-        'patient_share' => 'decimal:2',
-        'doctor_share' => 'decimal:2',
-        'user_remise_share' => 'decimal:2',
-        'prise_en_charge_date' => 'datetime',
-        'uploaded_file' => 'array',
         'family_authorization' => 'array',
+        'uploaded_file' => 'array',
+        'prise_en_charge_date' => 'date',
     ];
 
-    public function ficheNavette()
-    {
-        return $this->belongsTo(ficheNavette::class, 'fiche_navette_id');
-    }
-
     /**
-     * Get the doctor
-     */
-    public function doctor()
-    {
-        return $this->belongsTo(Doctor::class, 'doctor_id');
-    }
-
-    /**
-     * Get the prestation
+     * Get the prestation associated with this item (null for packages)
      */
     public function prestation()
     {
-        return $this->belongsTo(Prestation::class, 'prestation_id');
+        return $this->belongsTo(Prestation::class);
     }
 
     /**
-     * Get the convention
+     * Get the package associated with this item (null for individual prestations)
+     */
+    public function package()
+    {
+        return $this->belongsTo(\App\Models\CONFIGURATION\PrestationPackage::class, 'package_id');
+    }
+
+    /**
+     * Get prestations if this is a package item
+     */
+    public function packagePrestations()
+    {
+        return $this->hasMany(PrestationPackageitem::class, 'prestation_package_id', 'package_id')
+                   ->with('prestation');
+    }
+
+    /**
+     * Get the convention associated with this item
      */
     public function convention()
     {
-        return $this->belongsTo(Convention::class, 'convention_id');
+        return $this->belongsTo(Convention::class);
     }
 
     /**
-     * Get the patient
+     * Get the doctor assigned to this item
      */
-    public function patient()
+    public function doctor()
     {
-        return $this->belongsTo(Patient::class, 'patient_id');
+        return $this->belongsTo(User::class, 'doctor_id');
     }
 
     /**
@@ -94,68 +87,34 @@ class ficheNavetteItem extends Model
     }
 
     /**
-     * Get dependencies from ItemDependency table
+     * Get the fiche navette this item belongs to
      */
-    public function dependencies(): HasMany
+    public function ficheNavette()
+    {
+        return $this->belongsTo(ficheNavette::class);
+    }
+
+    /**
+     * Get dependencies for this item
+     */
+    public function dependencies()
     {
         return $this->hasMany(ItemDependency::class, 'parent_item_id');
     }
 
     /**
-     * Get dependencies with their prestations loaded
+     * Check if this item is a package
      */
-    public function dependenciesWithPrestations()
+    public function isPackage(): bool
     {
-        return $this->dependencies()->with('dependencyPrestation');
+        return !is_null($this->package_id) && is_null($this->prestation_id);
     }
 
     /**
-     * Check if this item has dependencies
+     * Check if this item is an individual prestation
      */
-    public function hasDependencies(): bool
+    public function isPrestation(): bool
     {
-        return $this->dependencies()->count() > 0;
-    }
-
-    /**
-     * Get uploaded files as array
-     */
-    public function getUploadedFilesAttribute($value)
-    {
-        return $value ? (is_string($value) ? json_decode($value, true) : $value) : [];
-    }
-
-    /**
-     * Get family authorizations as array
-     */
-    public function getFamilyAuthorizationsAttribute($value)
-    {
-        return $value ? (is_string($value) ? json_decode($value, true) : $value) : [];
-    }
-
-    /**
-     * Scope to get items grouped by insured patient
-     */
-    public function scopeGroupedByInsured($query)
-    {
-        return $query->with(['insuredPatient', 'convention', 'prestation'])
-                    ->orderBy('insured_id')
-                    ->orderBy('convention_id')
-                    ->orderBy('created_at');
-    }
-
-    /**
-     * Get convention prescription data for this item
-     */
-    public function getConventionPrescriptionData()
-    {
-        return [
-            'convention_id' => $this->convention_id,
-            'prise_en_charge_date' => $this->prise_en_charge_date,
-            'family_authorization' => $this->family_authorization,
-            'uploaded_files' => $this->uploaded_file,
-            'insured_patient' => $this->insuredPatient,
-            'prestations' => [$this->prestation],
-        ];
+        return !is_null($this->prestation_id) && is_null($this->package_id);
     }
 }

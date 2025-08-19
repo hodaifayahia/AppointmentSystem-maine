@@ -27,7 +27,6 @@ class RemiseResource extends JsonResource
             'formatted_value' => $this->getFormattedValue(),
             'status_label' => $this->is_active ? 'Active' : 'Inactive',
             'type_label' => $this->type === 'fixed' ? 'Fixed Amount' : 'Percentage',
-            
             // Relationships
             'users' => $this->whenLoaded('users', function () {
                 return $this->users->map(function ($user) {

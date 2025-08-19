@@ -8,7 +8,7 @@ import { Bootstrap5Pagination } from 'laravel-vue-pagination';
 
 const users = ref([]);
 const pagination = ref({});
-const selectedUser = ref({ name: '', email: '', phone: '', password: '' });
+const selectedUser = ref({ name: '', email: '', phone: '', password: '', fichenavatte_max: 0, salary: 0 }); // include new field
 const isModalOpen = ref(false);
 const toaster = useToastr();
 const searchQuery = ref('');
@@ -117,7 +117,7 @@ const uploadFile = async () => {
 };
 // Open modal for adding a new user
 const openModal = () => {
-  selectedUser.value = { name: '', email: '', phone: '' }; // Clear form for new user
+  selectedUser.value = { name: '', email: '', phone: '', fichenavatte_max: 0, salary: 0 }; // Clear form for new user (add salary)
   isModalOpen.value = true;
 };
 
@@ -206,6 +206,7 @@ onMounted(() => {
         <div class="row mb-2">
           <div class="col-sm-6">
             <h1 class="m-0">Users</h1>
+            {}
           </div>
           <div class="col-sm-6">
             <ol class="breadcrumb float-sm-right">
@@ -301,6 +302,8 @@ onMounted(() => {
                 <th>Name</th>
                 <th>Username</th>
                 <th>Phone Number</th>
+                <th>Max FicheNavatte</th> <!-- new header -->
+                <th>Salary</th> <!-- new header -->
                 <th>Role</th>
                 <th>Created at</th>
                 <th>Actions</th>
@@ -312,7 +315,7 @@ onMounted(() => {
             </tbody>
             <tbody v-else>
               <tr>
-                <td colspan="8" class="text-center">No Results Found...</td>
+                <td colspan="11" class="text-center">No Results Found...</td>
               </tr>
             </tbody>
           </table>

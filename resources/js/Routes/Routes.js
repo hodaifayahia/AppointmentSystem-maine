@@ -10,6 +10,7 @@ import convenationRoutes from './convenation'; // 👈 NEW IMPORT
 import crmRoutes from './crm'; // 👈 NEW IMPORT
 import TicketManagementRoutes from './ticket-management'; // 👈 NEW IMPORT
 import receptionRoutes from './Reception'; // 👈 NEW IMPORT
+import PortalRoutes from './PortalSidebar';
 
 
 
@@ -21,6 +22,7 @@ export const allRoutes = [
     ...receptionRoutes,
     ...configurationRoutes, // 👈 ADDED HERE
     ...infrastructureRoutes,
+    ...PortalRoutes,
     ...convenationRoutes,
     ...crmRoutes,
     ...TicketManagementRoutes,

@@ -48,18 +48,16 @@ const goBack = () => {
 </script>
 
 <template>
-    <aside class="main-sidebar   sidebar-dark-primary elevation-4 fixed "
-         :style="{ background: appColor }">
+  <aside class="main-sidebar   sidebar-dark-primary elevation-4 fixed " :style="{ background: appColor }">
     <a href="#" class="brand-link d-flex align-items-center">
-      <img :src="appIcon" class="img-circle elevation-2 me-2 mr-3"
-           style="width: 40px; height: 40px;" :alt="appName">
+      <img :src="appIcon" class="img-circle elevation-2 me-2 mr-3" style="width: 40px; height: 40px;" :alt="appName">
       <span class="brand-text font-weight-light ms-">{{ appName }}</span>
     </a>
     <div class="sidebar">
       <div class="user-panel mt-3 pb-3 mb-3 d-flex justify-content-between">
         <div class="image">
           <img :src="user.avatar" class="img-circle elevation-2 mr-2" alt="User Image"
-               style="height: 40px; width: 40px; object-fit: cover;">
+            style="height: 40px; width: 40px; object-fit: cover;">
         </div>
         <div class="info">
           <a href="#" class="d-block text-center mr-5 mt-1">{{ user.name }}</a>
@@ -67,9 +65,8 @@ const goBack = () => {
       </div>
 
       <nav class="mt-2">
-        <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu"
-            data-accordion="false">
-          
+        <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
+
           <!-- App-specific navigation items (slot content) -->
           <slot name="navigation"></slot>
 
@@ -80,6 +77,11 @@ const goBack = () => {
               <p>Back to Dashboard</p>
             </button>
           </li>
+
+             <router-link to="/admin/appointments/patient-remise-requests" active-class="active" class="nav-link">
+                  <i class="nav-icon fas fa-file-invoice-dollar"></i>
+                  <p>Patient Remise Requests</p>
+            </router-link>
 
           <li class="nav-item mr-2">
             <form style="display: contents;">

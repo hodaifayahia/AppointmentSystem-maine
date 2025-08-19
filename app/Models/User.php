@@ -36,6 +36,8 @@ class User extends Authenticatable
         'created_at',
         'updated_at',
         'avatar',
+        'fichenavatte_max',
+        'salary',
         'created_by',
         'background',
     ];

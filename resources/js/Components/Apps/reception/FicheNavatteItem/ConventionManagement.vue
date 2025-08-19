@@ -20,6 +20,10 @@ import Message from 'primevue/message'
 // Import PatientSearch component
 import PatientSearch from '../../../../Pages/Appointments/PatientSearch.vue'
 
+// ADD THESE IMPORTS
+import AppointmentRequiredAlert from './AppointmentRequiredAlert.vue'
+import SameDayAppointmentModal from './SameDayAppointmentModal.vue'
+
 // Services
 import { ficheNavetteService } from '../../../../Components/Apps/services/Reception/ficheNavetteService.js'
 
@@ -78,6 +82,13 @@ const completedConventions = ref([])
 
 // File upload
 const uploadedFiles = ref([])
+
+// ADD THESE MISSING REACTIVE VARIABLES FOR APPOINTMENTS
+const showAppointmentAlert = ref(false)
+const showSameDayModal = ref(false)
+const prestationsNeedingAppointments = ref([])
+const currentPrestationForAppointment = ref(null)
+const pendingConventionData = ref(null)
 
 // Computed properties
 const visibleModal = computed({
@@ -167,9 +178,11 @@ const formatDateForApi = (date) => {
   if (!date) return null
   return new Date(date).toISOString().split('T')[0]
 }
-
 const fetchFamilyAuthorization = async () => {
+  console.log('fetchFamilyAuthorization called with date:', priseEnChargeDate.value) // Debug
+  
   if (!priseEnChargeDate.value) {
+    console.log('No date selected, clearing options') // Debug
     familyAuthOptions.value = []
     selectedFamilyAuth.value = null
     return
@@ -178,12 +191,27 @@ const fetchFamilyAuthorization = async () => {
   try {
     familyAuthLoading.value = true
     const formattedDate = formatDateForApi(priseEnChargeDate.value)
+    console.log('Formatted date for API:', formattedDate) // Debug
+    
     const response = await ficheNavetteService.getFamilyAuthorization(formattedDate)
+    console.log('API response:', response) // Debug
+    
     if (response.success) {
       familyAuthOptions.value = response.data || []
+      console.log('Family auth options set:', familyAuthOptions.value) // Debug
+    } else {
+      console.error('API returned error:', response.message)
+      familyAuthOptions.value = []
     }
   } catch (error) {
     console.error('Error fetching family authorization:', error)
+    familyAuthOptions.value = []
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to load family authorization options',
+      life: 3000
+    })
   } finally {
     familyAuthLoading.value = false
   }
@@ -331,19 +359,225 @@ const onSpecializationChange = () => {
 const addConvention = () => {
   if (!canAddConvention.value) return
 
-  const selectedSpecializationObj = specializations.value.find(s => s.id === selectedSpecialization.value)
-  const selectedDoctorObj = allDoctors.value.find(d => d.id === selectedDoctor.value)
-  const selectedConventionObj = filteredConventions.value.find(c => c.id === currentConvention.value)
-  const selectedOrganismeObj = organismes.value.find(o => o.id === currentOrganisme.value)
+  // Always proceed with convention creation without checking appointments
+  // Appointment handling will be done at the final step
+  proceedWithConventionCreation()
+}
 
-  const existingIndex = existingConventionIndex.value;
+// Add new methods for handling appointments
+const handleProceedWithAppointments = (data) => {
+  showAppointmentAlert.value = false
+  
+  // Prepare the first prestation with proper doctor/specialization info
+  if (data.prestationsNeedingAppointments.length > 0) {
+    const prestation = data.prestationsNeedingAppointments[0]
+    
+    // Find the convention that contains this prestation to get doctor info
+    let doctorId = selectedDoctor.value
+    let specializationId = selectedSpecialization.value
+    
+    // Look through completed conventions to find the right doctor for this prestation
+    for (const convention of completedConventions.value) {
+      const found = convention.prestations.find(p => 
+        (p.prestation_id || p.id) === (prestation.prestation_id || prestation.id)
+      )
+      if (found) {
+        doctorId = convention.doctor.id
+        specializationId = convention.specialization.id
+        break
+      }
+    }
+    
+    // Enhance the prestation object with doctor info
+    currentPrestationForAppointment.value = {
+      ...prestation,
+      doctorId: doctorId,
+      specializationId: specializationId
+    }
+    
+    console.log('Setting up appointment modal with:', {
+      doctorId,
+      specializationId,
+      patientId: selectedAdherentPatient.value?.id,
+      prestationId: prestation.prestation_id || prestation.id
+    })
+    
+    showSameDayModal.value = true
+  }
+}
+
+const handleProceedWithoutAppointments = () => {
+  showAppointmentAlert.value = false
+  
+  // Remove prestations that need appointments from completed conventions
+  completedConventions.value.forEach(convention => {
+    convention.prestations = convention.prestations.filter(p => !p.need_an_appointment)
+    convention.totalPrestations = convention.prestations.length
+  })
+  
+  // Remove conventions that have no prestations left
+  completedConventions.value = completedConventions.value.filter(conv => conv.prestations.length > 0)
+  
+  // Clear appointment-related state
+  prestationsNeedingAppointments.value = []
+  
+  // Proceed with prescription creation
+  proceedWithPrescriptionCreation()
+}
+
+const handleCancelAppointmentProcess = () => {
+  showAppointmentAlert.value = false
+  pendingConventionData.value = null
+  prestationsNeedingAppointments.value = []
+}
+
+const onSameDayAppointmentBooked = (appointment) => {
+  toast.add({
+    severity: 'success',
+    summary: 'Success',
+    detail: 'Appointment booked successfully!',
+    life: 3000
+  })
+  
+  // Close the same day modal
+  showSameDayModal.value = false
+  
+  // Remove the prestation that was booked from the pending list
+  removeBookedPrestationFromPending(currentPrestationForAppointment.value)
+  
+  // Continue with next prestation or remaining items
+  continueAppointmentProcess()
+}
+
+const onAddedToWaitingList = (waitListEntry) => {
+  toast.add({
+    severity: 'info',
+    summary: 'Added to Waiting List',
+    detail: 'You have been added to the waiting list',
+    life: 3000
+  })
+  
+  // Close the same day modal
+  showSameDayModal.value = false
+  
+  // Remove the prestation that was added to waitlist from pending list
+  removeBookedPrestationFromPending(currentPrestationForAppointment.value)
+  
+  // Continue with next prestation or remaining items
+  continueAppointmentProcess()
+}
+
+const removeBookedPrestationFromPending = (prestation) => {
+  console.log('=== removeBookedPrestationFromPending called ===')
+  console.log('Removing prestation:', prestation)
+  
+  if (!prestation) return
+  
+  // Remove from prestations needing appointments
+  const prestationId = prestation.prestation_id || prestation.id
+  prestationsNeedingAppointments.value = prestationsNeedingAppointments.value.filter(
+    p => (p.prestation_id || p.id) !== prestationId
+  )
+  
+  console.log('Updated prestationsNeedingAppointments:', prestationsNeedingAppointments.value.length)
+  
+  // Also remove from completed conventions if the prestation requires appointment
+  // This prevents it from being included in the final prescription if no appointment was booked
+  // Note: Only remove if you want to exclude prestations without appointments
+  // Comment out the below code if you want to keep all prestations regardless of appointment status
+  
+  /*
+  completedConventions.value.forEach(convention => {
+    const originalLength = convention.prestations.length
+    convention.prestations = convention.prestations.filter(p => 
+      (p.prestation_id || p.id) !== prestationId
+    )
+    if (convention.prestations.length !== originalLength) {
+      convention.totalPrestations = convention.prestations.length
+      console.log(`Removed prestation from convention ${convention.convention.name}`)
+    }
+  })
+  
+  // Remove conventions that have no prestations left
+  completedConventions.value = completedConventions.value.filter(conv => conv.prestations.length > 0)
+  */
+}
+
+const continueAppointmentProcess = () => {
+  console.log('=== continueAppointmentProcess called ===')
+  console.log('Remaining prestations needing appointments:', prestationsNeedingAppointments.value.length)
+  
+  // Check if there are more prestations needing appointments
+  if (prestationsNeedingAppointments.value.length > 0) {
+    const prestation = prestationsNeedingAppointments.value[0]
+    
+    // Find the convention that contains this prestation to get doctor info
+    let doctorId = selectedDoctor.value
+    let specializationId = selectedSpecialization.value
+    
+    // Look through completed conventions to find the right doctor for this prestation
+    for (const convention of completedConventions.value) {
+      const found = convention.prestations.find(p => 
+        (p.prestation_id || p.id) === (prestation.prestation_id || prestation.id)
+      )
+      if (found) {
+        doctorId = convention.doctor.id
+        specializationId = convention.specialization.id
+        break
+      }
+    }
+    
+    // Enhance the prestation object with doctor info
+    currentPrestationForAppointment.value = {
+      ...prestation,
+      doctorId: doctorId,
+      specializationId: specializationId
+    }
+    
+    console.log('Setting up next appointment modal with:', currentPrestationForAppointment.value)
+    showSameDayModal.value = true
+  } else {
+    // No more prestations need appointments - proceed with prescription creation
+    console.log('No more appointments needed, proceeding with prescription creation')
+    prestationsNeedingAppointments.value = []
+    currentPrestationForAppointment.value = null
+    
+    // Proceed with prescription creation
+    proceedWithPrescriptionCreation()
+  }
+}
+
+// Extract the actual convention creation logic
+const proceedWithConventionCreation = () => {
+  if (!pendingConventionData.value) {
+    // Direct call - use current data
+    const selectedSpecializationObj = specializations.value.find(s => s.id === selectedSpecialization.value)
+    const selectedDoctorObj = allDoctors.value.find(d => d.id === selectedDoctor.value)
+    const selectedConventionObj = filteredConventions.value.find(c => c.id === currentConvention.value)
+    const selectedOrganismeObj = organismes.value.find(o => o.id === currentOrganisme.value)
+    
+    createConventionWithData(selectedOrganismeObj, selectedConventionObj, selectedSpecializationObj, selectedDoctorObj, currentPrestations.value)
+  } else {
+    // Called after appointment processing - use pending data
+    createConventionWithData(
+      pendingConventionData.value.selectedOrganismeObj,
+      pendingConventionData.value.selectedConventionObj,
+      pendingConventionData.value.selectedSpecializationObj,
+      pendingConventionData.value.selectedDoctorObj,
+      currentPrestations.value
+    )
+  }
+}
+
+const createConventionWithData = (organismeObj, conventionObj, specializationObj, doctorObj, prestations) => {
+  const existingIndex = completedConventions.value.findIndex(conv => conv.convention.id === conventionObj.id);
   
   if (existingIndex !== -1) {
     const existingConvention = completedConventions.value[existingIndex];
     const existingPrestationIds = new Set(existingConvention.prestations.map(p => p.prestation_id));
     
-    const newUniquePrestations = currentPrestations.value.filter(
-      p => !existingPrestationIds.has(p.prestation_id)
+    const newUniquePrestations = prestations.filter(
+      p => !existingPrestationIds.has(p.prestation_id || p.id)
     );
 
     if (newUniquePrestations.length > 0) {
@@ -369,13 +603,13 @@ const addConvention = () => {
       priseEnChargeDate: priseEnChargeDate.value,
       selectedFamilyAuth: selectedFamilyAuth.value,
       selectedAdherentPatient: selectedAdherentPatient.value,
-      organisme: selectedOrganismeObj,
-      convention: selectedConventionObj,
-      prestations: [...currentPrestations.value],
-      specialization: selectedSpecializationObj,
-      doctor: selectedDoctorObj,
+      organisme: organismeObj,
+      convention: conventionObj,
+      prestations: [...prestations],
+      specialization: specializationObj,
+      doctor: doctorObj,
       addedAt: new Date(),
-      totalPrestations: currentPrestations.value.length
+      totalPrestations: prestations.length
     }
     completedConventions.value.push(newConventionGroup)
     toast.add({
@@ -390,52 +624,24 @@ const addConvention = () => {
   resetStep2Fields();
 }
 
-const resetStep2Fields = () => {
-  currentOrganisme.value = null
-  currentConvention.value = null
-  currentPrestations.value = []
-  conventionPrestations.value = []
-  filteredConventions.value = []
-  selectedSpecialization.value = null
-  selectedDoctor.value = null
-}
+// Computed for other items count (for the alert modal)
+const otherItemsCount = computed(() => {
+  if (!pendingConventionData.value) return 0
+  return pendingConventionData.value.prestationsWithoutAppointments.length
+})
 
-const removePrestationFromConvention = (conventionId, prestationId) => {
-  const conventionIndex = completedConventions.value.findIndex(conv => conv.id === conventionId);
-  if (conventionIndex === -1) return;
+// REMOVE the old blocking logic from the original addConvention method
+// The old method had:
+// if (hasNeedAppointment) {
+//   toast.add({
+//     severity: 'error',
+//     summary: 'Cannot Add',
+//     detail: 'One or more selected prestations require an appointment...',
+//   });
+//   return;
+// }
 
-  const convention = completedConventions.value[conventionIndex];
-  const prestationIndex = convention.prestations.findIndex(p => p.prestation_id === prestationId);
-
-  if (prestationIndex !== -1) {
-    convention.prestations.splice(prestationIndex, 1);
-    convention.totalPrestations = convention.prestations.length;
-
-    if (convention.prestations.length === 0) {
-      completedConventions.value.splice(conventionIndex, 1);
-      toast.add({
-        severity: 'info',
-        summary: 'Convention Removed',
-        detail: 'Convention removed as all prestations were deleted',
-        life: 2000
-      });
-    } else {
-      toast.add({
-        severity: 'info',
-        summary: 'Prestation Removed',
-        detail: 'Prestation has been removed from convention',
-        life: 2000
-      });
-    }
-  }
-}
-
-const removeConvention = (conventionId) => {
-  const index = completedConventions.value.findIndex(conv => conv.id === conventionId)
-  if (index !== -1) {
-    completedConventions.value.splice(index, 1)
-  }
-}
+// Add these missing methods that are referenced but not defined:
 
 const nextStep = () => {
   if (activeStep.value < 2) {
@@ -449,16 +655,33 @@ const prevStep = () => {
   }
 }
 
+const onDoctorChange = () => {
+  // Add any logic needed when doctor changes
+}
+
 const formatDate = (date) => {
   if (!date) return ''
-  return new Date(date).toLocaleDateString('fr-FR')
+  return new Date(date).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  })
 }
 
 const formatCurrency = (amount) => {
+  if (!amount && amount !== 0) return 'N/A'
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
-    currency: 'DZD'
-  }).format(amount || 0)
+    currency: 'EUR'
+  }).format(amount)
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 const onFileSelect = (event) => {
@@ -474,76 +697,143 @@ const onFileSelect = (event) => {
 }
 
 const removeFile = (fileId) => {
-  const index = uploadedFiles.value.findIndex(f => f.id === fileId)
-  if (index !== -1) {
-    uploadedFiles.value.splice(index, 1)
+  uploadedFiles.value = uploadedFiles.value.filter(file => file.id !== fileId)
+}
+
+const removeConvention = (conventionId) => {
+  completedConventions.value = completedConventions.value.filter(conv => conv.id !== conventionId)
+}
+
+const removePrestationFromConvention = (conventionId, prestationId) => {
+  const convention = completedConventions.value.find(conv => conv.id === conventionId)
+  if (convention) {
+    convention.prestations = convention.prestations.filter(p => p.prestation_id !== prestationId)
+    convention.totalPrestations = convention.prestations.length
+    
+    // Remove entire convention if no prestations left
+    if (convention.prestations.length === 0) {
+      removeConvention(conventionId)
+    }
   }
 }
 
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+const resetStep2Fields = () => {
+  currentOrganisme.value = null
+  currentConvention.value = null
+  currentPrestations.value = []
+  selectedSpecialization.value = null
+  selectedDoctor.value = null
+  conventionPrestations.value = []
+  filteredConventions.value = []
 }
+
+const resetAll = () => {
+  activeStep.value = 0
+  priseEnChargeDate.value = null
+  selectedFamilyAuth.value = null
+  selectedAdherentPatient.value = null
+  completedConventions.value = []
+  uploadedFiles.value = []
+  resetStep2Fields()
+  
+  // Reset appointment-related state
+  showAppointmentAlert.value = false
+  showSameDayModal.value = false
+  prestationsNeedingAppointments.value = []
+  currentPrestationForAppointment.value = null
+  pendingConventionData.value = null
+}
+
 const createConventionPrescription = async () => {
-  if (!canCreatePrescription.value) return
-
-  creating.value = true
-
-  try {
-    const firstConvention = completedConventions.value[0]
-    
-    // Create FormData for file upload
-    const formData = new FormData()
-    
-    // Add the basic data as JSON strings
-    formData.append('prise_en_charge_date', formatDateForApi(firstConvention.priseEnChargeDate))
-    formData.append('familyAuth', firstConvention.selectedFamilyAuth)
-    
-    if (firstConvention.selectedAdherentPatient) {
-      formData.append('adherentPatient_id', firstConvention.selectedAdherentPatient.id)
-    }
-    
-    // Add conventions data as JSON string
-    formData.append('conventions', JSON.stringify(completedConventions.value.map(conv => ({
-      convention_id: conv.convention.id,
-      specialization_id: conv.specialization.id,
-      doctor_id: conv.doctor.id,
-      prestations: conv.prestations.map(prest => ({
-        prestation_id: prest.prestation_id || prest.id,
-        convention_price: prest.convention_price,
-        doctor_id: conv.doctor.id,
-        specialization_id: conv.specialization.id
-      }))
-    }))))
-
-    // Add file if exists (SINGLE FILE, NOT ARRAY)
-    if (uploadedFiles.value && uploadedFiles.value.length > 0) {
-      formData.append('uploadedFiles', uploadedFiles.value[0].file)
-    }
-
-    console.log('Sending FormData with single file')
-
-    const result = await ficheNavetteService.createConventionPrescription(
-      props.ficheNavetteId,
-      formData
+  console.log('=== createConventionPrescription called ===')
+  console.log('Completed conventions:', completedConventions.value)
+  
+  // Check if any prestations in completed conventions require appointments
+  const allPrestationsNeedingAppointments = []
+  
+  completedConventions.value.forEach(convention => {
+    const prestationsWithAppointments = convention.prestations.filter(
+      p => p.need_an_appointment === true
     )
+    console.log(`Convention ${convention.convention.name} has ${prestationsWithAppointments.length} prestations needing appointments`)
+    allPrestationsNeedingAppointments.push(...prestationsWithAppointments)
+  })
+  
+  console.log('Total prestations needing appointments:', allPrestationsNeedingAppointments.length)
+  
+  // If there are prestations needing appointments, show the alert
+  if (allPrestationsNeedingAppointments.length > 0) {
+    prestationsNeedingAppointments.value = allPrestationsNeedingAppointments
+    showAppointmentAlert.value = true
+    return
+  }
+  
+  // If no appointments needed, proceed with creation
+  await proceedWithPrescriptionCreation()
+}
 
-    if (result.success) {
+const proceedWithPrescriptionCreation = async () => {
+  console.log('=== proceedWithPrescriptionCreation called ===')
+  console.log('Creating prescription with completed conventions:', completedConventions.value)
+  
+  if (completedConventions.value.length === 0) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Warning',
+      detail: 'No conventions to create prescription with',
+      life: 3000
+    })
+    return
+  }
+  
+  creating.value = true
+  try {
+    const formData = new FormData()
+
+    // Append conventions as JSON string
+    const conventionsData = completedConventions.value.map(conv => ({
+      convention_id: conv.convention.id,
+      doctor_id: conv.doctor.id,
+      prestations: conv.prestations.map(p => ({
+        prestation_id: p.prestation_id || p.id,
+        doctor_id: conv.doctor.id,
+        convention_price: p.convention_price || p.price
+      }))
+    }))
+    
+    console.log('Conventions data to send:', conventionsData)
+    formData.append('conventions', JSON.stringify(conventionsData))
+
+    // Append other fields
+    formData.append('prise_en_charge_date', formatDateForApi(priseEnChargeDate.value))
+    formData.append('familyAuth', selectedFamilyAuth.value)
+    if (selectedAdherentPatient.value?.id) {
+      formData.append('adherentPatient_id', selectedAdherentPatient.value.id)
+    }
+
+    // Append files
+    uploadedFiles.value.forEach((file, index) => {
+      formData.append(`uploadedFiles[${index}]`, file.file)
+    })
+
+    console.log('Sending prescription creation request...')
+    const response = await ficheNavetteService.createConventionPrescription(props.ficheNavetteId, formData)
+    console.log('Prescription creation response:', response)
+
+    if (response.success) {
       toast.add({
         severity: 'success',
-        summary: 'Convention Prescription Created',
-        detail: `Created ${result.data.items_created} prescription items`,
-        life: 4000
+        summary: 'Success',
+        detail: 'Convention prescription created successfully!',
+        life: 3000
       })
-
-      emit('convention-items-added', result.data)
+      
+      // Emit success and close modal
+      emit('convention-items-added')
+      emit('update:visible', false)
       resetAll()
-      visibleModal.value = false
     } else {
-      throw new Error(result.message)
+      throw new Error(response.message || 'Failed to create prescription')
     }
   } catch (error) {
     console.error('Error creating convention prescription:', error)
@@ -551,57 +841,33 @@ const createConventionPrescription = async () => {
       severity: 'error',
       summary: 'Error',
       detail: error.message || 'Failed to create convention prescription',
-      life: 5000
+      life: 3000
     })
   } finally {
     creating.value = false
   }
 }
 
-const resetAll = () => {
-  resetStep2Fields()
-  priseEnChargeDate.value = null
-  selectedFamilyAuth.value = null
-  selectedAdherentPatient.value = null
-  adherentPatientSearch.value = ''
-  familyAuthOptions.value = []
-  completedConventions.value = []
-  uploadedFiles.value = []
-  activeStep.value = 0
-}
-
-watch(priseEnChargeDate, onDateChanged)
-watch(selectedFamilyAuth, onFamilyAuthChanged)
-
+// Initialize data when component mounts
 onMounted(async () => {
-  try {
-    await Promise.all([
-      loadOrganismes(),
-      loadConventions(),
-      loadSpecializations(),
-      loadAllDoctors()
-    ])
-    await fetchFamilyAuthorization();
-  } catch (error) {
-    console.error('Error loading initial data:', error)
-  }
+  await Promise.all([
+    loadOrganismes(),
+    loadConventions(),
+    loadSpecializations(),
+    loadAllDoctors()
+  ])
 })
 
-const getConventionInfo = () => {
-  if (!currentConvention.value) {
-    return null
-  }
+// FIXED: Add the correct watch for date changes
+watch(priseEnChargeDate, async (newDate) => {
+  console.log('Date changed:', newDate) // Debug log
+  await onDateChanged()
+}, { immediate: false })
 
-  const convention = filteredConventions.value.find(c => c.id === currentConvention.value)
-  const specialization = specializations.value.find(s => s.id === selectedSpecialization.value)
-  const doctor = allDoctors.value.find(d => d.id === selectedDoctor.value)
-
-  return {
-    convention: convention?.contract_name,
-    specialization: specialization?.name,
-    doctor: doctor?.name
-  }
-}
+// Watch for family auth changes
+watch(selectedFamilyAuth, () => {
+  onFamilyAuthChanged()
+})
 </script>
 
 <template>
@@ -849,7 +1115,30 @@ const getConventionInfo = () => {
                             <template #option="{ option }">
                               <div class="prestation-option">
                                 <div class="prestation-info">
-                                  <span class="prestation-name">{{ option.prestation_name || option.name }}</span>
+                                  <div class="prestation-header">
+                                    <strong class="prestation-title">{{ option.prestation_name || option.name }}</strong>
+                                    <Tag
+                                      v-if="option.need_an_appointment"
+                                      value="Appointment Required"
+                                      severity="warning"
+                                      size="small"
+                                      class="ml-2"
+                                    />
+                                    <Tag
+                                      v-else
+                                      value="No Appointment Needed"
+                                      severity="success"
+                                      size="small"
+                                      class="ml-2"
+                                    />
+                                    <Tag
+                                      v-if="option.specialization_name && option.specialization_name !== 'Unknown'"
+                                      :value="option.specialization_name"
+                                      severity="info"
+                                      size="small"
+                                      class="ml-2"
+                                    />
+                                  </div>
                                   <small class="prestation-code">Code: {{ option.prestation_code || option.internal_code }}</small>
                                   <small class="prestation-service">Service: {{ option.service_name }}</small>
                                 </div>
@@ -978,7 +1267,23 @@ const getConventionInfo = () => {
                                   class="prestation-item"
                                 >
                                   <div class="prestation-info">
-                                    <span class="prestation-name">{{ prestation.prestation_name || prestation.name }}</span>
+                                    <div class="prestation-header">
+                                      <strong class="prestation-title">{{ prestation.name }}</strong>
+                                      <Tag
+                                        v-if="prestation.need_an_appointment"
+                                        value="Appointment Required"
+                                        severity="danger"
+                                        size="small"
+                                        class="ml-2"
+                                      />
+                                      <Tag
+                                        v-if="prestation.specialization && prestation.specialization !== 'Unknown'"
+                                        :value="prestation.specialization"
+                                        severity="info"
+                                        size="small"
+                                        class="ml-2"
+                                      />
+                                    </div>
                                     <small class="prestation-code">Code: {{ prestation.prestation_code || prestation.internal_code }}</small>
                                   </div>
                                   <div class="prestation-actions">
@@ -1122,6 +1427,31 @@ const getConventionInfo = () => {
         </StepperPanel>
       </Stepper>
     </div>
+
+    <!-- Appointment Required Alert -->
+    <AppointmentRequiredAlert
+      :visible="showAppointmentAlert"
+      :prestations-needing-appointments="prestationsNeedingAppointments"
+      :other-items-count="otherItemsCount"
+      :selected-doctor="selectedDoctor"
+      @update:visible="showAppointmentAlert = $event"
+      @proceed-with-appointments="handleProceedWithAppointments"
+      @proceed-without-appointments="handleProceedWithoutAppointments"
+      @cancel="handleCancelAppointmentProcess"
+    />
+    
+    <!-- Same Day Appointment Modal -->
+   <SameDayAppointmentModal
+  v-if="showSameDayModal"
+  :visible="showSameDayModal"
+  :doctor-id="currentPrestationForAppointment?.doctorId || selectedDoctor"
+  :patient-id="selectedAdherentPatient?.id || selectedAdherentPatient?.patient_id"
+  :prestation-id="currentPrestationForAppointment?.prestation_id || currentPrestationForAppointment?.id"
+  :doctor-specialization-id="currentPrestationForAppointment?.specializationId || selectedSpecialization"
+  @update:visible="showSameDayModal = $event"
+  @appointment-booked="onSameDayAppointmentBooked"
+  @added-to-waitlist="onAddedToWaitingList"
+/>
   </Dialog>
 </template>
 
@@ -1397,7 +1727,13 @@ const getConventionInfo = () => {
   gap: 0.25rem;
 }
 
-.prestation-name {
+.prestation-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.prestation-title {
   font-weight: 500;
   color: #1e293b;
 }

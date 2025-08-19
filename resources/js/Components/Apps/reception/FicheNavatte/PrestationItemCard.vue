@@ -40,6 +40,10 @@ const props = defineProps({
     required: true,
     default: () => []
   },
+  patientId: {
+    type: String,
+    required: true
+  },
   doctors: {
     type: Array,
     required: true,
@@ -144,15 +148,15 @@ const conventionChips = computed(() => {
   return Object.values(uniqueConventions)
 })
 
-// Add missing regularDependencies computed property
+// FIXED: Update regularDependencies to group by parent_item_id
 const regularDependencies = computed(() => {
   const allDependencies = []
   
   groupItems.value.forEach(item => {
     if (item.dependencies && Array.isArray(item.dependencies)) {
       item.dependencies.forEach(dep => {
-        // Only include non-package dependencies
-        if (dep.dependency_type !== 'package') {
+        // Only include dependencies that belong to THIS specific parent item
+        if (dep.parent_item_id === item.id && dep.dependency_type !== 'package') {
           allDependencies.push({
             ...dep,
             parentItem: item
@@ -165,15 +169,15 @@ const regularDependencies = computed(() => {
   return allDependencies
 })
 
-// Add missing packageDependencies computed property
+// FIXED: Update packageDependencies to group by parent_item_id
 const packageDependencies = computed(() => {
   const packageDeps = []
   
   groupItems.value.forEach(item => {
     if (item.dependencies && Array.isArray(item.dependencies)) {
       item.dependencies.forEach(dep => {
-        // Only include package dependencies
-        if (dep.dependency_type === 'package') {
+        // Only include package dependencies that belong to THIS specific parent item
+        if (dep.parent_item_id === item.id && dep.dependency_type === 'package') {
           packageDeps.push({
             ...dep,
             parentItem: item
@@ -298,25 +302,32 @@ const headerStyle = computed(() => {
   return {}
 })
 
-// Combined items for main display (original items + package dependencies)
+// FIXED: Update mainDisplayItems to only show items for this specific group
 const mainDisplayItems = computed(() => {
+  // Only show the main items for this group (not dependencies from other groups)
   const items = [...groupItems.value]
   
-  // Add package dependencies as main items
+  // Add package dependencies as main items ONLY if they belong to this group's parent item
   packageDependencies.value.forEach(dep => {
-    const prestation = dep.dependencyPrestation || dep.dependency_prestation
-    if (prestation) {
-      items.push({
-        id: `dep_${dep.id || Math.random()}`,
-        prestation: prestation,
-        status: dep.status || 'required',
-        base_price: prestation.public_price || 0,
-        final_price: prestation.public_price || 0,
-        patient_share: prestation.public_price || 0,
-        dependencies: [],
-        isDependency: true,
-        originalDependency: dep
-      })
+    // Check if this dependency belongs to any item in the current group
+    const belongsToThisGroup = groupItems.value.some(item => item.id === dep.parent_item_id)
+    
+    if (belongsToThisGroup) {
+      const prestation = dep.dependencyPrestation || dep.dependency_prestation
+      if (prestation) {
+        items.push({
+          id: `dep_${dep.id || Math.random()}`,
+          prestation: prestation,
+          status: dep.status || 'required',
+          base_price: prestation.public_price || 0,
+          final_price: prestation.public_price || 0,
+          patient_share: prestation.public_price || 0,
+          dependencies: [],
+          isDependency: true,
+          originalDependency: dep,
+          parent_item_id: dep.parent_item_id // Track which parent this belongs to
+        })
+      }
     }
   })
   
@@ -380,10 +391,13 @@ const openRemiseModal = () => {
   showRemiseModal.value = true
 }
 
-const removeItem = (itemId) => {
-  emit('remove-item', itemId)
-}
+  const removeItemGroup = (itemsGroup) => {
+    emit('remove-group', itemsGroup)
+  }
 
+  const removeItem = (itemId) => {
+    emit('remove-item', itemId)
+  }
 const removeDependency = async (dependency) => {
   try {
     const result = await ficheNavetteService.removeDependency(dependency.id)
@@ -439,6 +453,58 @@ const handleApplyRemise = (data) => {
   // Refresh the component data
   emit('item-updated', { refresh: true })
 }
+
+// FIXED: Update the packagePrestations computed property
+const packagePrestations = computed(() => {
+  console.log('=== Computing packagePrestations ===')
+  console.log('Group type:', props.group?.type)
+  console.log('Group items:', props.group?.items)
+  
+  if (props.group.type !== 'package') {
+    console.log('Not a package, returning empty array')
+    return []
+  }
+  
+  // Get prestations from the first item's package data
+  const firstItem = props.group.items[0]
+  console.log('First item:', firstItem)
+  
+  if (firstItem?.package?.prestations) {
+    console.log('Found package prestations:', firstItem.package.prestations)
+    return firstItem.package.prestations
+  }
+  
+  console.log('No prestations found, returning empty array')
+  return []
+})
+
+// FIXED: Update individualTotal to use the correct prestations
+const individualTotal = computed(() => {
+  const total = packagePrestations.value.reduce((total, prestation) => {
+    return total + parseFloat(prestation.public_price || 0)
+  }, 0)
+  console.log('Individual total calculated:', total)
+  return total
+})
+
+// FIXED: Update showSavings computation
+const showSavings = computed(() => {
+  const isPackage = props.group.type === 'package'
+  const hasIndividualTotal = individualTotal.value > 0
+  const hasPackagePrice = props.group.total_price > 0
+  const hasSavings = individualTotal.value > props.group.total_price
+  
+  console.log('Savings calculation:', {
+    isPackage,
+    hasIndividualTotal,
+    hasPackagePrice,
+    hasSavings,
+    individualTotal: individualTotal.value,
+    packagePrice: props.group.total_price
+  })
+  
+  return isPackage && hasIndividualTotal && hasPackagePrice && hasSavings
+})
 </script>
 
 <template>
@@ -454,34 +520,7 @@ const handleApplyRemise = (data) => {
           <small class="card-subtitle">{{ cardSubtitle }}</small>
         </div>
       </div>
-      <div class="header-actions">
-        <!-- Convention chips with organism color -->
-        <div v-if="conventionChips && conventionChips.length > 0" class="convention-chips">
-          <Chip
-            v-for="chip in conventionChips"
-            :key="chip.id"
-            :label="chip.label"
-            :severity="chip.severity"
-            class="convention-chip"
-            :style="chip.organism_color ? { 
-              backgroundColor: chip.organism_color + '22', 
-              color: chip.organism_color,
-              borderColor: chip.organism_color + '66'
-            } : {}"
-          />
-        </div>
-        
-        <Chip
-          :label="group?.type === 'package' ? 'Package' : 'Prestation'"
-          :severity="group?.type === 'package' ? 'info' : 'success'"
-          class="type-chip"
-          :style="organismColor ? {
-            backgroundColor: organismColor + '22',
-            color: organismColor,
-            borderColor: organismColor + '66'
-          } : {}"
-        />
-      </div>
+     
     </div>
 
     <!-- Content -->
@@ -557,6 +596,28 @@ const handleApplyRemise = (data) => {
           />
         </div>
       </div>
+
+      <!-- FIXED: Package Content Section -->
+      <div v-if="group?.type === 'package'" class="package-content">
+        <!-- Package Info -->
+        <div class="package-info">
+          <div class="package-details">
+            <div class="detail-row">
+              <span class="detail-label">Package Price:</span>
+              <span class="detail-value package-price">{{ formatCurrency(group.total_price) }}</span>
+            </div>
+            <div v-if="group.doctor_name" class="detail-row">
+              <span class="detail-label">Assigned Doctor:</span>
+              <span class="detail-value">{{ group.doctor_name }}</span>
+            </div>
+          </div>
+        </div>
+
+        
+
+      
+        
+      </div>
     </div>
 
     <!-- Footer - Fixed at bottom -->
@@ -577,7 +638,7 @@ const handleApplyRemise = (data) => {
         icon="pi pi-trash"
         label="Remove"
         class="p-button-outlined p-button-danger p-button-sm"
-        @click="removeItem(groupItems?.[0]?.id)"
+        @click="removeItemGroup(groupItems)"
       />
     </div>
 
@@ -585,7 +646,7 @@ const handleApplyRemise = (data) => {
     <Dialog
       v-model:visible="showDetailsModal"
       :header="`${cardTitle} - Details`"
-      :style="{ width: '1100px', maxHeight: '90vh' }"
+      :style="{ width: '1200px', maxHeight: '90vh' }"
       :modal="true"
       class="details-modal"
     >
@@ -622,6 +683,32 @@ const handleApplyRemise = (data) => {
                 <span class="detail-label">Total Price:</span>
                 <strong class="total-amount">{{ formatCurrency(group.total_price) }}</strong>
               </div>
+              
+              <!-- Package-specific info -->
+              <div v-if="group.type === 'package'" class="detail-item">
+                <span class="detail-label">Package Prestations:</span>
+                <Chip
+                  :label="`${packagePrestations.length} prestations`"
+                  severity="info"
+                />
+              </div>
+              
+              <!-- Package Savings Info -->
+              <div v-if="group.type === 'package' && showSavings" class="detail-item">
+                <span class="detail-label">Savings:</span>
+                <div class="savings-chips">
+                  <Chip
+                    :label="`Individual Total: ${formatCurrency(individualTotal)}`"
+                    severity="warning"
+                    class="mr-2"
+                  />
+                  <Chip
+                    :label="`You Save: ${formatCurrency(individualTotal - group.total_price)}`"
+                    severity="success"
+                  />
+                </div>
+              </div>
+              
               <div class="detail-item">
                 <span class="detail-label">Regular Dependencies:</span>
                 <Chip
@@ -636,6 +723,115 @@ const handleApplyRemise = (data) => {
                   :label="`${packageDependencies.length} packages`"
                   severity="info"
                 />
+              </div>
+            </div>
+          </template>
+        </Card>
+
+        <!-- ADDED: Package Prestations Table (for packages only) -->
+        <Card v-if="group.type === 'package' && packagePrestations.length > 0" class="mb-4">
+          <template #title>
+            <div class="table-title">
+              <i class="pi pi-box"></i>
+              Package Prestations ({{ packagePrestations.length }})
+            </div>
+          </template>
+          <template #content>
+            <DataTable
+              :value="packagePrestations"
+              class="package-prestations-table"
+              responsiveLayout="scroll"
+              :rowHover="true"
+              :rows="10"
+              :paginator="packagePrestations.length > 10"
+            >
+              <Column field="name" header="Prestation Name" :sortable="true">
+                <template #body="{ data }">
+                  <div class="prestation-name-cell">
+                    <i class="pi pi-medical prestation-icon"></i>
+                    <div class="prestation-details">
+                      <div class="prestation-name">{{ data.name }}</div>
+                      <small class="prestation-code">{{ data.internal_code || 'N/A' }}</small>
+                    </div>
+                  </div>
+                </template>
+              </Column>
+
+              <Column field="service_name" header="Service" :sortable="true">
+                <template #body="{ data }">
+                  <Chip
+                    :label="data.service_name || 'N/A'"
+                    severity="secondary"
+                    size="small"
+                  />
+                </template>
+              </Column>
+
+              <Column field="specialization_name" header="Specialization" :sortable="true">
+                <template #body="{ data }">
+                  <Chip
+                    :label="data.specialization_name || 'N/A'"
+                    severity="info"
+                    size="small"
+                  />
+                </template>
+              </Column>
+
+              <Column field="public_price" header="Individual Price" :sortable="true">
+                <template #body="{ data }">
+                  <div class="price-cell">
+                    <span class="individual-price">{{ formatCurrency(data.public_price) }}</span>
+                  </div>
+                </template>
+              </Column>
+
+              <!-- <Column field="need_an_appointment" header="Appointment" :sortable="true">
+                <template #body="{ data }">
+                  <Tag
+                    :value="data.need_an_appointment ? 'Required' : 'Not Required'"
+                    :severity="data.need_an_appointment ? 'warning' : 'success'"
+                    size="small"
+                  />
+                </template>
+              </Column> -->
+             <Column field="status" header="Appointment" :sortable="true">
+                <template #body="{ data }">
+                  <Tag
+                    :value="data.status "
+                    :severity="data.status"
+                    size="small"
+                  />
+                </template>
+              </Column>
+
+<!-- 
+              <Column header="Actions" style="width: 120px">
+                <template #body="{ data }">
+                  <div class="prestation-actions">
+                    <Button
+                      icon="pi pi-info-circle"
+                      class="p-button-rounded p-button-text p-button-sm p-button-info"
+                      @click="viewPrestationDetails(data)"
+                      v-tooltip.top="'View prestation details'"
+                    />
+                  </div>
+                </template>
+              </Column> -->
+            </DataTable>
+
+            <!-- Package Summary -->
+            <div class="package-summary mt-3">
+              <div class="summary-row">
+                <span class="summary-label">Individual Prestations Total:</span>
+                <span class="summary-value individual-total">{{ formatCurrency(individualTotal) }}</span>
+              </div>
+              <div class="summary-row package-price-row">
+                <span class="summary-label">Package Price:</span>
+                <span class="summary-value package-price">{{ formatCurrency(group.total_price) }}</span>
+              </div>
+              <div v-if="showSavings" class="summary-row savings-row">
+                <span class="summary-label">Your Savings:</span>
+                <span class="summary-value savings-amount">{{ formatCurrency(individualTotal - group.total_price) }}</span>
               </div>
             </div>
           </template>
@@ -806,6 +1002,15 @@ const handleApplyRemise = (data) => {
                   <span class="notes-text">{{ data.notes || 'No notes' }}</span>
                 </template>
               </Column>
+                <Column field="status" header="Appointment" :sortable="true">
+                <template #body="{ data }">
+                  <Tag
+                    :value="data.status "
+                    :severity="data.status"
+                    size="small"
+                  />
+                </template>
+              </Column>
 
               <Column header="Parent Item">
                 <template #body="{ data }">
@@ -846,6 +1051,7 @@ const handleApplyRemise = (data) => {
     <!-- Remise Modal -->
     <RemiseModal
       v-model:visible="showRemiseModal"
+      :patientId="props.patientId"
       :group="group"
       :prestations="prestations"
       :doctors="doctors"
@@ -1312,5 +1518,179 @@ const handleApplyRemise = (data) => {
 .organism-convention-card .card-icon:hover {
   transform: scale(1.1);
   filter: brightness(1.1);
+}
+
+/* Add these new styles for better package prestations display */
+.package-prestations {
+  margin-top: 1.5rem;
+}
+
+.prestations-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem 0;
+  color: var(--text-color);
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--surface-200);
+}
+
+.prestations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.prestation-card {
+  padding: 1rem;
+  background: white;
+  border: 1px solid var(--surface-200);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.prestation-card:hover {
+  border-color: var(--primary-300);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.prestation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.prestation-name {
+  font-weight: 600;
+  color: var(--text-color);
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.prestation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.prestation-code,
+.prestation-service,
+.prestation-specialization {
+  font-size: 0.85rem;
+  color: var(--text-color-secondary);
+}
+
+.prestation-price {
+  text-align: right;
+}
+
+.individual-price {
+  background: var(--blue-100);
+  color: var(--blue-700);
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.package-savings {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--green-50);
+  border: 1px solid var(--green-200);
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+.savings-info,
+.savings-amount {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.savings-label {
+  font-size: 0.85rem;
+  color: var(--text-color-secondary);
+  font-weight: 500;
+}
+
+.individual-total {
+  text-decoration: line-through;
+  color: var(--text-color-secondary);
+  font-size: 1rem;
+}
+
+.savings-value {
+  color: var(--green-600);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.no-prestations {
+  margin-top: 1.5rem;
+  padding: 2rem;
+  text-align: center;
+  background: var(--orange-50);
+  border: 1px solid var(--orange-200);
+  border-radius: 8px;
+}
+
+.no-prestations-message h5 {
+  margin: 0.5rem 0;
+  color: var(--orange-600);
+}
+
+.no-prestations-message p {
+  margin: 0;
+  color: var(--text-color-secondary);
+}
+
+.debug-info h6 {
+  margin: 0 0 0.5rem 0;
+  color: #333;
+}
+
+.debug-info p {
+  margin: 0.25rem 0;
+  color: #666;
+  word-break: break-all;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .prestations-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .package-savings {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+  
+  .prestation-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .prestation-price {
+    text-align: left;
+    align-self: stretch;
+  }
 }
 </style>

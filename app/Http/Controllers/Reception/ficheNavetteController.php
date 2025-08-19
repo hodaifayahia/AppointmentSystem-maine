@@ -72,12 +72,10 @@ class ficheNavetteController extends Controller
             $ficheNavette = ficheNavette::create([
                 'patient_id' => $validatedData['patient_id'],
                 'creator_id' => Auth::id(),
-                'reference' => $this->generateReference(),
                 'status' => 'pending',
                 'fiche_date' => now(),
                 'total_amount' => 0,
-                'notes' => $validatedData['notes'] ?? null,
-                'created_by' => auth()->id()
+                'creator_id' => auth()->id()
             ]);
 
             return response()->json([
@@ -135,6 +133,7 @@ class ficheNavetteController extends Controller
                     'duration' => $prestation->default_duration_minutes,
                     'service_id' => $prestation->service_id,
                     'service_name' => $prestation->service->name ?? '',
+                    'need_an_appointment' => $prestation->need_an_appointment,
                     'specialization_id' => $prestation->specialization_id,
                     'specialization_name' => $prestation->specialization->name ?? '',
                     'required_prestations_info' => $prestation->required_prestations_info,
@@ -222,6 +221,7 @@ class ficheNavetteController extends Controller
                 return [
                     'id' => $dep->id,
                     'name' => $dep->name,
+                    'need_an_appointment' => $dep->need_an_appointment,
                     'internal_code' => $dep->internal_code,
                     'price' => $dep->public_price,
                     'parent_id' => $prestationId,
@@ -276,6 +276,8 @@ class ficheNavetteController extends Controller
                 'price' => $prestation->public_price,
                 'service_id' => $prestation->service_id,
                 'service_name' => $prestation->service->name ?? '',
+                                    'need_an_appointment' => $prestation->need_an_appointment,
+
                 'specialization_id' => $prestation->specialization_id,
                 'required_prestations_info' => $prestation->required_prestations_info ?? [],
                 'specialization_name' => $prestation->specialization->name ?? '',
@@ -350,6 +352,8 @@ class ficheNavetteController extends Controller
                     'price' => $prestation->public_price,
                     'duration' => $prestation->default_duration_minutes,
                     'service_id' => $prestation->service_id,
+                                        'need_an_appointment' => $prestation->need_an_appointment,
+
                     'service_name' => $prestation->service->name ?? '',
                     'specialization_id' => $prestation->specialization_id,
                     'specialization_name' => $prestation->specialization->name ?? '',
@@ -419,6 +423,38 @@ class ficheNavetteController extends Controller
         'success' => true,
         'data' => $doctors
     ]);
+}
+
+public function getAllPrestations(Request $request)
+{
+    try {
+        $prestations = Prestation::with(['service', 'specialization'])
+            ->select([
+                'id',
+                'name', 
+                'internal_code',
+                'public_price',
+                'need_an_appointment', // IMPORTANT: Include this field
+                'service_id',
+                'specialization_id',
+                'default_duration_minutes',
+                'description',
+                'required_prestations_info'
+            ])
+            ->where('is_active', true)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => PrestationResource::collection($prestations)
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch prestations',
+            'error' => $e->getMessage()
+        ], 500);
+    }
 }
 public function getAllPrestationsWithPackages(): JsonResponse
 {

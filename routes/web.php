@@ -58,8 +58,12 @@ use App\Http\Controllers\Auth\LoginController; // Assuming you have a LoginContr
 use App\Http\Controllers\B2B\ConvenctionDashborad; // Import the controller
 //ficheNavetteController
 use App\Http\Controllers\Reception\ficheNavetteController;
+
+use App\Http\Controllers\Reception\UserRemiseNotificationController;
+use App\Http\Controllers\Reception\RemiseRequestNotificationController;
 use App\Http\Controllers\Reception\ficheNavetteItemController;
 use App\Http\Controllers\Reception\FicheNavetteCustomPackageController;
+use App\Http\Controllers\Reception\RemiseApproverController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -122,6 +126,7 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/specializations/{id}', [specializationsController::class, 'update']);
         Route::delete('/specializations/{id}', [specializationsController::class, 'destroy']);
 
+        Route::post('/appointments/check-same-day-availability', [AppointmentController::class, 'checkSameDayAvailability']);
         Route::get('/appointments/search', [AppointmentController::class, 'search']);
         Route::get('/appointments/checkAvailability', [AppointmentController::class, 'checkAvailability']);
         Route::get('/appointments/canceledappointments', [AppointmentController::class, 'getAllCanceledAppointments']);
@@ -137,6 +142,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/appointments/{doctorId}/filter-by-date', [AppointmentController::class, 'filterByDate']);
         Route::patch('/appointment/{appointmentId}/status', [AppointmentController::class, 'changeAppointmentStatus']);
         Route::post('/appointments', [AppointmentController::class, 'store']);
+        Route::post('/appointments/book-same-day', [AppointmentController::class, 'bookSameDayAppointment']);
+        Route::post('/appointments/add-to-waiting-list', [AppointmentController::class, 'addToWaitingList']);
         Route::get('/appointments', [AppointmentController::class, 'GetAllAppointments']);
         Route::put('/appointments/{appointmentid}', [AppointmentController::class, 'update']);
         Route::get('/appointments/{doctorId}/{appointmentId}', [AppointmentController::class, 'getAppointment']);
@@ -370,6 +377,8 @@ Route::middleware(['auth'])->group(function () {
             Route::get('dropdown/services', [ModalityController::class, 'getServicesForDropdown']);
         });
 
+
+
         // Infrastructure Dashboard
         Route::get('/dashboard/infrastructure/stats', [InfrastructureDashboardController::class, 'stats']);
         Route::get('/infrastructure/recent-activity', [InfrastructureDashboardController::class, 'recentActivity']);
@@ -393,9 +402,41 @@ Route::middleware(['auth'])->group(function () {
         Route::apiResource('/agreements', AgreementsController::class);
         Route::apiResource('/rooms', RoomController::class); // This replaces duplicate entries for 'rooms'
         
-        Route::apiResource('/user-payment-methods', UserPaymentMethodController::class); // This replaces duplicate entries for 'userPaymentAccess'
-        Route::apiResource('/remise', RemiseController::class); // This replaces duplicate entries for 'userPaymentAccess'
-        Route::get('/payment-methods', [UserPaymentMethodController::class, 'getPaymentMethods']);
+ // User Payment Method routes
+ Route::get('/remise/user', [RemiseController::class, 'userRemise']);
+
+    Route::get('user-payment-methods', [\App\Http\Controllers\CONFIGURATION\UserPaymentMethodController::class, 'index']);
+    Route::post('user-payment-methods', [\App\Http\Controllers\CONFIGURATION\UserPaymentMethodController::class, 'store']);
+    Route::get('user-payment-methods/{user}', [\App\Http\Controllers\CONFIGURATION\UserPaymentMethodController::class, 'show']);
+    Route::put('user-payment-methods/{user}', [\App\Http\Controllers\CONFIGURATION\UserPaymentMethodController::class, 'update']);
+    Route::delete('user-payment-methods/{user}', [\App\Http\Controllers\CONFIGURATION\UserPaymentMethodController::class, 'destroy']);
+    
+    // Payment methods enum
+    Route::get('payment-methods', [\App\Http\Controllers\CONFIGURATION\UserPaymentMethodController::class, 'getPaymentMethods']);
+    Route::apiResource('/remise', RemiseController::class); // This replaces duplicate entries for 'userPaymentAccess'
+    Route::prefix('/remise')->group(function () {
+        Route::get('/user', [RemiseController::class, 'userRemise']);
+        Route::post('/apply', [RemiseController::class, 'applyRemise']);
+        Route::get('/patient', [RemiseController::class, 'patientShare']);
+
+    });
+   Route::prefix('/reception/remise-requests')->group(function () {
+    Route::post('/', [RemiseRequestNotificationController::class, 'createRequest']);
+    Route::get('/notifications', [RemiseRequestNotificationController::class, 'getNotifications']);
+    Route::get('/pending', [RemiseRequestNotificationController::class, 'getPendingRequests']);
+    Route::get('/history', [RemiseRequestNotificationController::class, 'getRequestHistory']);
+    Route::patch('/{id}/approve', [RemiseRequestNotificationController::class, 'approve']);
+    Route::patch('/{id}/reject', [RemiseRequestNotificationController::class, 'reject']);
+    Route::patch('/notifications/mark-read', [RemiseRequestNotificationController::class, 'markAsRead']);
+    
+    Route::prefix('{remise_request}')->group(function () {
+        Route::patch('/approve', [RemiseRequestNotificationController::class, 'approve']);
+        Route::patch('/reject', [RemiseRequestNotificationController::class, 'reject']);
+        Route::patch('/apply-salary', [RemiseRequestNotificationController::class, 'applyToSalary']);
+    });
+});
+
+        // Route::get('/payment-methods', [UserPaymentMethodController::class, 'getPaymentMethods']);
 
         // ConventionDetailController
         Route::prefix('/convention/agreementdetails')->group(function () {
@@ -445,7 +486,8 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/fiche-navette/{ficheNavetteId}/items', [ficheNavetteItemController::class, 'index']);
             Route::put('/fiche-navette/{ficheNavetteId}/items/{itemId}', [ficheNavetteItemController::class, 'update']);
             Route::delete('/fiche-navette/{ficheNavetteId}/items/{itemId}', [ficheNavetteItemController::class, 'destroy']);
-            
+            Route::get('/prestations/all', [ficheNavetteController::class, 'getAllPrestations']);
+
             Route::apiResource('/fiche-navette', ficheNavetteController::class);
                     
             // Add these new routes for convention pricing
@@ -456,7 +498,7 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/fiche-navette/{ficheNavette}/prestations', [ficheNavetteController::class, 'addPrestation']);
             Route::put('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteController::class, 'updatePrestation']);
             Route::delete('/fiche-navette/{ficheNavette}/prestations/{item}', [ficheNavetteItemController::class, 'removePrestation']);
-            
+            Route::get('/fiche-navette/prestations/packages/{packageId}', [ficheNavetteItemController::class, 'getPrestationsByPackage']);
             // Services and doctors
             Route::get('/prestations/by-service/{serviceId}', [ficheNavetteController::class, 'getPrestationsByService']);
             Route::get('/packages/by-service/{serviceId}', [ficheNavetteController::class, 'getPackagesByService']);
@@ -478,8 +520,13 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/fiche-navette/{ficheNavetteId}/grouped-items', [ficheNavetteItemController::class, 'getGroupedByInsured']);
         });
 
-        // Add this new route for grouped items
 
+        // portal apiresource
+Route::prefix('portal')->group(function () {
+    Route::apiResource('remise-approvers', RemiseApproverController::class);
+    Route::post('remise-approvers/{remiseApprover}/toggle', [RemiseApproverController::class, 'toggleApproval']);
+    Route::post('remise-approvers/bulk-update', [RemiseApproverController::class, 'bulkUpdate']);
+});
         // Convention prescription routes
         Route::post('/fiche-navette/{ficheNavetteId}/convention-prescription', [ficheNavetteItemController::class, 'storeConventionPrescription']);
     }); // End of /api group

@@ -11,7 +11,7 @@ import Tag from 'primevue/tag'
 import InputText from 'primevue/inputtext'
 
 
-import ficheNavetteService from '../../../../Components/Apps/services/Recption/ficheNavetteService';
+import ficheNavetteService from '../../../../Components/Apps/services/Reception/ficheNavetteService';
 
 // Props
 const props = defineProps({
@@ -149,7 +149,7 @@ const handleSubmit = async () => {
     console.log('Payload being sent:', payload); // Debug log
 
     const result = props.mode === 'create' 
-      ? await ficheNavetteService.create(payload)
+      ? await ficheNavetteService.createFicheNavette(payload)
       : await ficheNavetteService.update(props.fiche.id, payload)
 
     if (result.success) {

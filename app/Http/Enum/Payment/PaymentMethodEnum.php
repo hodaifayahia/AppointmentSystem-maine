@@ -1,41 +1,56 @@
 <?php
+// filepath: d:\Projects\AppointmentSystem\AppointmentSystem-main\app\Enums\Payment\PaymentMethodEnum.php
 
-namespace App\Http\Enum\Payment;
+namespace App\Enums\Payment;
 
-enum PaymentMethodEnum :string
+enum PaymentMethodEnum: string
 {
-
     case PREPAYMENT = 'prepayment';
     case POSTPAYMENT = 'postpayment';
     case VERSEMENT = 'versement';
 
-    // Optional: Add a method to get a display name
-    public function label(): string
+    /**
+     * Get all enum values as an array
+     */
+    public static function values(): array
     {
-        return match ($this) {
+        return array_column(self::cases(), 'value');
+    }
+
+    /**
+     * Get all cases as key-value pairs for dropdowns
+     */
+    public static function toArrayForDropdown(): array
+    {
+        return [
+            ['value' => self::PREPAYMENT->value, 'label' => 'Pre-payment'],
+            ['value' => self::POSTPAYMENT->value, 'label' => 'Post-payment'],
+            ['value' => self::VERSEMENT->value, 'label' => 'Versement'],
+        ];
+    }
+
+    /**
+     * Get the label for a payment method
+     */
+    public function getLabel(): string
+    {
+        return match($this) {
             self::PREPAYMENT => 'Pre-payment',
-            self::POSTPAYMENT => 'Post-payment',
+            self::POSTPAYMENT => 'Post-payment', 
             self::VERSEMENT => 'Versement',
         };
     }
 
-    // Optional: Add a method to get an icon
-    public function icon(): string
+    /**
+     * Get label by value (static method)
+     */
+    public static function getLabelByValue(string $value): string
     {
-        return match ($this) {
-            self::PREPAYMENT => 'fas fa-wallet',
-            self::POSTPAYMENT => 'fas fa-file-invoice-dollar',
-            self::VERSEMENT => 'fas fa-university',
+        return match($value) {
+            self::PREPAYMENT->value => 'Pre-payment',
+            self::POSTPAYMENT->value => 'Post-payment',
+            self::VERSEMENT->value => 'Versement',
+            default => $value,
         };
-    }
-
-    // Optional: Get all values as an array for dropdowns
-    public static function toArrayForDropdown(): array
-    {
-        return array_map(fn($case) => [
-            'name' => $case->label(),
-            'key' => $case->value,
-            'icon' => $case->icon(), // if you need icons in dropdown
-        ], self::cases());
     }
 }

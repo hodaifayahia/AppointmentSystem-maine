@@ -18,6 +18,7 @@ class PrestationResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'internal_code' => $this->internal_code,
+            'need_an_appointment' => $this->need_an_appointment,
             'billing_code' => $this->billing_code,
             'description' => $this->description,
             'convenience_prixe' => $this->convenience_price,

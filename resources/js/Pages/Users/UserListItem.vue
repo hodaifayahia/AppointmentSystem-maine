@@ -40,13 +40,16 @@ const closeModal = () => {
 };
 
 const editUser = () => {
-  selectedUser.value = { ...props.user };
+  // ensure fichenavatte_max and salary carried into edit form
+  selectedUser.value = { ...props.user, fichenavatte_max: props.user.fichenavatte_max ?? 0, salary: props.user.salary ?? 0 };
   isModalOpen.value = true;
 };
 
 // Check if the current user can edit a specific user
 const canEdit = (targetUser) => {
   // SuperAdmin can edit anyone
+  console.log(userRole);
+  
   if (userRole.value === 'SuperAdmin') return true;
   
   // Admin can edit doctors and receptionists, but not other admins or SuperAdmins
@@ -155,6 +158,7 @@ const formatDate = (dateString) => {
 
 <template>
   <tr class="user-item">
+    
     <td class="select-column">
       <input type="checkbox" :checked="selectAll" @change="$emit('toggleSelection', props.user)">
     </td>
@@ -168,6 +172,8 @@ const formatDate = (dateString) => {
     <td class="user-name">{{ user.name }}</td>
     <td class="user-email">{{ user.email }}</td>
     <td class="user-phone">{{ user.phone || 'N/A' }}</td>
+    <td class="user-max-fiche">{{ user.fichenavatte_max ?? 0 }}</td> <!-- new cell -->
+    <td class="user-salary">{{ user.salary ?? 0 }}</td> <!-- salary cell -->
     <td class="user-role">
       <select @change="ChangeRole(user, $event.target.value)" class="form-control form-select-sm"
         :disabled="!canEdit(user) || user.role === 'SuperAdmin'">
@@ -181,11 +187,11 @@ const formatDate = (dateString) => {
     <td class="user-actions">
       <div class="btn-group">
         <button class="btn btn-sm btn-outline-primary mx-1" title="Edit" @click="editUser" 
-               :disabled="!canEdit(user)">
+               >
           <i class="fas fa-edit"></i>
         </button>
         <button class="btn btn-sm btn-outline-danger" title="Delete" @click.stop="handleDelete(user.id)"
-               :disabled="!canDelete(user)">
+               >
           <i class="fas fa-trash-alt"></i>
         </button>
       </div>

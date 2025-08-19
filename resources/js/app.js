@@ -39,12 +39,7 @@ app.use(PrimeVue, {
         }
         
     },
-    zIndex: {
-        modal: 1100, // For dialogs, overlays
-        overlay: 1100, // For MultiSelect, Dropdown, Calendar popups
-        menu: 1000,
-        tooltip: 1100
-    }
+   
 
 });
 app.use(PrimeVue, { ripple: true }); // Enable ripple effect for buttons

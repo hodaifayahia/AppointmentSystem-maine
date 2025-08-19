@@ -1,55 +1,53 @@
 <?php
+// filepath: d:\Projects\AppointmentSystem\AppointmentSystem-main\app\Http\Requests\CONFIGURATION\UserPaymentMethodRequest.php
 
 namespace App\Http\Requests\CONFIGURATION;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
-use App\Enums\Payment\PaymentMethodEnum; // Don't forget to import your Enum
+use App\Enums\Payment\PaymentMethodEnum;
 
 class UserPaymentMethodRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     *
-     * @return bool
-     */
-    public function authorize(): bool
+    public function authorize()
     {
-        // For now, we'll return true to allow all requests.
-        // In a real application, you would implement authorization logic here,
-        // e.g., checking if the authenticated user has the necessary permissions.
         return true;
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
-     public function rules(): array
+    public function rules()
+    {
+        $paymentMethodValues = PaymentMethodEnum::values();
+        
+        $rules = [
+            'status' => 'required|string|in:active,inactive,suspended',
+            'allowedMethods' => 'nullable|array',
+            'allowedMethods.*' => 'string|in:' . implode(',', $paymentMethodValues),
+        ];
+
+        // For bulk assignment
+        if ($this->has('userIds')) {
+            $rules['userIds'] = 'required|array|min:1';
+            $rules['userIds.*'] = 'integer|exists:users,id';
+            $rules['paymentMethodKeys'] = 'required|array|min:1';
+            $rules['paymentMethodKeys.*'] = 'string|in:' . implode(',', $paymentMethodValues);
+        }
+
+        // For new user creation (when no user ID is provided)
+        if (!$this->route('user')) {
+            $rules['name'] = 'required|string|max:255';
+            $rules['email'] = 'required|email|unique:users,email';
+            $rules['password'] = 'required|string|min:8';
+        }
+
+        return $rules;
+    }
+
+    public function messages()
     {
         return [
-            // Validate the paymentMethodKey
-      'paymentMethodKeys' => 'required|array|min:1', // NOW AN ARRAY
-        'paymentMethodKeys.*' => 'required|string', // Ensure each key exists and is a string
-            // Validate userIds as an array of integers, where each user ID must exist in the 'users' table
-            'userIds' => [
-                'required',
-                'array',
-                'min:1', // Ensure at least one user ID is provided
-            ],
-            'userIds.*' => [ // Rule for each item in the userIds array
-                'required', // Each ID must be present
-                'integer',  // Each ID must be an integer
-                'exists:users,id', // Each ID must exist in the 'users' table
-            ],
-            // Validate the status (assuming it's 'active' for bulk assignment as per frontend)
-            'status' => [
-                'required',
-                'string',
-                // You can add a specific rule if 'status' has limited accepted values (e.g., 'active', 'inactive')
-                Rule::in(['active', 'inactive']), // Example statuses
-            ],
+            'allowedMethods.*.in' => 'Invalid payment method selected.',
+            'paymentMethodKeys.*.in' => 'Invalid payment method selected.',
+            'userIds.*.exists' => 'One or more selected users do not exist.',
+            'status.in' => 'Status must be active, inactive, or suspended.',
         ];
     }
 }

@@ -143,7 +143,25 @@ const props = defineProps({
             </div>
         </div>
 
-    
+        <div class="form-card">
+            <div class="card-header">
+                <div class="section-info">
+                    <i class="fas fa-calendar-check section-icon"></i>
+                    <h4 class="subsection-title">Appointment Requirement</h4>
+                </div>
+            </div>
+            <div class="card-content">
+                <div class="form-group full-width">
+                    <label class="checkbox-label">
+                        <input v-model="form.need_an_appointment" type="checkbox" class="checkbox-input" />
+                        <span class="checkbox-custom"></span>
+                        <span class="checkbox-text">Requires Appointment</span>
+                    </label>
+                    <small class="form-help">Check if this prestation requires an appointment to be scheduled.</small>
+                </div>
+            </div>
+        </div>
+
     </div>
 </template>
 

@@ -17,6 +17,10 @@ class ItemDependency extends Model
         'base_price',
         'final_price',
         'status',
+        'patient_share',
+        'prise_en_charge_date',
+        'discounted_price',
+        'organisme_share',
         'notes',
         'custom_name' ,// Add this field
         'is_package'

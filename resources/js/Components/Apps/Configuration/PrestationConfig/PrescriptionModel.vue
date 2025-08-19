@@ -28,6 +28,7 @@ const toaster = useToastr();
 // Form data - central state for the entire form
 const form = ref({ // Use ref() for the form object itself
     id: null,
+     need_an_appointment: false,
     name: '',
     internal_code: '',
     billing_code: '',
@@ -78,6 +79,7 @@ const resetForm = () => {
         is_active: true,
         public_price: 0,
         convenience_prix: 0,
+        need_an_appointment: false,
         vat_rate: null,
         night_tariff_active: false,
         night_tariff: null,
@@ -185,6 +187,7 @@ const modalTitle = computed(() => {
 
 const estimatedTotal = computed(() => {
     const price = parseFloat(form.value.public_price) || 0;
+    
     const convenience_prix = parseFloat(form.value.convenience_prix) || 0;
     const vatRate = parseFloat(form.value.vat_rate) || 0;
     const consumables = parseFloat(form.value.consumables_cost) || 0;
@@ -243,6 +246,7 @@ watch([
     () => form.value.assistant_doctor_is_percentage,
     () => form.value.technician_is_percentage,
     () => form.value.clinic_is_percentage,
+    () => form.value.need_an_appointment
 ], () => {
     // Re-run validation only for percentage-based sums
     if (form.value.fee_distribution_model === 'percentage') {
@@ -310,6 +314,7 @@ const populateForm = () => {
         form.value.night_tariff_active = props.prestationData.night_tariff !== null && props.prestationData.night_tariff !== undefined;
         // Ensure night_tariff itself is set correctly (it will be by the loop, but this reinforces)
         form.value.night_tariff = props.prestationData.night_tariff ?? null;
+        form.value.need_an_appointment = props.prestationData.need_an_appointment ?? false;
 
 
         // Specific logic for fee distribution shares:

@@ -28,7 +28,23 @@ class PrestationPackage extends Model
 
       public function items(): HasMany
     {
-        return $this->hasMany(PrestationPackageitem::class);
+        return $this->hasMany(PrestationPackageitem::class, 'prestation_package_id');
+    }
+  
+
+    /**
+     * Get prestations through package items
+     */
+    public function prestations()
+    {
+        return $this->hasManyThrough(
+            Prestation::class,
+            PrestationPackageitem::class,
+            'prestation_package_id', // Foreign key on PrestationPackageitem table
+            'id', // Foreign key on Prestation table
+            'id', // Local key on PrestationPackage table
+            'prestation_id' // Local key on PrestationPackageitem table
+        );
     }
 
     /**

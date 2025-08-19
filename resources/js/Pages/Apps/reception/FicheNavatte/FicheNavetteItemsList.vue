@@ -1,5 +1,5 @@
 <!-- pages/Reception/FicheNavette/FicheNavetteDetails.vue -->
-<script setup lang="ts">
+<script setup >
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
@@ -56,17 +56,31 @@ const groupedItems = computed(() => {
   const groups = {}
   
   items.value.forEach(item => {
-    const key = item.package_id ? `package_${item.package_id}` : `prestation_${item.prestation_id}`
+    let key
+    
+    // For package items
+    if (item.package_id) {
+      key = `package_${item.package_id}_${item.id}` // Use item.id to ensure unique grouping
+    } 
+    // For individual prestations
+    else if (item.prestation_id) {
+      key = `prestation_${item.prestation_id}_${item.id}` // Use item.id to ensure unique grouping
+    }
+    // Fallback
+    else {
+      key = `item_${item.id}`
+    }
     
     if (!groups[key]) {
       groups[key] = {
         type: item.package_id ? 'package' : 'prestation',
-        id: item.package_id || item.prestation_id,
+        id: item.package_id || item.prestation_id || item.id,
         name: item.package_id ? item.package?.name : item.prestation?.name,
         doctor_id: item.doctor_id,
         doctor_name: item.doctor?.name,
         items: [],
-        total_price: 0
+        total_price: 0,
+        parent_item_id: item.id // Add this to track the parent item
       }
     }
     
@@ -174,10 +188,9 @@ const handleItemsAdded = async () => {
     life: 3000
   })
 }
-
-const handleItemRemoved = async () => {
-  await loadFiche()
-  
+const handleItemRemoved = (itemId) => {
+  // Remove the item from the items array by its id
+  items.value = items.value.filter(item => item.id !== itemId)
   toast.add({
     severity: 'success',
     summary: 'Success',
@@ -185,7 +198,6 @@ const handleItemRemoved = async () => {
     life: 3000
   })
 }
-
 const handleRemiseApplied = async () => {
   await loadFiche()
   
@@ -249,6 +261,7 @@ const getFileIcon = (mimeTypeOrName) => {
   if (type.includes('image')) return 'pi pi-image'
   return 'pi pi-file'
 }
+
 
 const formatFileSize = (bytes) => {
   if (!bytes) return 'Unknown size'
@@ -314,6 +327,7 @@ const downloadFile = (file) => {
         :total-amount="totalAmount"
         :items-count="itemsCount"
         @items-added="handleItemsAdded"
+        @remove-group="handleRemoveGroup"
         @item-removed="handleItemRemoved"
         @remise-applied="handleRemiseApplied"
         @toggle-create-form="toggleCreateForm"

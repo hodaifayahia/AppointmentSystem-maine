@@ -9,6 +9,8 @@ use App\Models\Reception\ficheNavetteItem;
 use App\Models\Reception\ItemDependency;
 use App\Models\Reception\ficheNavette;
 use App\Services\Reception\ReceptionService;
+use App\Models\CONFIGURATION\PrestationPackageitem;
+
 use App\Services\Reception\ConventionPricingService;
 use App\Services\Reception\FileUploadService;
 use Illuminate\Http\Request;
@@ -45,7 +47,6 @@ class ficheNavetteItemController extends Controller
                 'error' => 'Missing ficheNavetteId parameter'
             ], 400);
         }
-        dd($request->all());
 
         $validatedData = $request->validate([
             'type' => 'required|string|in:prestation,custom',
@@ -84,10 +85,9 @@ class ficheNavetteItemController extends Controller
             'familyAuth' => 'nullable|array',
             'familyAuth.*' => 'string|in:ascendant,descendant,Conjoint,adherent,autre',
             'notes' => 'nullable|string',
-            'packages' => 'sometimes|array',
-            'packages.*.id' => 'required|exists:prestation_packages,id',
-            'packages.*.convention_id' => 'nullable|exists:conventions,id',
-            'packages.*.uses_convention' => 'nullable|boolean',
+           'packages.*.id' => 'required|exists:prestation_packages,id',
+            'packages.*.prestations' => 'sometimes|array',
+            'packages.*.prestations.*.id' => 'required|exists:prestations,id',
             // File upload validation
             'uploadedFiles' => 'sometimes|array',
             'uploadedFiles.*.name' => 'sometimes|string',
@@ -134,7 +134,8 @@ public function storeConventionPrescription(Request $request, $ficheNavetteId): 
         'prise_en_charge_date' => 'required|date',
         'familyAuth' => 'required|string',
         'adherentPatient_id' => 'nullable|exists:patients,id',
-        'uploadedFiles' => 'nullable|file|mimes:pdf,doc,docx|max:10240', // Single file
+        'uploadedFiles' => 'sometimes|array',
+        'uploadedFiles.*' => 'file|mimes:pdf,doc,docx|max:10240',
     ]);
 
     try {
@@ -208,7 +209,18 @@ public function storeConventionPrescription(Request $request, $ficheNavetteId): 
             ], 500);
         }
     }
-
+ public function getPrestationsByPackage($packageId) {
+    try {
+        $prestations = $this->receptionService->getPrestationsByPackage($packageId);
+        return response()->json($prestations);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch prestations',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+ }
     /**
      * Download convention file
      */
@@ -469,21 +481,33 @@ public function getPatientConventions(Request $request, $patientId): JsonRespons
         ], 500);
     }
 }
-// In ficheNavetteItemController.php - Update the index method
+// In the index method, make sure dependencies are loaded with proper parent_item_id
 public function index(Request $request, $ficheNavetteId): JsonResponse
 {
     try {
-       $ficheNavette = ficheNavette::with([
-    'items.prestation.service', 
-    'items.prestation.specialization',
-    'items.dependencies.dependencyPrestation',
-    'items.dependencies.dependencyPrestation.specialization',
-    'items.convention.organisme', // Make sure this is loaded
-    'items.doctor',
-    'items.insuredPatient',
-    'patient',
-    'creator'
-])->findOrFail($ficheNavetteId);
+        $ficheNavette = ficheNavette::with([
+            'items.prestation.service', 
+            'items.prestation.specialization',
+            'items.package.items.prestation.service',
+            'items.package.items.prestation.specialization',
+            'items.dependencies.dependencyPrestation.service', // FIXED: Load dependencies with full prestation data
+            'items.dependencies.dependencyPrestation.specialization',
+            'items.convention.organisme',
+            'items.doctor',
+            'items.insuredPatient',
+            'patient',
+            'creator'
+        ])->findOrFail($ficheNavetteId);
+
+        // FIXED: Ensure each item has its own dependencies properly linked
+        $ficheNavette->items->each(function($item) {
+            if ($item->dependencies) {
+                $item->dependencies->each(function($dependency) use ($item) {
+                    // Ensure the dependency knows its parent
+                    $dependency->parent_item_id = $item->id;
+                });
+            }
+        });
 
         return response()->json([
             'success' => true,
